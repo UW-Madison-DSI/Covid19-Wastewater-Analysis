@@ -18,9 +18,9 @@ DHS:
 
 ## Sample results
 
-- [Downsampling Two Days](results/DownsamplingTwoDays.pdf)
+- [Downsampling (Two Days)](results/DownsamplingTwoDays.pdf)
 
-- [Downsampling Interceptor](results/DownsamplingInterceptor.pdf)
+- [Downsampling Interceptor (Two Days)](results/DownsamplingInterceptor.pdf)
 
 ## Installation
 Download package using the R command below
