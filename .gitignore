@@ -6,3 +6,4 @@
 .Rproj.user
 *.Rproj
 .DS_Store
+.pynb_checkpoints
