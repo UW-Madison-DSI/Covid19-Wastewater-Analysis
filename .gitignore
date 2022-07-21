@@ -1,0 +1,8 @@
+##### Ignore DF files and RStudio workFiles
+*.Rhistory
+*.RData
+#*.csv
+*.tsv
+.Rproj.user
+*.Rproj
+.DS_Store
