@@ -1,0 +1,93 @@
+---
+title: "DHS Two Days Downsampling"
+author: "Marlin"
+date: '2022-07-11'
+output: 
+  bookdown::html_document2: 
+    fig_width: 15
+    fig_height: 8
+    code_folding: hide
+---
+
+
+```{r set up markdown settings, echo=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+```{r}
+library(DSIWastewater)
+library(zoo)
+library(lubridate)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+```{r exp code}
+source("DownSamplingFuncs.R")
+```
+
+```{r get base data}
+data(wastewater_data, package = "DSIWastewater")
+
+Mad_data <- wastewater_data%>%
+  buildWorkSheet4()%>%
+  filter(WWTP == "Madison MSD WWTF")
+
+```
+
+```{r data prep}
+Full_Mad_data <- list(1:7, c(2,5))%>%
+  lapply(FUN = PrepDataSmoothings,
+         DF = Mad_data)%>%
+  bind_rows()
+
+Full_reg_data <- Full_Mad_data%>%
+                          buildRegressionEstimateTable(
+                               RunOn = c("sars_cov2_adj_load_log10",
+                                "SevSmooth",
+                                "EXP",
+                                "Loess"),
+                               SplitOn = "TrueName")%>%
+  mutate(data = nchar(TrueName))
+
+```
+
+
+```{r data, fig.width= 15, fig.height=14}
+
+createDHSMethod_Plot(Full_reg_data, Full_Mad_data, 
+                 PointVal = c( "sars_cov2_adj_load_log10"),
+                 LineVal = c("Loess", "EXP", "SevSmooth"),
+                 FacGridFormula = Method ~ data)
+```
+
+
+```{r, fig.width=15}
+
+
+Messure_reg_estimates_data <- Full_reg_data%>%
+  prepDataForMessure(BreakOn = "data", dataBase = 7)
+
+Messure_data <- Messure_reg_estimates_data%>%
+  group_by(Method, data)%>%
+  mutate(diff = abs(Catagory - Loess),
+         BigDiff = diff >= 2,
+         vol = abs(Catagory-lag(Catagory)),
+         Bigvol = vol>= 2)%>%
+  summarise(diff = mean(diff),
+            PerBigDiff = mean(BigDiff),
+            vol = mean(vol, na.rm = TRUE),
+            PerBigvol = mean(Bigvol, na.rm = TRUE)
+            )
+
+
+Messure_data%>%
+  pivot_longer(col = -c(Method, data))%>%
+  ggplot(aes(x = data, y = value))+
+  geom_line(aes(color = Method))+
+  facet_wrap(~name, scales = "free")
+```

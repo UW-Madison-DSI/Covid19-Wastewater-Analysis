@@ -1,0 +1,128 @@
+---
+title: "DHS downsampling Interceptor"
+author: "Marlin"
+date: '2022-07-11'
+output: 
+  bookdown::html_document2: 
+    fig_width: 15
+    fig_height: 8
+    code_folding: hide
+---
+
+
+```{r set up markdown settings, echo=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+```{r}
+library(DSIWastewater)
+library(zoo)
+library(lubridate)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+```{r exp code}
+source("DownSamplingFuncs.R")
+
+```
+
+
+```{r get base data}
+data(wastewater_data, package = "DSIWastewater")
+
+Full_data <- wastewater_data%>%
+  buildWorkSheet4()
+
+
+intercepter <- c("Madison-P2-Central",
+                 "Madison-P8-West",
+                 "Madison-P11-SW",
+                 "Madison-P7-SE",
+                 "Madison-P18-NE"
+                 )
+
+InterceptorDates_data <- Full_data%>%
+  filter(WWTP %in% intercepter)%>%
+  pull(date)
+
+Mad_data <- Full_data%>%
+  filter(WWTP == "Madison MSD WWTF")%>%
+  mutate(data = "Full")
+
+Down_Mad_data <- Mad_data%>%
+            filter(date %in% InterceptorDates_data)%>%
+  mutate(data = "Down")
+```
+
+```{r day of week}
+#Analyse day of week effect with new data
+#see if mean changes on day of week
+#push off to later
+#a <- workset4_data%>%
+#  group_by(date)%>%
+#  summarise(m = mean(sars_cov2_adj_load_log10))
+#1, 4
+
+Full_data%>%
+  filter(WWTP %in% intercepter)%>%
+  mutate(Wday = wday(date))%>%
+  group_by(Wday)%>%
+  summarize(n = n())
+```
+
+
+```{r data prep}
+Full_Mad_data <- list(Mad_data, Down_Mad_data)%>%
+    lapply(FUN = PrepDataSmoothings)%>%
+    bind_rows()
+
+Full_reg_data <- Full_Mad_data%>%
+                          buildRegressionEstimateTable(
+                               RunOn = c("sars_cov2_adj_load_log10",
+                                "SevSmooth",
+                                "EXP",
+                                "Loess"),
+                               SplitOn = "data")
+
+```
+
+```{r data, fig.width= 15, fig.height=14}
+
+createDHSMethod_Plot(Full_reg_data, Full_Mad_data, 
+                 PointVal = c( "sars_cov2_adj_load_log10"),
+                 LineVal = c("Loess", "EXP", "SevSmooth"),
+                 FacGridFormula = Method ~ data)
+```
+
+
+```{r, fig.width=15}
+
+
+Messure_reg_estimates_data <- Full_reg_data%>%
+  prepDataForMessure(BreakOn = "data", dataBase="Full")
+
+Messure_data <- Messure_reg_estimates_data%>%
+  group_by(Method, data)%>%
+  mutate(diff = abs(Catagory - Loess),
+         BigDiff = diff >= 2,
+         vol = abs(Catagory-lag(Catagory)),
+         Bigvol = vol>= 2)%>%
+  summarise(diff = mean(diff),
+            PerBigDiff = mean(BigDiff),
+            vol = mean(vol, na.rm = TRUE),
+            PerBigvol = mean(Bigvol, na.rm = TRUE)
+            )
+
+
+Messure_data%>%
+  mutate(data = ifelse(data == "Down",3,7))%>%
+  pivot_longer(col = -c(Method, data))%>%
+  ggplot(aes(x = data, y = value))+
+  geom_line(aes(color = Method))+
+  facet_wrap(~name, scales = "free")
+```
