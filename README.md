@@ -18,9 +18,9 @@ DHS:
 
 ## Sample results
 
-- [First Confirmed Line Plot](code-notebooks/dhs-analysis/FirstConfirmedLinePlot.PDF)
+- [Downsampling Two Days](results/DownsamplingTwoDays.pdf)
 
-- [Seven Day Moving Average Line Plot](code-notebooks/dhs-analysis/SevenDayMACasesLinePlot.PDF)
+- [Downsampling Interceptor](results/DownsampalingInterceptor.pdf)
 
 ## Installation
 Download package using the R command below
