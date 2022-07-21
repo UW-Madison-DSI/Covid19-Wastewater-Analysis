@@ -20,7 +20,7 @@ DHS:
 
 - [Downsampling Two Days](results/DownsamplingTwoDays.pdf)
 
-- [Downsampling Interceptor](results/DownsampalingInterceptor.pdf)
+- [Downsampling Interceptor](results/DownsamplingInterceptor.pdf)
 
 ## Installation
 Download package using the R command below
