@@ -2,11 +2,7 @@
 title: "DHS downsampling work"
 author: "Marlin"
 date: '2022-07-11'
-output: 
-  bookdown::html_document2: 
-    fig_width: 15
-    fig_height: 8
-    code_folding: hide
+output: pdf_document
 ---
 
 
@@ -43,9 +39,9 @@ source("DownSamplingFuncs.R")
 
 
 ```{r get base data}
-data(wastewater_data, package = "DSIWastewater")
+data(DHSWaste_data, package = "DSIWastewater")
 
-Mad_data <- wastewater_data%>%
+Mad_data <- DHSWaste_data%>%
   buildWorkSheet4()%>%
   filter(WWTP == "Madison MSD WWTF")
 
