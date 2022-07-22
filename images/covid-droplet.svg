@@ -3,6 +3,7 @@
 	<defs>
 		<linearGradient id="blue-gradient" gradientTransform="rotate(45)">
 			<stop offset="0%" stop-color="white" />
+			<stop offset="50%" stop-color="#92c5de" />
 			<stop offset="100%" stop-color="#0571b0" />
 		</linearGradient>
 	</defs>
