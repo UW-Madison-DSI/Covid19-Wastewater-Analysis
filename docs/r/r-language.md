@@ -9,7 +9,7 @@ https://www.rstudio.com
 
 <p align="center">
   <div align="center">
-    <img src="../../images/r/r-studio.png" alt="R Studio" style="width:75%">
+    <img src="../../images/r-studio/r-studio.png" alt="R Studio" style="width:75%">
   </div>
 </p>
 
@@ -20,6 +20,6 @@ https://cran.r-project.org/bin
 
 <p align="center">
   <div align="center">
-    <img src="../../images/r/r-console.png" alt="R Studio" style="width:50%">
+    <img src="../../images/r-console/r-console.png" alt="R Studio" style="width:50%">
   </div>
 </p>
