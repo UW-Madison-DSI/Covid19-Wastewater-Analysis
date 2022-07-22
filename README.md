@@ -27,7 +27,7 @@ DHS:
 
 ### 1. The R Language
 
-The wastewater analysis code is written in R so you will need an [R interpreter / environment](./docs/r/installing-r.md) to run it. 
+The wastewater analysis code is written in R so you will need an [R interpreter / environment](./docs/r/r-language.md) to run it. 
 
 ### 2. The AFIDSI Wastewater Package
 
