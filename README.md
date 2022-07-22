@@ -20,8 +20,19 @@ DHS:
 
 - [Downsampling (Two Days)](results/DownsamplingTwoDays.pdf)
 
+<p align="center">
+  <div align="center">
+    <img src="./images/results/downsampling-2-day.png" alt="Downsampling 2 Day Results" style="width:50%">
+  </div>
+</p>
+
 - [Downsampling Interceptor (Two Days)](results/DownsamplingInterceptor.pdf)
 
+<p align="center">
+  <div align="center">
+    <img src="./images/results/downsampling-interceptor-2-day.png" alt="Downsampling Interceptor 2 Day Results" style="width:50%">
+  </div>
+</p>
 
 ## Requirements
 
