@@ -66,12 +66,17 @@ To get a AUTHTOKEN you need to go to https://github.com/settings/tokens and crea
 You can download the AFIDSI wastewater package tar file from the following location:
 https://github.com/AFIDSI/DSIWastewater/blob/main/DSIWastewater_0.2.01.tar.gz
 
-** Tip: **
+**Tip:**
+
+---
+
 When you download it, make sure that it remains zipped.  It should be a .tar.gz file rather than a .tar file.   If the file has been unzipped, then you can re-zip it using the following command:
 
 ```
 gzip DSIWastewater_0.2.01.tar
 ```
+
+---
 
 2. Install the tar file
 
