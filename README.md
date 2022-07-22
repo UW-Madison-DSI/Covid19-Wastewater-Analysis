@@ -22,8 +22,33 @@ DHS:
 
 - [Downsampling Interceptor (Two Days)](results/DownsamplingInterceptor.pdf)
 
+
+## Requirements
+
+1. The R Language
+
+The wastewater analysis code is written in R so you will need an R interpreter / environment to run it.  We recommend the following two systems: 
+
+- R Studio
+
+R Studio is a complete integrated development environment for R:
+https://www.rstudio.com 
+
+- R Console
+
+This is a simple console app which provides a command line interface to the R interpreter:
+https://cran.r-project.org/bin 
+
+2. The AFIDSI Wastewater Package
+
+The AFIDSI Wastewater package is an R package that provides the foundation for analysis of wastewater data. 
+
 ## Installation
-Download package using the R command below
+There are two ways to install the AFIDSI wastewater package:
+
+### 1. Using Devtools
+
+Download the AFIDSI wastewater package using the R command below
 ```
 devtools::install_github(
     "AFIDSI/DSIWastewater",
@@ -31,7 +56,30 @@ devtools::install_github(
 )
 ```
  
-To get a AUTHTOKEN you need to go to https://github.com/settings/tokens and create one with at least [repo level access](./docs/repo-level-access.md).
+To get a AUTHTOKEN you need to go to https://github.com/settings/tokens and create one with at least [repo level access](./docs/github/repo-level-access.md).
+
+### 2. Using a TAR (.tgz) file
+
+1. Download the tar file
+
+You can download the tar from the following location:
+https://github.com/AFIDSI/DSIWastewater/blob/main/DSIWastewater_0.2.01.tar.gz
+
+Note: When you download it, make sure that it remains zipped.  It should be a .tar.gz file rather than a .tar file.   If the file has been unzipped, then you can re-zip the file using the following command:
+
+```
+gzip DSIWastewater_0.2.01.tar
+```
+
+2. Install the tar file
+
+To install the tar file, you can use the following command:
+
+```
+install.packages("DSIWastewater_0.2.01.tar.gz", repos = NULL, type="source") 
+```
+
+Alternatively, if you are using RStudio, you can install the tar file [using the user interface](./docs/r-studio/installing-packages.md).
 
 ## Viewing
  
