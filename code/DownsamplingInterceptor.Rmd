@@ -1,40 +1,45 @@
 ---
-title: "DHS downsampling Interceptor"
+title: "DHS downsampling to Interceptor"
 author: "Marlin"
 date: '2022-07-11'
 output: pdf_document
 ---
 
+This analysis seeks to answer whether the DHS method is robust when reducing the number of measurements. We do this by running the analysis with the different smoothing on both the original Madison data and the data downsampled to only the days with the 5 sub interceptor measurements.
+
 
 ```{r set up markdown settings, echo=FALSE}
 knitr::opts_chunk$set(
 	message = FALSE,
-	warning = FALSE
+	warning = FALSE,
+	echo = FALSE
 )
 ```
 
-```{r}
+```{r, load needed packages}
+#needed packages
 library(DSIWastewater)
-library(zoo)
 library(lubridate)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(zoo)
 ```
 
-```{r exp code}
-source("DownSamplingFuncs.R")
-
-```
 
 
 ```{r get base data}
+#Load dhs data from package
 data(DHSWaste_data, package = "DSIWastewater")
 
+#convert data into the shape used for the regression analysis
 Full_data <- DHSWaste_data%>%
   buildWorkSheet4()
+```
 
 
+```{r downsampling}
+#String name of the 5 Madison interceptors
 intercepter <- c("Madison-P2-Central",
                  "Madison-P8-West",
                  "Madison-P11-SW",
@@ -42,83 +47,64 @@ intercepter <- c("Madison-P2-Central",
                  "Madison-P18-NE"
                  )
 
+
 InterceptorDates_data <- Full_data%>%
   filter(WWTP %in% intercepter)%>%
   pull(date)
 
+#reducing the data just to the Madison measurements
 Mad_data <- Full_data%>%
   filter(WWTP == "Madison MSD WWTF")%>%
-  mutate(data = "Full")
+  mutate(data = "original sampling")
 
+#reducing the Madison data to just the days with the interceptor messurement
 Down_Mad_data <- Mad_data%>%
             filter(date %in% InterceptorDates_data)%>%
-  mutate(data = "Down")
+  mutate(data = "downsampled")
 ```
 
-```{r day of week}
-#Analyse day of week effect with new data
-#see if mean changes on day of week
-#push off to later
-#a <- workset4_data%>%
-#  group_by(date)%>%
-#  summarise(m = mean(sars_cov2_adj_load_log10))
-#1, 4
+The interceptors where measured on  Monday and Thursday with around 65 total measurements on each of the two days
 
-Full_data%>%
-  filter(WWTP %in% intercepter)%>%
-  mutate(Wday = wday(date))%>%
+```{r day of week}
+Down_Mad_data%>%
+  mutate(Wday = wday(date, label = TRUE))%>%
   group_by(Wday)%>%
   summarize(n = n())
 ```
 
 
 ```{r data prep}
+#add the smoothing with PrepDataSmoothings from DownSamplingFuncs.R
+#also combine the Madison data and the downsampled data
+source("DownSamplingFuncs.R")
 Full_Mad_data <- list(Mad_data, Down_Mad_data)%>%
     lapply(FUN = PrepDataSmoothings)%>%
     bind_rows()
 
+
 Full_reg_data <- Full_Mad_data%>%
                           buildRegressionEstimateTable(
-                               RunOn = c("sars_cov2_adj_load_log10",
+                            #columns to run on
+                               RunOn = 
+                                 c("sars_cov2_adj_load_log10",
                                 "SevSmooth",
                                 "EXP",
                                 "Loess"),
+                               #split the analysis into two by if 
+                               #it was downsampled
                                SplitOn = "data")
 
 ```
 
-```{r data, fig.width= 15, fig.height=14}
+this is the plot showing the results of the DHS methods. the downsampled results show a similar ability to keep track of the major trend.
 
+```{r data, fig.width= 16, fig.height = 12}
+#create plot using df Full_reg_data and Full_Mad_data
 createDHSMethod_Plot(Full_reg_data, Full_Mad_data, 
+                #controls what columns to plot as points
                  PointVal = c( "sars_cov2_adj_load_log10"),
+                #control what columns to plot as lines
                  LineVal = c("Loess", "EXP", "SevSmooth"),
+                #controls how to facet it
                  FacGridFormula = Method ~ data)
-```
-
-
-```{r, fig.width=15}
-
-
-Messure_reg_estimates_data <- Full_reg_data%>%
-  prepDataForMessure(BreakOn = "data", dataBase="Full")
-
-Messure_data <- Messure_reg_estimates_data%>%
-  group_by(Method, data)%>%
-  mutate(diff = abs(Catagory - Loess),
-         BigDiff = diff >= 2,
-         vol = abs(Catagory-lag(Catagory)),
-         Bigvol = vol>= 2)%>%
-  summarise(diff = mean(diff),
-            PerBigDiff = mean(BigDiff),
-            vol = mean(vol, na.rm = TRUE),
-            PerBigvol = mean(Bigvol, na.rm = TRUE)
-            )
-
-
-Messure_data%>%
-  mutate(data = ifelse(data == "Down",3,7))%>%
-  pivot_longer(col = -c(Method, data))%>%
-  ggplot(aes(x = data, y = value))+
-  geom_line(aes(color = Method))+
-  facet_wrap(~name, scales = "free")
 ```

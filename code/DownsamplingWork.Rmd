@@ -5,11 +5,14 @@ date: '2022-07-11'
 output: pdf_document
 ---
 
+This analysis seeks to answer whether the DHS method is robust when reducing the number of measurements. We do this by running the analysis with the different smoothing on both the original Madison data and every posible downsampling combo
+
 
 ```{r set up markdown settings, echo=FALSE}
 knitr::opts_chunk$set(
 	message = FALSE,
-	warning = FALSE
+	warning = FALSE,
+	echo = FALSE
 )
 ```
 
@@ -25,18 +28,6 @@ library(ggplot2)
 ```{r exp code}
 source("DownSamplingFuncs.R")
 ```
-
-```{r day of week}
-#Analyse day of week effect with new data
-#see if mean changes on day of week
-#push off to later
-#a <- workset4_data%>%
-#  group_by(date)%>%
-#  summarise(m = mean(sars_cov2_adj_load_log10))
-#1, 4
-```
-
-
 
 ```{r get base data}
 data(DHSWaste_data, package = "DSIWastewater")
@@ -86,6 +77,8 @@ createDHSMethod_Plot(Singular_reg_data, Singular_Mad_data,
                  FacGridFormula = Method ~ data)
 ```
 
+We all checked every combination of downsampling options and calculated the error compared to the original analysis loess method. diff is the average difference between 
+the 7 day loess prediction. big difference is the proportion of the data that is off by two or more levels volatility is the average change from prediction to prediction. Bigvol is the proportion of the data that changes by more then two levels between measurements
 
 ```{r, fig.width=15}
 
@@ -100,9 +93,9 @@ Messure_data <- Messure_reg_estimates_data%>%
          vol = abs(Catagory-lag(Catagory)),
          Bigvol = vol>= 2)%>%
   summarise(diff = mean(diff),
-            PerBigDiff = mean(BigDiff),
+            BigDiff = mean(BigDiff),
             vol = mean(vol, na.rm = TRUE),
-            PerBigvol = mean(Bigvol, na.rm = TRUE)
+            Bigvol = mean(Bigvol, na.rm = TRUE)
             )
 
 

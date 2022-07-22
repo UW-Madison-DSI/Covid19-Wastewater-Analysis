@@ -5,15 +5,18 @@ date: '2022-07-11'
 output: pdf_document
 ---
 
+This analysis seeks to answer whether the DHS method is robust when reducing the number of measurements. We do this by running the analysis with the different smoothing on both the original Madison data and the data downsampled to two days a week
 
 ```{r set up markdown settings, echo=FALSE}
 knitr::opts_chunk$set(
 	message = FALSE,
-	warning = FALSE
+	warning = FALSE,
+	echo = FALSE
 )
 ```
 
 ```{r}
+#needed packages
 library(DSIWastewater)
 library(zoo)
 library(lubridate)
@@ -36,54 +39,33 @@ Mad_data <- DHSWaste_data%>%
 ```
 
 ```{r data prep}
+#PrepDataSmoothings includes down sampling if a given vector
 Full_Mad_data <- list(1:7, c(2,5))%>%
   lapply(FUN = PrepDataSmoothings,
          DF = Mad_data)%>%
   bind_rows()
 
+#
 Full_reg_data <- Full_Mad_data%>%
                           buildRegressionEstimateTable(
+                            #columns to run on
                                RunOn = c("sars_cov2_adj_load_log10",
                                 "SevSmooth",
                                 "EXP",
                                 "Loess"),
+                               #split the analysis into two by if 
+                               #it was downsampled
                                SplitOn = "TrueName")%>%
   mutate(data = nchar(TrueName))
 
 ```
 
+this is the plot showing the results of the DHS methods. the downsampled results show a similar ability to keep track of the major trend.
 
 ```{r data, fig.width= 15, fig.height=14}
-
+#create plot using df Full_reg_data and Full_Mad_data
 createDHSMethod_Plot(Full_reg_data, Full_Mad_data, 
                  PointVal = c( "sars_cov2_adj_load_log10"),
                  LineVal = c("Loess", "EXP", "SevSmooth"),
                  FacGridFormula = Method ~ data)
-```
-
-
-```{r, fig.width=15}
-
-
-Messure_reg_estimates_data <- Full_reg_data%>%
-  prepDataForMessure(BreakOn = "data", dataBase = 7)
-
-Messure_data <- Messure_reg_estimates_data%>%
-  group_by(Method, data)%>%
-  mutate(diff = abs(Catagory - Loess),
-         BigDiff = diff >= 2,
-         vol = abs(Catagory-lag(Catagory)),
-         Bigvol = vol>= 2)%>%
-  summarise(diff = mean(diff),
-            PerBigDiff = mean(BigDiff),
-            vol = mean(vol, na.rm = TRUE),
-            PerBigvol = mean(Bigvol, na.rm = TRUE)
-            )
-
-
-Messure_data%>%
-  pivot_longer(col = -c(Method, data))%>%
-  ggplot(aes(x = data, y = value))+
-  geom_line(aes(color = Method))+
-  facet_wrap(~name, scales = "free")
 ```
