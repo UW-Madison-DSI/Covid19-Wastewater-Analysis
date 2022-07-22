@@ -22,7 +22,7 @@ DHS:
 
 <p align="center">
   <div align="center">
-    <img src="./images/results/downsampling-2-day.png" alt="Downsampling 2 Day Results" style="width:50%">
+    <a href="results/DownsamplingTwoDays.pdf" target="_blank"><img src="./images/results/downsampling-2-day.png" alt="Downsampling 2 Day Results" style="width:50%"></a>
   </div>
 </p>
 
@@ -30,7 +30,7 @@ DHS:
 
 <p align="center">
   <div align="center">
-    <img src="./images/results/downsampling-interceptor-2-day.png" alt="Downsampling Interceptor 2 Day Results" style="width:50%">
+    <a href="results/DownsamplingInterceptor.pdf" target="_blank"><img src="./images/results/downsampling-interceptor-2-day.png" alt="Downsampling Interceptor 2 Day Results" style="width:50%">
   </div>
 </p>
 
