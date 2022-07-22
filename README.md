@@ -25,21 +25,11 @@ DHS:
 
 ## Requirements
 
-1. The R Language
+### 1. The R Language
 
-The wastewater analysis code is written in R so you will need an R interpreter / environment to run it.  We recommend the following two systems: 
+The wastewater analysis code is written in R so you will need an [R interpreter / environment](./docs/r/installing-r.md) to run it. 
 
-- R Studio
-
-R Studio is a complete integrated development environment for R:
-https://www.rstudio.com 
-
-- R Console
-
-This is a simple console app which provides a command line interface to the R interpreter:
-https://cran.r-project.org/bin 
-
-2. The AFIDSI Wastewater Package
+### 2. The AFIDSI Wastewater Package
 
 The AFIDSI Wastewater package is an R package that provides the foundation for analysis of wastewater data. 
 
