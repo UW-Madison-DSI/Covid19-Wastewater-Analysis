@@ -14,6 +14,8 @@ DSI:
 DHS:
 - <https://www.dhs.wisconsin.gov>
 - <https://www.dhs.wisconsin.gov/covid-19/wastewater.htm>
+
+SLH:
 - <http://www.slh.wisc.edu/environmental/covid-19-wastewater/>
 
 ## Sample results
