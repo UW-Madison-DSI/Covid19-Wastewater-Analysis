@@ -20,6 +20,8 @@ DHS:
 
 - [Downsampling (Two Days)](results/DownsamplingTwoDays.pdf)
 
+  This analysis seeks to answer whether the DHS method is robust when reducing the number of measurements to two days per week.
+
 <p align="center">
   <div align="center">
     <a href="results/DownsamplingTwoDays.pdf" target="_blank"><img src="./images/results/downsampling-2-day.png" alt="Downsampling 2 Day Results" style="width:50%"></a>
@@ -27,6 +29,8 @@ DHS:
 </p>
 
 - [Downsampling Interceptor (Two Days)](results/DownsamplingInterceptor.pdf)
+
+  This analysis seeks to answer whether the DHS method is robust when reducing the number of measurements to two days per week using data from the 5 interceptor points.
 
 <p align="center">
   <div align="center">
