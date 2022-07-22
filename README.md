@@ -4,9 +4,9 @@
   </div>
 </p>
 
-# DSI Covid Wastewater Analysis (Development)
+# AFIDSI Covid Wastewater Analysis (Development)
  
-This is a collaborative project between the University of Wiscosin's Data Science Institute (DSI) and the Wisconsin Department of Health Services (DHS) on data analsysis for statewide covid wastewater surveillance. 
+This is a collaborative project between the University of Wiscosin's Data Science Institute (DSI) and the Wisconsin Department of Health Services (DHS) to perform analysis on wastewater data for covid-19 surveillance and monitoring. 
 
 DSI:
 - <https://datascience.wisc.edu>
@@ -38,18 +38,18 @@ DHS:
 
 ### 1. The R Language
 
-The wastewater analysis code is written in R so you will need an [R interpreter / environment](./docs/r/r-language.md) to run it. 
+The AFIDSI Covid Wastewater Analysis code is written in R so you will need an [R interpreter / environment](./docs/r/r-language.md) to run it. 
 
 ### 2. The AFIDSI Wastewater Package
 
-The AFIDSI Wastewater package is an R package that provides the foundation for analysis of wastewater data. 
+The AFIDSI Covid Wastewater Analysis package is an R package that provides the foundation for analysis of wastewater data. 
 
 ## Installation
-There are two ways to install the AFIDSI wastewater package:
+There are two ways to install the AFIDSI Covid Wastewater Analysis package:
 
 ### 1. Using Devtools
 
-Download the AFIDSI wastewater package using the R command below
+Download the package using the R devtools command below
 ```
 devtools::install_github(
     "AFIDSI/DSIWastewater",
@@ -63,7 +63,7 @@ To get a AUTHTOKEN you need to go to https://github.com/settings/tokens and crea
 
 1. Download the tar file
 
-You can download the tar from the following location:
+You can download the AFIDSI wastewater package tar file from the following location:
 https://github.com/AFIDSI/DSIWastewater/blob/main/DSIWastewater_0.2.01.tar.gz
 
 Note: When you download it, make sure that it remains zipped.  It should be a .tar.gz file rather than a .tar file.   If the file has been unzipped, then you can re-zip the file using the following command:
@@ -110,10 +110,15 @@ https://docs.google.com/document/d/1-Rbd0YTyPZ2slbW9ksvF36n_nhhEBNi0vJZAmhwNHsg/
 
 - _Plot if the function creates a plot
 
+
 <!-- LICENSE -->
 ## License
 
 Distributed under the Sustainable Use License. See `LICENSE.md` for more information.
+
+<!-- TEAM -->
+## The AFIDSI Covid Wastewater team includes:
+Steve Goldstein, Marlin Lee, Kyllan Wunder, and Abe Megahed
 
 <!-- CONTACT -->
 ## Contact
