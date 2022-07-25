@@ -6,7 +6,7 @@
 
 # AFIDSI Covid-19 Wastewater Analysis
 
-This is a collection of analytic code and results of Wisconsin covid-19 wastewater data using the R language along with an R data analysis package that is available from the University of Wisconsin's Data Science Institute.
+This is a collection of analyses of Wisconsin covid-19 wastewater data using the R language along with a wastewater data analysis package that is available from the University of Wisconsin's Data Science Institute.
  
 This project is a collaboration between the University of Wiscosin's Data Science Institute (DSI), the Wisconsin Department of Health Services (DHS), and the State Lab of Hygiene (SLH). 
 
