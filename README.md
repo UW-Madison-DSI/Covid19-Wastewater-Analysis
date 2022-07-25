@@ -5,8 +5,10 @@
 </p>
 
 # AFIDSI Covid-19 Wastewater Analysis
+
+This is a collection of analytic code and results of Wisconsin covid-19 wastewater data using the R language along with an R data analysis package that is available from the University of Wisconsin's Data Science Institute.
  
-This is a collaborative project between the University of Wiscosin's Data Science Institute (DSI), the Wisconsin Department of Health Services (DHS), and the State Lab of Hygiene (SLH) to perform analysis on wastewater data for covid-19 surveillance and monitoring. 
+This project is a collaboration between the University of Wiscosin's Data Science Institute (DSI), the Wisconsin Department of Health Services (DHS), and the State Lab of Hygiene (SLH). 
 
 DSI:
 - <https://datascience.wisc.edu>
@@ -51,21 +53,30 @@ The AFIDSI Covid Wastewater Analysis code is written in R so you will need an [R
 The AFIDSI Covid Wastewater Analysis package is an R package that provides the foundation for analysis of wastewater data. 
 
 ## Installation
-There are two ways to install the AFIDSI Covid Wastewater Analysis package:
+There are two ways to install the AFIDSI Wastewater Analysis package:
 
 ### 1. Using Devtools
 
-Download the package using the R devtools command below
+If you have a GitHub account, then you can install the package by running the Devtools command below:
+
 ```
 devtools::install_github(
     "AFIDSI/DSIWastewater",
     auth_token = "REPLACEWITHYOURAUTHTOKEN"
 )
 ```
- 
+
 To get a AUTHTOKEN you need to go to https://github.com/settings/tokens and create one with at least [repo level access](./docs/github/repo-level-access.md).
 
+When running this command, you will be prompted to select which packages you want updated/installed.  We strongly suggest you select '1: ALL' so that you don't need to install any dependencies later.  To install the dependencies later, you can run the following R command:
+
+```
+devtools::install_dev_deps(pkg = "DSIWastewater")
+```
+
 ### 2. Using a TAR (.tgz) file
+
+If you do not have a GitHub account or would rather not use GitHub, you can also install the package using a tar file.
 
 1. Download the tar file
 
