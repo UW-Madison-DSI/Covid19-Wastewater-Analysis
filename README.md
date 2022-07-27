@@ -4,9 +4,11 @@
   </div>
 </p>
 
-# AFIDSI Covid Wastewater Analysis (Development)
+# AFIDSI Covid-19 Wastewater Analysis
+
+This is a collection of analyses of Wisconsin covid-19 wastewater data using the R language along with a wastewater data analysis package that is available from the University of Wisconsin's Data Science Institute.
  
-This is a collaborative project between the University of Wiscosin's Data Science Institute (DSI) and the Wisconsin Department of Health Services (DHS) to perform analysis on wastewater data for covid-19 surveillance and monitoring. 
+This project is a collaboration between the University of Wiscosin's Data Science Institute (DSI), the Wisconsin Department of Health Services (DHS), and the State Lab of Hygiene (SLH). 
 
 DSI:
 - <https://datascience.wisc.edu>
@@ -14,11 +16,15 @@ DSI:
 DHS:
 - <https://www.dhs.wisconsin.gov>
 - <https://www.dhs.wisconsin.gov/covid-19/wastewater.htm>
+
+SLH:
 - <http://www.slh.wisc.edu/environmental/covid-19-wastewater/>
 
 ## Sample results
 
 - [Downsampling (Two Days)](results/DownsamplingTwoDays.pdf)
+
+  This analysis seeks to answer whether the DHS method is robust when reducing the number of measurements to two days per week.
 
 <p align="center">
   <div align="center">
@@ -27,6 +33,8 @@ DHS:
 </p>
 
 - [Downsampling Interceptor (Two Days)](results/DownsamplingInterceptor.pdf)
+
+  This analysis seeks to answer whether the DHS method is robust when reducing the number of measurements to two days per week using data from the 5 interceptor points.
 
 <p align="center">
   <div align="center">
@@ -45,33 +53,45 @@ The AFIDSI Covid Wastewater Analysis code is written in R so you will need an [R
 The AFIDSI Covid Wastewater Analysis package is an R package that provides the foundation for analysis of wastewater data. 
 
 ## Installation
-There are two ways to install the AFIDSI Covid Wastewater Analysis package:
+There are two ways to install the AFIDSI Wastewater Analysis package:
 
 ### 1. Using Devtools
 
-Download the package using the R devtools command below
+If you have a GitHub account, then you can install the package by running the Devtools command below:
+
 ```
 devtools::install_github(
     "AFIDSI/DSIWastewater",
     auth_token = "REPLACEWITHYOURAUTHTOKEN"
 )
 ```
- 
+
 To get a AUTHTOKEN you need to go to https://github.com/settings/tokens and create one with at least [repo level access](./docs/github/repo-level-access.md).
 
+When running this command, you will be prompted to select which packages you want updated/installed.  We strongly suggest you select '1: ALL' so that you don't need to install any dependencies later.  To install the dependencies later, you can run the following R command:
+
+```
+devtools::install_dev_deps(pkg = "DSIWastewater")
+```
+
 ### 2. Using a TAR (.tgz) file
+
+If you do not have a GitHub account or would rather not use GitHub, you can also install the package using a tar file.
 
 1. Download the tar file
 
 You can download the AFIDSI wastewater package tar file from the following location:
 https://github.com/AFIDSI/DSIWastewater/blob/main/DSIWastewater_0.2.01.tar.gz
 
-** Tip: **
+---
+**Tip:** 
 When you download it, make sure that it remains zipped.  It should be a .tar.gz file rather than a .tar file.   If the file has been unzipped, then you can re-zip it using the following command:
 
 ```
 gzip DSIWastewater_0.2.01.tar
 ```
+
+---
 
 2. Install the tar file
 

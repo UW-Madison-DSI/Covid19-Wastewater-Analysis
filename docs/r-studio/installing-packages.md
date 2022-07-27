@@ -21,7 +21,9 @@ To install a package using R Studio, follow these steps:
 install.packages("~/Downloads/DSIWastewater_0.2.01.tar.gz", repos = NULL, type = "source")
 ```
 
-** Tip: **
+---
+**Tip:**
+
 If you see the following command followed by an error, then it is likely because the file that you are installing is not a '.tar.gz' file.   
 
 ```
@@ -34,6 +36,7 @@ If the tar file has been unzipped, make sure to rezip it using the following com
 gzip ~/Downloads/DSIWastewater_0.2.01.tar
 ```
 
+---
 </p>
 </div>
 
