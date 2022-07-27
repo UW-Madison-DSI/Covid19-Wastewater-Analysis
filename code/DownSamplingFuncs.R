@@ -64,10 +64,12 @@ PrepDataSmoothings <- function(DF, filterVec = NA){
              TrueName = paste0(filterVec, collapse = ""))
     Alpha = 0.07688985 * 6 / length(filterVec)
     Beta =  0.01922246 * 6 / length(filterVec)
-  }else{
+    K = 4 * length(filterVec)
+  }else{#24 days = 12 messurements when len = 3
     RetDF <- DF
     Alpha = 0.07688985
     Beta =  0.01922246
+    K = 24
   }
   RetDF <- RetDF%>%
     LoessSmoothMod()%>%
@@ -75,7 +77,7 @@ PrepDataSmoothings <- function(DF, filterVec = NA){
                  beta = Beta)%>%
     arrange(date)%>%
     mutate(SevSmooth = rollmean(sars_cov2_adj_load_log10,
-                                k=7, fill=NA, align = "right"))
+                                k = K, fill=NA, align = "right"))
 }
 
 
