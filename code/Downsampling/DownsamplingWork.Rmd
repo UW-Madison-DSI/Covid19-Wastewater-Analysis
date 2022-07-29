@@ -1,0 +1,107 @@
+---
+title: "DHS downsampling work"
+author: "Marlin"
+date: '2022-07-11'
+output: pdf_document
+---
+
+This analysis seeks to answer whether the DHS method is robust when reducing the number of measurements. We do this by running the analysis with the different smoothing on both the original Madison data and every posible downsampling combo
+
+
+```{r set up markdown settings, echo=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE
+)
+```
+
+```{r}
+library(DSIWastewater)
+library(zoo)
+library(lubridate)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+```
+
+```{r exp code}
+source("DownSamplingFuncs.R")
+```
+
+```{r get base data}
+data(DHSWaste_data, package = "DSIWastewater")
+
+Mad_data <- DHSWaste_data%>%
+  buildWorkSheet4()%>%
+  filter(WWTP == "Madison MSD WWTF")
+
+```
+
+```{r data prep}
+Full_Mad_data <- unlist(lapply(1:6,    # Get all combinations
+              combinat::combn, 
+              x = 1:6,
+              simplify = FALSE), 
+       recursive = FALSE)%>%
+  lapply(FUN = PrepDataSmoothings,
+         DF = Mad_data)%>%
+  bind_rows()
+
+Full_reg_data <- Full_Mad_data%>%
+                          buildRegressionEstimateTable(
+                               RunOn = c("sars_cov2_adj_load_log10",
+                                "SevSmooth",
+                                "EXP",
+                                "Loess"),
+                               SplitOn = "TrueName")%>%
+  mutate(data = nchar(TrueName))
+
+```
+
+```{r loess compare data prep}
+sliceVec <- c("2","25","1235","1256","12356","123456")
+Singular_Mad_data <- Full_Mad_data%>%
+  filter(TrueName %in% sliceVec)
+
+Singular_reg_data <- Full_reg_data%>%
+  filter(TrueName %in% sliceVec)
+```
+
+
+```{r data, fig.width= 15, fig.height=14}
+
+createDHSMethod_Plot(Singular_reg_data, Singular_Mad_data, 
+                 PointVal = c( "sars_cov2_adj_load_log10"),
+                 LineVal = c("Loess", "EXP", "SevSmooth"),
+                 FacGridFormula = Method ~ data)
+```
+
+We all checked every combination of downsampling options and calculated the error compared to the original analysis loess method. diff is the average difference between 
+the 7 day loess prediction. big difference is the proportion of the data that is off by two or more levels volatility is the average change from prediction to prediction. Bigvol is the proportion of the data that changes by more then two levels between measurements
+
+```{r, fig.width=15}
+
+
+Messure_reg_estimates_data <- Full_reg_data%>%
+  prepDataForMessure(BreakOn = "data")
+
+Messure_data <- Messure_reg_estimates_data%>%
+  group_by(Method, data)%>%
+  mutate(diff = abs(Catagory - Loess),
+         BigDiff = diff >= 2,
+         vol = abs(Catagory-lag(Catagory)),
+         Bigvol = vol>= 2)%>%
+  summarise(diff = mean(diff),
+            BigDiff = mean(BigDiff),
+            vol = mean(vol, na.rm = TRUE),
+            Bigvol = mean(Bigvol, na.rm = TRUE)
+            )
+
+
+Messure_data%>%
+  pivot_longer(col = -c(Method, data))%>%
+  ggplot(aes(x = data, y = value))+
+  geom_line(aes(color = Method))+
+  facet_wrap(~name, scales = "free")
+```

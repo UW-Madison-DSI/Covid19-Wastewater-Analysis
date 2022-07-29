@@ -1,0 +1,126 @@
+---
+title: "CaseRegression"
+author: "Marlin"
+date: '2022-07-27'
+output: pdf_document
+---
+
+
+```{r set up markdown settings, echo=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE
+)
+```
+
+
+```{r cases, echo=FALSE}
+library(DSIWastewater)
+library(dplyr)
+library(zoo)
+data(DHSCase_data, package = "DSIWastewater")
+
+CaseProcess <- DHSCase_data%>%
+  rename(date = Date)%>%
+  filter(Site == "Waukesha WWTP")%>%
+  arrange(date)%>%
+  mutate(FirstConfirmed.Per100K = FirstConfirmed*72419 / 100000)%>%
+  mutate(pastwk.sum.casesperday.Per100K = rollsumr(FirstConfirmed.Per100K, 7, fill=NA))%>%
+  mutate(date = as.Date(date))
+
+CaseOutput <- CaseProcess%>%
+  buildRegressionEstimateTable(DataMod = .,
+                             RunOn = "FirstConfirmed.Per100K",
+                             SplitOn = "Site",
+                             DaysRegressed = 7,
+                             verbose = TRUE,
+                             PSigTest = FALSE)
+
+CaseOutput <- CaseProcess%>%
+  select(date,Site, pastwk.sum.casesperday.Per100K)%>%
+  right_join(CaseOutput)
+
+#cases_per_100k
+#Waukesha
+unique(DHSCase_data$Site)
+```
+
+```{r get classifications}
+library(ggplot2)
+dateflags <- CaseOutput%>%
+  group_by(Site) %>%
+        mutate(
+          # A flag when the slope for most recent week is greater than 5/100k/day
+          case_flag = case_when(lmreg_slope > 5 ~ 1,
+                                TRUE ~ 0),
+          case_flag_plus_comm.threshold = case_when(case_flag == 1 
+                                & pastwk.sum.casesperday.Per100K > 200 ~ 1,
+                                TRUE ~ 0),
+          # What about a case flag where slope shifts from <5 to >5
+          slope_switch_flag = case_when(lag(lmreg_slope, 1) < 5 & 
+                                          lmreg_slope > 5 ~ 1,
+                                        TRUE ~ 0))%>%
+  #summarise(a = mean(case_flag), b = mean(case_flag_plus_comm.threshold),
+  #          c = mean(slope_switch_flag))
+  
+  filter(slope_switch_flag == 1)
+
+CaseProcess%>%
+  mutate(Data = "TRUE", WWTP = Site)%>%
+DSIWastewater:::createWasteGraph_Plot( xVal = "date",
+                                      PointVal = "FirstConfirmed")+
+  geom_vline(aes(xintercept = date), data = dateflags)
+```
+
+```{r WasteWaterOverlap}
+data(DHSWaste_data, package = "DSIWastewater")
+
+Full_data <- DHSWaste_data%>%
+  buildWorkSheet4()%>%
+  filter(WWTP == "Waukesha WWTP")
+
+Full_data%>%
+  mutate(Data = "TRUE")%>%
+DSIWastewater:::createWasteGraph_Plot( xVal = "date",
+                                      PointVal = "sars_cov2_adj_load_log10")+
+  geom_vline(aes(xintercept = date), data = dateflags, color = "BLUE")
+```
+
+
+```{r wastewater new method}
+CalculateQuintiles <- function(DF, width, probs){
+  mindate <- min(DF$date)
+  maxdate <- max(DF$date)
+  dateTOMERGEVec <- data.frame(date = seq(mindate, maxdate, 1))
+  RetDF <- full_join(DF, dateTOMERGEVec)%>%
+    arrange(date)
+  RetDF <- RetDF%>%
+    mutate(quint = rollapply(sars_cov2_adj_load_log10, width = width,
+                             FUN = quantile,fill=NA,
+                              probs=probs, na.rm = TRUE))%>%
+    filter(!is.na(WWTP))
+  return(RetDF)
+  
+}
+
+
+library(DSIWastewater)
+#Load dhs data from package
+data(DHSWaste_data, package = "DSIWastewater")
+
+#convert data into the shape used for the regression analysis
+Full_data <- DHSWaste_data%>%
+  buildWorkSheet4()
+
+
+aba <- Full_data%>%
+  filter(WWTP == "Algoma WWTF")
+
+
+CalculateQuintiles(aba, width=30, probs=.9)
+
+aba
+  
+```
+

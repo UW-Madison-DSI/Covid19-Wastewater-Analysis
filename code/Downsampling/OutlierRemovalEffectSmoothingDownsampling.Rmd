@@ -1,0 +1,92 @@
+---
+title: "Outlier removal effect on smoothing and downsampling"
+author: "Marlin"
+date: '2022-07-29'
+output: pdf_document
+---
+
+```{r set up markdown settings, echo=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE
+)
+```
+
+
+```{r get Base data}
+library(dplyr)
+library(DSIWastewater)
+#Load dhs data from package
+data(DHSWaste_data, package = "DSIWastewater")
+
+#convert data into the shape used for the regression analysis
+Full_data <- DHSWaste_data%>%
+  buildWorkSheet4()
+
+#String name of the 5 Madison interceptors
+intercepter <- c("Madison-P2-Central",
+                 "Madison-P8-West",
+                 "Madison-P11-SW",
+                 "Madison-P7-SE",
+                 "Madison-P18-NE"
+                 )
+
+
+InterceptorDates_data <- Full_data%>%
+  filter(WWTP %in% intercepter)%>%
+  pull(date)
+
+#reducing the data just to the Madison measurements
+Mad_data <- Full_data%>%
+  filter(WWTP == "Madison MSD WWTF")%>%
+  mutate(Sample = "Full sampling")
+
+#reducing the Madison data to just the days with the interceptor measurement
+Down_Mad_data <- Mad_data%>%
+            filter(date %in% InterceptorDates_data)%>%
+  mutate(Sample = "downsampled")
+
+
+Mad_data <- Mad_data%>%
+  filter(date <= max(Down_Mad_data$date),
+         date >= min(Down_Mad_data$date))
+```
+
+```{r get smoothings on raw data without removing outliers}
+source("DownSamplingFuncs.R")
+Full_Mad_data <- list(Mad_data, Down_Mad_data)%>%
+    lapply(FUN = PrepDataSmoothings)%>%
+    bind_rows()%>%
+    mutate(OutlierRemoved = FALSE)
+
+```
+
+```{r get smoothings on data after removing outliers}
+filter_outliers <- function(df, n){
+  df_data <- computeJumps(df)
+  ranked_data <- rankJumps(df_data)
+  ranked_quantile_data <- computeRankQuantiles(ranked_data)
+  classied_data <- flagOutliers(ranked_quantile_data, n)%>%
+    filter(!FlaggedOutlier)
+  return(classied_data)
+}
+
+Full_Mad_data_outliers <- list(Mad_data, Down_Mad_data)%>%
+    lapply(FUN = filter_outliers, n = 9)%>%
+    lapply(FUN = PrepDataSmoothings)%>%
+    bind_rows()%>%
+  mutate(OutlierRemoved = TRUE)
+```
+
+
+```{r results, fig.width= 10, fig.height = 10}
+FullDF_smoothed <- bind_rows(Full_Mad_data, Full_Mad_data_outliers)
+
+
+
+DSIWastewater:::createWasteGraph_Plot(FullDF_smoothed, "date",
+                                      PointVal = c( "sars_cov2_adj_load_log10"),
+                                  LineVal = c("Loess", "EXP", "SevSmooth"),
+                                  facetFormula = "OutlierRemoved ~ Sample")
+```
