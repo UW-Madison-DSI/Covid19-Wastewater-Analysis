@@ -42,6 +42,14 @@ SLH:
   </div>
 </p>
 
+## Findings
+
+The following documents contain findings and conclusions from the data analysis described above.
+
+1. [Wastewater Data Downsampling](./findings/pdf/wastewater-data-downsampling.pdf)
+
+2. [Wastewater Data Smoothing](./findings/pdf/wastewater-data-smoothing.pdf)
+
 ## Requirements
 
 ### 1. The R Language
@@ -50,7 +58,7 @@ The AFIDSI Covid Wastewater Analysis code is written in R so you will need an [R
 
 ### 2. The AFIDSI Wastewater Package
 
-The AFIDSI Covid Wastewater Analysis package is an R package that provides the foundation for analysis of wastewater data. 
+The AFIDSI Covid Wastewater Analysis package is an R package that provides a collection of utilities to perform wastewater data analysis for pathogenic surveillance and monitoring.
 
 ## Installation
 There are two ways to install the AFIDSI Wastewater Analysis package:
