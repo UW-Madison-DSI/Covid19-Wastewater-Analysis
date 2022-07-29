@@ -19,9 +19,9 @@ knitr::opts_chunk$set(
 library(DSIWastewater)
 library(dplyr)
 library(zoo)
-data(DHSCase_data, package = "DSIWastewater")
+data(Case_data, package = "DSIWastewater")
 
-CaseProcess <- DHSCase_data%>%
+CaseProcess <- Case_data%>%
   rename(date = Date)%>%
   filter(Site == "Waukesha WWTP")%>%
   arrange(date)%>%
@@ -43,7 +43,7 @@ CaseOutput <- CaseProcess%>%
 
 #cases_per_100k
 #Waukesha
-unique(DHSCase_data$Site)
+unique(Case_data$Site)
 ```
 
 ```{r get classifications}
@@ -70,21 +70,21 @@ CaseProcess%>%
   mutate(Data = "TRUE", WWTP = Site)%>%
 DSIWastewater:::createWasteGraph_Plot( xVal = "date",
                                       PointVal = "FirstConfirmed")+
-  geom_vline(aes(xintercept = date), data = dateflags)
+  geom_vline(aes(xintercept = date), color = "BLUE", data = dateflags)
 ```
 
 ```{r WasteWaterOverlap}
-data(DHSWaste_data, package = "DSIWastewater")
+data(WasteWater_data, package = "DSIWastewater")
 
-Full_data <- DHSWaste_data%>%
-  buildWorkSheet4()%>%
+Full_data <- WasteWater_data%>%
+  buildWasteAnalysisDF()%>%
   filter(WWTP == "Waukesha WWTP")
 
 Full_data%>%
   mutate(Data = "TRUE")%>%
 DSIWastewater:::createWasteGraph_Plot( xVal = "date",
                                       PointVal = "sars_cov2_adj_load_log10")+
-  geom_vline(aes(xintercept = date), data = dateflags, color = "BLUE")
+  geom_vline(aes(xintercept = date), color = "BLUE", data = dateflags)
 ```
 
 
@@ -107,11 +107,10 @@ CalculateQuintiles <- function(DF, width, probs){
 
 library(DSIWastewater)
 #Load dhs data from package
-data(DHSWaste_data, package = "DSIWastewater")
+data(WasteWater_data, package = "DSIWastewater")
 
-#convert data into the shape used for the regression analysis
-Full_data <- DHSWaste_data%>%
-  buildWorkSheet4()
+Full_data <- WasteWater_data%>%
+  buildWasteAnalysisDF()
 
 
 aba <- Full_data%>%

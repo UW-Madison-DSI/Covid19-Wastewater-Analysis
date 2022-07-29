@@ -30,18 +30,11 @@ library(zoo)
 
 ```{r get base data}
 #Load dhs data from package
-data(DHSWaste_data, package = "DSIWastewater")
+data(WasteWater_data, package = "DSIWastewater")
 
 #convert data into the shape used for the regression analysis
-Full_data <- DHSWaste_data%>%
-  buildWorkSheet4()
-
-
-#buildWorkSheet4 -> buildDiff Name
-#get rid of DHS from most stuff
-#think about PrepDataSmoothings some more. make it more transparent, more verbose
-#then the code is self documenting
-#
+Full_data <- WasteWater_data%>%
+  buildWasteAnalysisDF()
 ```
 
 
@@ -117,7 +110,7 @@ Full_reg_data <- Full_Mad_data%>%
 this is the plot showing the results of the DHS methods. the downsampled results show a similar ability to keep track of the major trend.
 
 ```{r data long, fig.width= 16, fig.height = 12}
-createDHSMethod_Plot(Full_reg_data, Full_Mad_data, 
+createRegressionAnalysis_Plot(Full_reg_data, Full_Mad_data, 
                 #controls what columns to plot as points
                  PointVal = c( "sars_cov2_adj_load_log10"),
                 #control what columns to plot as lines
@@ -130,7 +123,7 @@ createDHSMethod_Plot(Full_reg_data, Full_Mad_data,
 
 ```{r data wide, fig.width= 40, fig.height = 12}
 #create plot using dataframe Full_reg_data and Full_Mad_data
-createDHSMethod_Plot(Full_reg_data, Full_Mad_data, 
+createRegressionAnalysis_Plot(Full_reg_data, Full_Mad_data, 
                 #controls what columns to plot as points
                  PointVal = c( "sars_cov2_adj_load_log10"),
                 #control what columns to plot as lines

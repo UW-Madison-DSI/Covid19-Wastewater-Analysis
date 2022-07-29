@@ -30,10 +30,10 @@ source("DownSamplingFuncs.R")
 ```
 
 ```{r get base data}
-data(DHSWaste_data, package = "DSIWastewater")
+data(WasteWater_data, package = "DSIWastewater")
 
-Mad_data <- DHSWaste_data%>%
-  buildWorkSheet4()%>%
+Mad_data <- WasteWater_data%>%
+  buildWasteAnalysisDF()%>%
   filter(WWTP == "Madison MSD WWTF")
 
 ```
@@ -64,7 +64,7 @@ this is the plot showing the results of the DHS methods. the downsampled results
 
 ```{r data, fig.width= 15, fig.height=14}
 #create plot using df Full_reg_data and Full_Mad_data
-createDHSMethod_Plot(Full_reg_data, Full_Mad_data, 
+createRegressionAnalysis_Plot(Full_reg_data, Full_Mad_data, 
                  PointVal = c( "sars_cov2_adj_load_log10"),
                  LineVal = c("Loess", "EXP", "SevSmooth"),
                  FacGridFormula = Method ~ data)

@@ -18,11 +18,11 @@ knitr::opts_chunk$set(
 library(dplyr)
 library(DSIWastewater)
 #Load dhs data from package
-data(DHSWaste_data, package = "DSIWastewater")
+data(WasteWater_data, package = "DSIWastewater")
 
 #convert data into the shape used for the regression analysis
-Full_data <- DHSWaste_data%>%
-  buildWorkSheet4()
+Full_data <- WasteWater_data%>%
+  buildWasteAnalysisDF()
 
 #String name of the 5 Madison interceptors
 intercepter <- c("Madison-P2-Central",
@@ -58,7 +58,7 @@ source("DownSamplingFuncs.R")
 Full_Mad_data <- list(Mad_data, Down_Mad_data)%>%
     lapply(FUN = PrepDataSmoothings)%>%
     bind_rows()%>%
-    mutate(OutlierRemoved = FALSE)
+    mutate(OutlierRemoved = "NoFilter")
 
 ```
 
@@ -76,7 +76,7 @@ Full_Mad_data_outliers <- list(Mad_data, Down_Mad_data)%>%
     lapply(FUN = filter_outliers, n = 9)%>%
     lapply(FUN = PrepDataSmoothings)%>%
     bind_rows()%>%
-  mutate(OutlierRemoved = TRUE)
+  mutate(OutlierRemoved = "RemovedOutlier")
 ```
 
 
