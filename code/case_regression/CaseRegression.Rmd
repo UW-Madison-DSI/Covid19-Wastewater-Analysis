@@ -46,7 +46,7 @@ CaseOutput <- CaseProcess%>%
 unique(Case_data$Site)
 ```
 
-```{r get classifications}
+```{r get classifications, fig.height=10,fig.width=10}
 library(ggplot2)
 dateflags <- CaseOutput%>%
   group_by(Site) %>%
@@ -69,7 +69,7 @@ dateflags <- CaseOutput%>%
 CaseProcess%>%
   mutate(Data = "TRUE", WWTP = Site)%>%
 DSIWastewater:::createWasteGraph_Plot( xVal = "date",
-                                      PointVal = "FirstConfirmed")+
+                                      PointVal = "FirstConfirmed.Per100K")+
   geom_vline(aes(xintercept = date), color = "BLUE", data = dateflags)
 ```
 
