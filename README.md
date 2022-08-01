@@ -46,9 +46,9 @@ SLH:
 
 The following documents contain findings and conclusions from the data analysis described above.
 
-1. [Wastewater Data Downsampling](./docs/conclusions/pdf/wastewater-data-downsampling.pdf)
+1. [Wastewater Data Downsampling](./docs/conclusions/downsampling/wastewater-data-downsampling.pdf)
 
-2. [Wastewater Data Smoothing](./docs/conclusions/pdf/wastewater-data-smoothing.pdf)
+2. [Wastewater Data Smoothing](./docs/conclusions/smoothing/wastewater-data-smoothing.pdf)
 
 ## Requirements
 
