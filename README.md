@@ -22,33 +22,33 @@ SLH:
 
 ## Sample results
 
-- [Downsampling (Two Days)](results/DownsamplingTwoDays.pdf)
+- [Downsampling (Two Days)](results/downsampling/DownsamplingTwoDays.pdf)
 
   This analysis seeks to answer whether the DHS method is robust when reducing the number of measurements to two days per week.
 
 <p align="center">
   <div align="center">
-    <a href="results/DownsamplingTwoDays.pdf" target="_blank"><img src="./images/results/downsampling-2-day.png" alt="Downsampling 2 Day Results" style="width:50%"></a>
+    <a href="results/downsampling/DownsamplingTwoDays.pdf" target="_blank"><img src="./images/results/downsampling/downsampling-2-day.png" alt="Downsampling 2 Day Results" style="width:50%"></a>
   </div>
 </p>
 
-- [Downsampling Interceptor (Two Days)](results/DownsamplingInterceptor.pdf)
+- [Downsampling Interceptor (Two Days)](results/downsampling/DownsamplingInterceptor.pdf)
 
   This analysis seeks to answer whether the DHS method is robust when reducing the number of measurements to two days per week using data from the 5 interceptor points.
 
 <p align="center">
   <div align="center">
-    <a href="results/DownsamplingInterceptor.pdf" target="_blank"><img src="./images/results/downsampling-interceptor-2-day.png" alt="Downsampling Interceptor 2 Day Results" style="width:50%"></a>
+    <a href="results/downsampling/DownsamplingInterceptor.pdf" target="_blank"><img src="./images/results/downsampling/downsampling-interceptor-2-day.png" alt="Downsampling Interceptor 2 Day Results" style="width:50%"></a>
   </div>
 </p>
 
-## Findings
+## Conclusions
 
 The following documents contain findings and conclusions from the data analysis described above.
 
-1. [Wastewater Data Downsampling](./findings/pdf/wastewater-data-downsampling.pdf)
+1. [Wastewater Data Downsampling](./docs/conclusions/downsampling/wastewater-data-downsampling.pdf)
 
-2. [Wastewater Data Smoothing](./findings/pdf/wastewater-data-smoothing.pdf)
+2. [Wastewater Data Smoothing](./docs/conclusions/smoothing/wastewater-data-smoothing.pdf)
 
 ## Requirements
 
