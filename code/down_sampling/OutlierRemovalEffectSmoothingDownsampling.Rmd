@@ -67,26 +67,52 @@ filter_outliers <- function(df, n){
   df_data <- computeJumps(df)
   ranked_data <- rankJumps(df_data)
   ranked_quantile_data <- computeRankQuantiles(ranked_data)
-  classied_data <- flagOutliers(ranked_quantile_data, n)%>%
+  classied_data <- flagOutliers(ranked_quantile_data, n,
+                                col = MessureRank.quantile)%>%
     filter(!FlaggedOutlier)
   return(classied_data)
 }
 
 Full_Mad_data_outliers <- list(Mad_data, Down_Mad_data)%>%
-    lapply(FUN = filter_outliers, n = 9)%>%
+    lapply(FUN = filter_outliers, n = .02)%>%
     lapply(FUN = PrepDataSmoothings)%>%
     bind_rows()%>%
   mutate(OutlierRemoved = "RemovedOutlier")
 ```
 
+```{r outlier only DF}
+FullDF_outliers <- Full_Mad_data%>%
+  filter(!(date %in% Full_Mad_data_outliers$date))%>%
+  rename(Outlier = sars_cov2_adj_load_log10)%>%
+  mutate(OutlierRemoved = "RemovedOutlier")%>%
+  select(WWTP, date, population_served, OutlierRemoved, Sample, Outlier)
+
+```
 
 ```{r results, fig.width= 10, fig.height = 10}
-FullDF_smoothed <- bind_rows(Full_Mad_data, Full_Mad_data_outliers)
+library(tidyr)
+library(ggplot2)
+FullDF_smoothed <- bind_rows(Full_Mad_data, 
+                             Full_Mad_data_outliers)
+  
 
 
 
 DSIWastewater:::createWasteGraph_Plot(FullDF_smoothed, "date",
-                                      PointVal = c( "sars_cov2_adj_load_log10"),
+                                      PointVal = 
+                                        c( "sars_cov2_adj_load_log10"),
                                   LineVal = c("Loess", "EXP", "SevSmooth"),
-                                  facetFormula = "OutlierRemoved ~ Sample")
+                                  facetFormula = "OutlierRemoved ~ Sample")+
+  geom_point(aes(y = Outlier, color = "Outlier"), data = FullDF_outliers)
+
+```
+
+```{r results diffrent breaks, fig.width= 6, fig.height = 15}
+FullDF_smoothed%>%
+    pivot_longer(c(Loess, EXP, SevSmooth))%>%
+  ggplot()+
+  aes(x = date)+
+  geom_line(aes(y = value, color = Sample, linetype = OutlierRemoved))+
+  facet_wrap(~ name, ncol = 1)+
+  geom_point(aes(y = Outlier, color = Sample), data = FullDF_outliers)
 ```

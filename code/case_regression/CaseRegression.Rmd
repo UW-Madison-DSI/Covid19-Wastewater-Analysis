@@ -26,7 +26,8 @@ CaseProcess <- Case_data%>%
   filter(Site == "Waukesha WWTP")%>%
   arrange(date)%>%
   mutate(FirstConfirmed.Per100K = FirstConfirmed*72419 / 100000)%>%
-  mutate(pastwk.sum.casesperday.Per100K = rollsumr(FirstConfirmed.Per100K, 7, fill=NA))%>%
+  mutate(pastwk.sum.casesperday.Per100K = 
+           rollsumr(FirstConfirmed.Per100K, 7, fill=NA))%>%
   mutate(date = as.Date(date))
 
 CaseOutput <- CaseProcess%>%
