@@ -22,7 +22,7 @@ SLH:
 
 ## Sample results
 
-- [Downsampling (Two Days)](results/downsampling/DownsamplingTwoDays.pdf)
+- [Downsampling (Two Days)](results/DownsamplingTwoDays.pdf)
 
   This analysis seeks to answer whether the DHS method is robust when reducing the number of measurements to two days per week.
 
@@ -32,7 +32,7 @@ SLH:
   </div>
 </p>
 
-- [Downsampling Interceptor (Two Days)](results/downsampling/DownsamplingInterceptor.pdf)
+- [Downsampling Interceptor (Two Days)](results/DownsamplingInterceptor.pdf)
 
   This analysis seeks to answer whether the DHS method is robust when reducing the number of measurements to two days per week using data from the 5 interceptor points.
 
