@@ -62,7 +62,7 @@ PrepDataSmoothings <- function(DF, filterVec = NA){
       DownSampleDF(filterVec)%>%
       mutate(data = length(filterVec),
              TrueName = paste0(filterVec, collapse = ""))
-  }else{#24 days = 12 messurements when len = 3
+  }else{
     RetDF <- DF
   }
   
