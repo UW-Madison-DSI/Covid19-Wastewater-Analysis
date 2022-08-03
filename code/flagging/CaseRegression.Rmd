@@ -227,3 +227,23 @@ B <- workset_final%>%
 
 patchwork::wrap_plots(A,B, ncol = 1)
 ```
+
+
+```{r compare case flags and wasteFlag}
+data(WasteWater_data, package = "DSIWastewater")
+
+baseWaste_data <- buildWasteAnalysisDF(WasteWater_data)%>%
+  filter(date  >= as.Date("2021-02-01"))%>%
+  filter(WWTP == "Madison MSD WWTF")
+reg_estimates_data <- buildRegressionEstimateTable(baseWaste_data)
+
+C <- baseWaste_data%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y=sars_cov2_adj_load_log10))+
+  geom_vline(aes(xintercept = date, color = "Marlin flag"),
+             data = filter(CaseOutput,slope_switch_flag == 1))+
+  ggtitle("Waste data with slope_switch flags")
+
+
+patchwork::wrap_plots(A,C, ncol = 1)
+```
