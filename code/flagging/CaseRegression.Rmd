@@ -194,7 +194,7 @@ workset_final%>%
 ```{r viz check}
 A <- CaseOutput%>%
   ggplot(aes(x = date))+
-  geom_point(aes(y=pastwk.sum.casesperday.Per100K))+
+  geom_point(aes(y=pastwk.sum.casesperday.Per100K), size = .5)+
   geom_vline(aes(xintercept = date, color = "Marlin flag"), color = "red",
              data = filter(CaseOutput,case_flag==1))+
   ylab("Marlin case data and sum")+
@@ -202,7 +202,7 @@ A <- CaseOutput%>%
 
 B <- workset_final%>%
   ggplot(aes(x = date))+
-  geom_point(aes(y=pastwk.sum.casesperday.per100k))+
+  geom_point(aes(y=pastwk.sum.casesperday.per100k), size = .5)+
   geom_vline(aes(xintercept = date, color = "Kyllan flag"), color = "blue",
              data = filter(workset_final,case_flag=="Flag"))+
   ylab("Kyllan case data and sum")
@@ -212,7 +212,7 @@ patchwork::wrap_plots(A,B, ncol = 1)
 
 A <- CaseOutput%>%
   ggplot(aes(x = date))+
-  geom_point(aes(y=pastwk.sum.casesperday.Per100K))+
+  geom_point(aes(y=pastwk.sum.casesperday.Per100K), size = .5)+
   geom_vline(aes(xintercept = date, color = "Marlin flag"), color = "red",
              data = filter(CaseOutput,slope_switch_flag==1))+
   ylab("Marlin case data and sum")+
@@ -220,7 +220,7 @@ A <- CaseOutput%>%
 
 B <- workset_final%>%
   ggplot(aes(x = date))+
-  geom_point(aes(y=pastwk.sum.casesperday.per100k))+
+  geom_point(aes(y=pastwk.sum.casesperday.per100k), size = .5)+
   geom_vline(aes(xintercept = date, color = "Kyllan flag"), color = "blue",
              data = filter(workset_final,slope_switch_flag=="Flag"))+
   ylab("Kyllan case data and sum")
@@ -239,7 +239,7 @@ reg_estimates_data <- buildRegressionEstimateTable(baseWaste_data)
 
 C <- baseWaste_data%>%
   ggplot(aes(x = date))+
-  geom_point(aes(y=sars_cov2_adj_load_log10))+
+  geom_point(aes(y=sars_cov2_adj_load_log10), size = .5)+
   geom_vline(aes(xintercept = date, color = "Marlin flag"),
              data = filter(CaseOutput,slope_switch_flag == 1))+
   ggtitle("Waste data with slope_switch flags")
