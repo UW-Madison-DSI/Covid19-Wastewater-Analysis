@@ -392,27 +392,6 @@ sum(!(Full_wasteFlags$date %in% CaseFlags$date))
 ```
 
 
-```{r}
-A <- CaseOutput%>%
-  ggplot(aes(x = date))+
-  geom_point(aes(y=FirstConfirmed.Per100K), size = .5)+
-  geom_vline(aes(xintercept = date, color = "Marlin flag"), color = "red",
-             data = filter(Full_Flag_DF,slope_switch_flag==1))+
-  ylab("Marlin case data and sum")+
-  ggtitle("Case data with slope_switch flags")#+
-  #scale_y_log10()
-
-B <- CaseOutput%>%
-  ggplot(aes(x = date))+
-  geom_point(aes(y=FirstConfirmed.Per100K), size = .5)+
-  geom_vline(aes(xintercept = date, color = "Waste flag"), color = "blue",
-             data = filter(Full_Flag_DF,flag_ntile==1))+
-  ylab("case data with  flag_ntile .8 90 flags")#+
-  #scale_y_log10()
-
-patchwork::wrap_plots(A,B, ncol = 1)
-```
-
 
 ```{r}
 # Functiojn fills in missing with nearest (right or left)

@@ -16,9 +16,12 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r}
+```{r assemble case dataframe}
+library(DSIWastewater)
+library(ggplot2)
 library(dplyr)
 library(zoo)
+library(tidyr)
 data(Case_data, package = "DSIWastewater")
 
 CaseProcess <- Case_data%>%
@@ -33,7 +36,7 @@ CaseProcess <- Case_data%>%
            rollsumr(FirstConfirmed.Per100K, 7, fill=NA))
 ```
 
-```{r}
+```{r create case flags}
 ClassifyCaseRegression <- function(DF){
   RetDF <- DF%>%
         mutate(
@@ -50,8 +53,6 @@ ClassifyCaseRegression <- function(DF){
   return(RetDF)
 }
 
-library(DSIWastewater)
-library(ggplot2)
 CaseOutput <- CaseProcess%>%
   buildRegressionEstimateTable(DataMod = .,
                              RunOn = "FirstConfirmed.Per100K",
@@ -64,7 +65,7 @@ CaseOutput <- CaseProcess%>%
 ```
 
 
-```{r wastewater}
+```{r assemble wastewater dataframe}
 data(WasteWater_data, package = "DSIWastewater")
 
 baseWaste_data <- buildWasteAnalysisDF(WasteWater_data)%>%
@@ -100,8 +101,7 @@ ClassifyWasteRegression <- function(DF, thresh = 5){
 ```
 
 
-```{r peter waste code}
-library(tidyr)
+```{r waste flags}
 PureQuantileApply <- function(DF, window, quant){
   RetDF <- DF%>%
     arrange(date)%>%
@@ -121,7 +121,7 @@ GroupQuant <- function(DF, window, quants){
     bind_rows()
   return(RetDF)
 }
-#
+
 WindowingFunc <- function(DF, windows, quants){
   mindate <- min(DF$date)
   maxdate <- max(DF$date)
@@ -143,10 +143,11 @@ baseWaste_data <- buildWasteAnalysisDF(WasteWater_data)%>%
   filter(WWTP == "Madison MSD WWTF")
 
 
-windows = c(14, 30, 60 , 90)  
+windows <- c(14, 30, 60 , 90)
+quants <- c(5:9)/10
 Quantiles_DF <- baseWaste_data%>%
   split(baseWaste_data$WWTP)%>%
-  lapply(WindowingFunc, quants = c(5:9)/10, windows = windows)%>%
+  lapply(WindowingFunc, quants = quants, windows = windows)%>%
   bind_rows()%>%
   filter(!is.na(sars_cov2_adj_load_log10))%>%
   select(WWTP, date, window, pastKavg.wwlog10, quant, ntile)
@@ -169,7 +170,7 @@ FULL_reg_DF <- full_join(Quantiles_DF, CDCMethod, by = c("WWTP", "date"))%>%
 ```
 
 
-```{r}
+```{r Merge flag data frames}
 CaseFlags <- CaseOutput%>%
   rename(WWTP = Site)%>%
   select(WWTP, date, case_flag, case_flag_plus_comm.threshold, slope_switch_flag)
@@ -185,21 +186,21 @@ sum(!(CaseFlags$date %in% Full_wasteFlags$date))
 sum(!(Full_wasteFlags$date %in% CaseFlags$date))
 ```
 
-```{r}
+```{r plot case and waste flags}
 A <- CaseOutput%>%
   ggplot(aes(x = date))+
-  geom_point(aes(y=FirstConfirmed.Per100K), size = .5)+
+  geom_point(aes(y=FirstConfirmed.Per100K), size = .5) +
   geom_vline(aes(xintercept = date, color = "Marlin flag"), color = "red",
-             data = filter(Full_Flag_DF,slope_switch_flag==1))+
-  ylab("Marlin case data and sum")+
+             data = filter(Full_Flag_DF,slope_switch_flag==1)) +
+  ylab("Marlin case data and sum") +
   ggtitle("Case data with slope_switch flags")#+
   #scale_y_log10()
 
 B <- CaseOutput%>%
   ggplot(aes(x = date))+
-  geom_point(aes(y=FirstConfirmed.Per100K), size = .5)+
+  geom_point(aes(y=FirstConfirmed.Per100K), size = .5) +
   geom_vline(aes(xintercept = date, color = "Waste flag"), color = "blue",
-             data = filter(Full_Flag_DF,flag_ntile==1))+
+             data = filter(Full_Flag_DF,flag_ntile==1)) +
   ylab("case data with  flag_ntile .8 90 flags")#+
   #scale_y_log10()
 
