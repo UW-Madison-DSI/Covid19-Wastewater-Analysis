@@ -165,8 +165,7 @@ FULL_reg_DF <- full_join(Quantiles_DF, CDCMethod, by = c("WWTP", "date"))%>%
                               TRUE ~ 0),
          flag_ntile_pval = case_when(flag_ntile & lmreg_sig < pval~ 1,
                               TRUE ~ 0))%>%
-  mutate(across(where(is.numeric), ~ ifelse(is.na(.x), 0, .x)))%>%
-  filter(quant == .8, window == 90)
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.x), 0, .x)))
 ```
 
 
@@ -200,9 +199,55 @@ B <- CaseOutput%>%
   ggplot(aes(x = date))+
   geom_point(aes(y=FirstConfirmed.Per100K), size = .5) +
   geom_vline(aes(xintercept = date, color = "Waste flag"), color = "blue",
-             data = filter(Full_Flag_DF,flag_ntile==1)) +
+             data = filter(Full_Flag_DF,flag_ntile==1,quant == .8, window == 90)) +
   ylab("case data with  flag_ntile .8 90 flags")#+
   #scale_y_log10()
-
 patchwork::wrap_plots(A,B, ncol = 1)
+```
+
+
+```{r shiny view of the problem, eval = FALSE}
+library(shiny)
+windows <- c(14, 30, 60 , 90)
+quants <- c(5:9)/10
+ui <- fluidPage(
+    selectInput(inputId = "Window", 
+              label = "choose Wastewater Window", 
+              choices = windows,
+              selected = 90),
+    selectInput(inputId = "quants", 
+              label = "choose Wastewater quants", 
+              choices = quants,
+              selected = .8),
+  plotOutput(outputId = "Flag_Compare_plot", width="50%")#, height="")
+)
+
+server <- function(input, output) {
+
+  
+  output$Flag_Compare_plot <- renderPlot({
+    A <- CaseOutput%>%
+      ggplot(aes(x = date))+
+      geom_point(aes(y=FirstConfirmed.Per100K), size = .5) +
+      geom_vline(aes(xintercept = date, color = "Marlin flag"), color = "red",
+                 data = filter(Full_Flag_DF,slope_switch_flag==1)) +
+      ylab("Marlin case data and sum") +
+      ggtitle("Case data with slope_switch flags")#+
+      #scale_y_log10()
+
+  B <- CaseOutput%>%
+    ggplot(aes(x = date))+
+    geom_point(aes(y=FirstConfirmed.Per100K), size = .5) +
+    geom_vline(aes(xintercept = date, color = "Waste flag"), color = "blue",
+               data = filter(Full_Flag_DF,flag_ntile==1,
+                             quant == input$quants, window == input$Window)) +
+    ylab("case data with  flag_ntile .8 90 flags")#+
+    #scale_y_log10()
+  patchwork::wrap_plots(A,B, ncol = 1)
+  })
+}
+
+shinyApp(ui = ui, server = server)
+
+
 ```
