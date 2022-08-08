@@ -3,6 +3,8 @@ title: "CaseRegression"
 author: "Marlin"
 date: '2022-07-27'
 output: pdf_document
+editor_options: 
+  chunk_output_type: inline
 ---
 
 
@@ -51,20 +53,21 @@ covid_by_sewershed = Case_data%>%
               pastwk.sum.casesperday.per100k = (pastwk.sum.casesperday/mean_pop_served)*100000)
 
 
-###My code
+###Marlin code
 
-
+#load data
 data(Case_data, package = "DSIWastewater")
 
 CaseProcess <- Case_data%>%
   rename(date = Date)%>%
   filter(Site == "Madison")%>%
-  arrange(date)%>%
-  mutate(FirstConfirmed.Per100K = (FirstConfirmed * 100000) / 380000)%>%
-  mutate(pastwk.sum.casesperday.Per100K = 
-           rollsumr(FirstConfirmed.Per100K, 7, fill=NA))%>%
   mutate(date = as.Date(date))%>%
-  filter(date  >= as.Date("2021-02-01"))
+  filter(date  >= as.Date("2021-02-01"))%>%
+  mutate(Population = 380000)%>%
+  arrange(date)%>%
+  mutate(FirstConfirmed.Per100K = (FirstConfirmed * 100000) / Population)%>%
+  mutate(pastwk.sum.casesperday.Per100K = 
+           rollsumr(FirstConfirmed.Per100K, 7, fill=NA))
 
 
 
@@ -163,7 +166,7 @@ ClassifyCaseRegression <- function(DF){
           case_flag = case_when(lmreg_slope > 5 ~ 1,
                                 TRUE ~ 0),
           case_flag_plus_comm.threshold = case_when(case_flag == 1 
-                                & pastwk.sum.casesperday.Per100K > 200 ~ 1,
+                                & FirstConfirmed.Per100K > 200 ~ 1,
                                 TRUE ~ 0),
           # What about a case flag where slope shifts from <5 to >5
           slope_switch_flag = case_when(lag(lmreg_slope, 1) < 5 & 
@@ -181,7 +184,7 @@ CaseOutput <- CaseProcess%>%
                              DaysRegressed = 7,
                              verbose = TRUE,
                              PSigTest = FALSE)%>%
-  full_join(CaseProcess[c("date","Site", "pastwk.sum.casesperday.Per100K")])%>%
+  full_join(CaseProcess[c("date","Site", "FirstConfirmed.Per100K")])%>%
   ClassifyCaseRegression()
 
 ###
@@ -194,7 +197,7 @@ workset_final%>%
 ```{r viz check}
 A <- CaseOutput%>%
   ggplot(aes(x = date))+
-  geom_point(aes(y=pastwk.sum.casesperday.Per100K), size = .5)+
+  geom_point(aes(y=FirstConfirmed.Per100K), size = .5)+
   geom_vline(aes(xintercept = date, color = "Marlin flag"), color = "red",
              data = filter(CaseOutput,case_flag==1))+
   ylab("Marlin case data and sum")+
@@ -202,7 +205,7 @@ A <- CaseOutput%>%
 
 B <- workset_final%>%
   ggplot(aes(x = date))+
-  geom_point(aes(y=pastwk.sum.casesperday.per100k), size = .5)+
+  geom_point(aes(y=pastwk.avg.casesperday), size = .5)+
   geom_vline(aes(xintercept = date, color = "Kyllan flag"), color = "blue",
              data = filter(workset_final,case_flag=="Flag"))+
   ylab("Kyllan case data and sum")
@@ -212,7 +215,7 @@ patchwork::wrap_plots(A,B, ncol = 1)
 
 A <- CaseOutput%>%
   ggplot(aes(x = date))+
-  geom_point(aes(y=pastwk.sum.casesperday.Per100K), size = .5)+
+  geom_point(aes(y=FirstConfirmed.Per100K), size = .5)+
   geom_vline(aes(xintercept = date, color = "Marlin flag"), color = "red",
              data = filter(CaseOutput,slope_switch_flag==1))+
   ylab("Marlin case data and sum")+
@@ -220,7 +223,7 @@ A <- CaseOutput%>%
 
 B <- workset_final%>%
   ggplot(aes(x = date))+
-  geom_point(aes(y=pastwk.sum.casesperday.per100k), size = .5)+
+  geom_point(aes(y=pastwk.avg.casesperday), size = .5)+
   geom_vline(aes(xintercept = date, color = "Kyllan flag"), color = "blue",
              data = filter(workset_final,slope_switch_flag=="Flag"))+
   ylab("Kyllan case data and sum")
@@ -246,4 +249,169 @@ C <- baseWaste_data%>%
 
 
 patchwork::wrap_plots(A,C, ncol = 1)
+```
+
+```{r wastewater}
+data(WasteWater_data, package = "DSIWastewater")
+
+baseWaste_data <- buildWasteAnalysisDF(WasteWater_data)%>%
+  filter(date  >= as.Date("2021-02-01"))%>%
+  filter(WWTP == "Madison MSD WWTF")
+
+
+WasteOutput <- baseWaste_data%>%
+  buildRegressionEstimateTable(DataMod = .,
+                             RunOn = "geoMean",
+                             SplitOn = "WWTP",
+                             DaysRegressed = 7,
+                             verbose = TRUE,
+                             PSigTest = FALSE)%>%
+  full_join(baseWaste_data[c("date","WWTP", "geoMean")])
+
+ClassifyWasteRegression <- function(DF, thresh = 5){
+  RetDF <- DF%>%
+        mutate(
+          # A flag when the slope for most recent week is greater than 5/100k/day
+          case_flag = case_when(lmreg_slope > thresh ~ 1,
+                                TRUE ~ 0),
+          case_flag_plus_comm.threshold = case_when(case_flag == 1 
+                                & geoMean > 200 ~ 1,
+                                TRUE ~ 0),
+          # What about a case flag where slope shifts from <5 to >5
+          slope_switch_flag = case_when(lag(lmreg_slope, 1) < thresh & 
+                                          lmreg_slope > thresh ~ 1,
+                                        TRUE ~ 0))
+  return(RetDF)
+}
+
+temp <- WasteOutput%>%
+  ClassifyWasteRegression(thresh = 50000)
+CaseOutput%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y=FirstConfirmed.Per100K), size = .5)+
+  geom_vline(aes(xintercept = date, color = "Waste flag"),
+             data = filter(temp, case_flag==1))+
+  geom_vline(aes(xintercept = date, color = "Case flag"),
+             data = filter(CaseOutput, case_flag==1))+
+  ylab("Marlin case data and sum")+
+  ggtitle("Case data with slope_switch flags")
+
+WasteOutput%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y=geoMean), size = .5)+
+  geom_vline(aes(xintercept = date, color = "Waste flag"),
+             data = filter(temp, case_flag==1))+
+  geom_vline(aes(xintercept = date, color = "Case flag"),
+             data = filter(CaseOutput, case_flag==1))+
+  ylab("Marlin case data and sum")+
+  ggtitle("Case data with slope_switch flags")
+```
+
+```{r peter waste code}
+library(tidyr)
+PureQuantileApply <- function(DF, window, quant){
+  RetDF <- DF%>%
+    arrange(date)%>%
+    mutate(ntile = rollapply(sars_cov2_adj_load_log10, 
+                              width = window, FUN = quantile, 
+                              probs  = quant, align = "right", 
+                              na.rm=T, fill=NA, 
+                              names = FALSE),
+           quant = quant)
+  return(RetDF)
+}
+
+GroupQuant <- function(DF, window, quants){
+  RetDF <- DF%>%
+    mutate(window = window)%>%
+    lapply(quants, PureQuantileApply, DF = ., window = window)%>%
+    bind_rows()
+  return(RetDF)
+}
+#
+WindowingFunc <- function(DF, windows, quants){
+  mindate <- min(DF$date)
+  maxdate <- max(DF$date)
+  dateTOMERGEVec <- data.frame(date = seq(mindate, maxdate, 1))
+  K = 3
+  RetDF <- full_join(DF, dateTOMERGEVec)%>%
+    lapply(windows, GroupQuant, DF = ., quants = quants)%>%
+    bind_rows()%>%
+    mutate(pastKavg.wwlog10 = rollmean(sars_cov2_adj_load_log10, K, align = "right", na.pad = T))
+  return(RetDF)
+}
+
+  
+
+data(WasteWater_data, package = "DSIWastewater")
+
+baseWaste_data <- buildWasteAnalysisDF(WasteWater_data)%>%
+  filter(date  >= as.Date("2021-02-01"))%>%
+  filter(WWTP == "Madison MSD WWTF")
+
+
+windows = c(14, 30, 60 , 90)  
+Quantiles_DF <- baseWaste_data%>%
+  split(baseWaste_data$WWTP)%>%
+  lapply(WindowingFunc, quants = c(5:9)/10, windows = windows)%>%
+  bind_rows()%>%
+  filter(!is.na(sars_cov2_adj_load_log10))%>%
+  select(WWTP, date, window, pastKavg.wwlog10, quant, ntile)
+
+CDCMethod <- baseWaste_data%>%
+  buildRegressionEstimateTable(PSigTest=FALSE)%>%
+  select(WWTP, date,lmreg_sig,  Catagory)
+
+pval = .3
+
+FULL_reg_DF <- full_join(Quantiles_DF, CDCMethod, by = c("WWTP", "date"))%>%
+  mutate(cdc_flag = case_when(Catagory == "major increase"~ 1,
+                              TRUE ~ 0),
+         flag_ntile = case_when(pastKavg.wwlog10 > ntile & cdc_flag~ 1,
+                              TRUE ~ 0),
+         flag_ntile_pval = case_when(flag_ntile & lmreg_sig < pval~ 1,
+                              TRUE ~ 0))%>%
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.x), 0, .x)))%>%
+  filter(quant == .8, window == 90)
+```
+```{r}
+CaseFlags <- CaseOutput%>%
+  rename(WWTP = Site)%>%
+  select(WWTP, date, case_flag, case_flag_plus_comm.threshold, slope_switch_flag)
+
+Full_wasteFlags <- FULL_reg_DF%>%
+  select(WWTP, date, window, quant, cdc_flag, flag_ntile, flag_ntile_pval)#%>%
+  #pivot_wider(names_from = c(window, quant), values_from = c(flag_ntile, flag_ntile_pval))
+
+Full_Flag_DF <- full_join(CaseFlags, Full_wasteFlags, by = c("WWTP", "date"))
+```
+
+
+```{r}
+A <- CaseOutput%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y=FirstConfirmed.Per100K), size = .5)+
+  geom_vline(aes(xintercept = date, color = "Marlin flag"), color = "red",
+             data = filter(Full_Flag_DF,slope_switch_flag==1))+
+  ylab("Marlin case data and sum")+
+  ggtitle("Case data with slope_switch flags")#+
+  #scale_y_log10()
+
+B <- CaseOutput%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y=FirstConfirmed.Per100K), size = .5)+
+  geom_vline(aes(xintercept = date, color = "Waste flag"), color = "blue",
+             data = filter(Full_Flag_DF,flag_ntile==1))+
+  ylab("case data with  flag_ntile .8 90 flags")#+
+  #scale_y_log10()
+
+patchwork::wrap_plots(A,B, ncol = 1)
+
+```
+
+
+```{r}
+ClosestFlag <- function(dateListMain,dateListComp){
+  
+}
 ```
