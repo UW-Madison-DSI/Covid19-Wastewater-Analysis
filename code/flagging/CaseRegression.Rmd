@@ -374,16 +374,21 @@ FULL_reg_DF <- full_join(Quantiles_DF, CDCMethod, by = c("WWTP", "date"))%>%
   mutate(across(where(is.numeric), ~ ifelse(is.na(.x), 0, .x)))%>%
   filter(quant == .8, window == 90)
 ```
+
 ```{r}
 CaseFlags <- CaseOutput%>%
   rename(WWTP = Site)%>%
   select(WWTP, date, case_flag, case_flag_plus_comm.threshold, slope_switch_flag)
 
 Full_wasteFlags <- FULL_reg_DF%>%
+  mutate(WWTP = ifelse(WWTP == "Madison MSD WWTF","Madison",WWTP))%>%
   select(WWTP, date, window, quant, cdc_flag, flag_ntile, flag_ntile_pval)#%>%
   #pivot_wider(names_from = c(window, quant), values_from = c(flag_ntile, flag_ntile_pval))
 
-Full_Flag_DF <- full_join(CaseFlags, Full_wasteFlags, by = c("WWTP", "date"))
+Full_Flag_DF <- inner_join(Full_wasteFlags, CaseFlags, by = c("WWTP", "date"))
+Full_Flag_DF
+sum(!(CaseFlags$date %in% Full_wasteFlags$date))
+sum(!(Full_wasteFlags$date %in% CaseFlags$date))
 ```
 
 
@@ -406,12 +411,220 @@ B <- CaseOutput%>%
   #scale_y_log10()
 
 patchwork::wrap_plots(A,B, ncol = 1)
-
 ```
 
 
 ```{r}
-ClosestFlag <- function(dateListMain,dateListComp){
+# Functiojn fills in missing with nearest (right or left)
+# Use for case-based flags (shows the nearest "true flag") ------------------------
+
+f1 <- function(dat) {
+  N <- length(dat)
+  na.pos <- which(is.na(dat))
+  if (length(na.pos) %in% c(0, N)) {
+    return(dat)
+  }
+  non.na.pos <- which(!is.na(dat))
+  intervals  <- findInterval(na.pos, non.na.pos,
+                             all.inside = TRUE)
+  left.pos   <- non.na.pos[pmax(1, intervals)]
+  right.pos  <- non.na.pos[pmin(N, intervals+1)]
+  left.dist  <- na.pos - left.pos
+  right.dist <- right.pos - na.pos
   
+  dat[na.pos] <- ifelse(left.dist <= right.dist,
+                        paste(dat[left.pos]), paste(dat[right.pos]))
+  return(dat)
 }
+
+temp1 = Full_Flag_DF %>%
+  mutate(window = as.character(window),
+         quant = as.character(quant),
+         across(where(is.numeric), 
+                ~ ifelse(.x==1, date, NA)),
+
+        across(where(is.numeric),as.Date))%>%
+  group_by(WWTP, window, quant) %>%
+  mutate(case_flag = f1(case_flag),
+         case_flag_plus_comm.threshold = f1(case_flag_plus_comm.threshold),
+         slope_switch_flag = f1(slope_switch_flag))
+
+temp2 = temp1 %>%
+  mutate(case_flag_minus3 = case_flag - 3,
+         case_flag_plus_comm.threshold_minus3 = case_flag_plus_comm.threshold - 3,
+         slope_switch_flag_minus3 = slope_switch_flag - 3)
+```
+
+
+```{r}
+#####################################################################################################################################
+#
+# Consider only data with ww flags marked and calculate difference in days from different case based flags
+#
+#####################################################################################################################################
+
+# establish marker here
+temp1$x = temp1$slope_switch_flag
+
+flag_differences = temp1 %>%
+  filter(!is.na(cdc_flag)) %>%
+  mutate(ww_to_case_flag_diff = as.numeric(as.Date(cdc_flag) - as.Date(x)),
+         flag_ntile_diff = as.numeric(as.Date(flag_ntile) - as.Date(x)))
+
+flag_differences = flag_differences %>%
+  group_by(window,quant) %>%
+  mutate(ww_to_case_flag_mean = mean(ww_to_case_flag_diff, na.rm=T),
+         ww_to_case_flag_mean_flag_ntile = mean(flag_ntile_diff, na.rm=T))%>%
+  ungroup()
+```
+
+
+
+```{r}
+# Convert wide to long for mean comparison and regression model
+
+flag_differences_long = flag_differences
+
+flag_differences_long = flag_differences_long %>%
+  mutate(ntile_lvl = quant,
+         difference = flag_ntile_diff,
+         abs_difference = abs(difference),
+         inverse_difference = 1/(abs_difference+0.01)*100) %>%
+  # Filter out differences >30
+  filter(abs_difference <=30)
+
+
+#flag_differences_long <- flag_differences_long[!duplicated(flag_differences_long[c("cases_per_100k_slope")]),]
+
+#testmodel = lm(inverse_difference ~ ntile_lvl + as.factor(window) + date + mean_pop_served, #################################################################
+ #              data = flag_differences_long[which(!is.na(flag_differences_long$inverse_difference)),])
+#changed as ntile, window, meanpop were all the same for every entry and thus caused error in lm
+testmodel = lm(inverse_difference ~  date,
+            data = flag_differences_long[which(!is.na(flag_differences_long$inverse_difference)),])
+summary(testmodel)
+
+
+# Box plot of means
+
+ggplot(flag_differences_long) +
+  aes(x = quant, y = difference) +
+  facet_wrap(~window, ncol = 1) +
+  geom_boxplot(fill = "#0c4c8a") +
+  scale_y_continuous(limits = c(-100, 100)) +
+  theme_bw()
+
+
+gplots::plotmeans(difference ~ ntile_lvl, 
+                  data = flag_differences_long[which(flag_differences_long$window == 14),],
+                  mean.labels = T, digits=1, ylim = c(-10, 10)) 
+
+gplots::plotmeans(difference ~ ntile_lvl, 
+                  data = flag_differences_long[which(flag_differences_long$window == 90),],
+                  mean.labels = T, digits=1, ylim = c(-10, 10)) 
+
+gplots::plotmeans(difference ~ ntile_lvl, 
+                  data = flag_differences_long[which(flag_differences_long$window == 60),],
+                  mean.labels = T, digits=1, ylim = c(-10, 10)) 
+
+gplots::plotmeans(difference ~ ntile_lvl, 
+                  data = flag_differences_long[which(flag_differences_long$window == 30),],
+                  mean.labels = T, digits=1, ylim = c(-10, 10))
+
+# Distribution of differences 
+
+ggplot(flag_differences_long) +
+  # Density plots for distribution of results
+  geom_density(aes(x=difference, color = ntile_lvl), lwd=1) +
+  # Mean values for results by ntile
+  geom_vline(aes(xintercept=ww_to_case_flag_mean, color = ntile_lvl), linetype="dashed", size=1) +
+  facet_wrap(~window, nrow=4) +
+  labs(x = "Day difference between wastewater- and nearest case-based flag") +
+  scale_x_continuous(limits = c(-125, 125)) +
+  theme_bw(base_size = 20)
+```
+
+
+```{r}
+
+#####################################################################################################################################
+#
+# Quantitative comparison, flags to case increases
+#
+#####################################################################################################################################
+
+# Use Marshfield as an example to see what this looks like
+ggplot(data = temp1[which(temp1$WWTP == "Waukesha WWTP"),]) +
+  # geom_line(aes(x = date, y = cases_per_100k))
+  geom_line(aes(x = date, y = pastwk.avg.casesperday.per100k)) +
+  scale_shape_manual(values = c(1), na.value = NA) +
+  scale_color_manual(values = c("lightblue", "pink"), na.value = NA) +
+  geom_point(aes(x = date, y = pastwk.avg.casesperday.per100k, color = case_flag), size = 4) +
+  geom_point(aes(x = date, y = pastwk.avg.casesperday.per100k, color = case_flag_plus_comm.threshold), size = 5) +
+  geom_point(aes(x = date, y = pastwk.avg.casesperday.per100k, shape = flag_ntile70), size = 5) 
+
+# What about the actual slope plot (the integral?)
+ggplot(data = workset_final[which(workset_final$WWTP == "Marshfield WWTF"),]) +
+  geom_line(aes(x = date, y = cases_per_100k_slope)) +
+  scale_shape_manual(values = c(1), na.value = NA) +
+  scale_color_manual(values = c("lightblue", "pink"), na.value = NA) +
+  geom_point(aes(x = date, y = cases_per_100k_slope, color = case_flag), size = 4) +
+  geom_point(aes(x = date, y = cases_per_100k_slope, color = case_flag_plus_comm.threshold), size = 5) +
+  geom_point(aes(x = date, y = cases_per_100k_slope, shape = flag_ntile70), size = 5)
+
+# Slope switch flag
+ggplot(data = workset_final[which(workset_final$WWTP == "Marshfield WWTF"),]) +
+  # geom_line(aes(x = date, y = cases_per_100k))
+  geom_line(aes(x = date, y = pastwk.avg.casesperday.per100k)) +
+  scale_shape_manual(values = c(1), na.value = NA) +
+  scale_color_manual(values = c("lightblue", "pink", "red"), na.value = NA) +
+  geom_point(aes(x = date, y = pastwk.avg.casesperday.per100k, color = case_flag), size = 4) +
+  geom_point(aes(x = date, y = pastwk.avg.casesperday.per100k, color = case_flag_plus_comm.threshold), size = 4) +
+  geom_point(aes(x = date, y = pastwk.avg.casesperday.per100k, color = slope_switch_flag), size = 4) +
+  geom_point(aes(x = date, y = pastwk.avg.casesperday.per100k, shape = flag_ntile70), size = 5) 
+
+ggplot(data = workset_final[which(workset_final$WWTP == "Marshfield WWTF"),]) +
+  geom_line(aes(x = date, y = cases_per_100k_slope)) +
+  scale_shape_manual(values = c(1), na.value = NA) +
+  scale_color_manual(values = c("lightblue", "pink", "red"), na.value = NA) +
+  geom_point(aes(x = date, y = cases_per_100k_slope, color = case_flag), size = 4) +
+  geom_point(aes(x = date, y = cases_per_100k_slope, color = case_flag_plus_comm.threshold), size = 4) +
+  geom_point(aes(x = date, y = cases_per_100k_slope, color = slope_switch_flag), size = 4) +
+  geom_point(aes(x = date, y = cases_per_100k_slope, shape = flag_ntile70), size = 5)
+
+
+#################Madison
+
+ggplot(data = workset_final[which(workset_final$WWTP == "Madison"),]) +
+  geom_line(aes(x = date, y = cases_per_100k_slope)) +
+  scale_shape_manual(values = c(1), na.value = NA) +
+  scale_color_manual(values = c("lightblue", "pink", "red"), na.value = NA) +
+  geom_point(aes(x = date, y = cases_per_100k_slope, color = case_flag), size = 4) +
+  geom_point(aes(x = date, y = cases_per_100k_slope, color = case_flag_plus_comm.threshold), size = 4) +
+  geom_point(aes(x = date, y = cases_per_100k_slope, color = slope_switch_flag), size = 4) +
+  geom_point(aes(x = date, y = cases_per_100k_slope, shape = flag_ntile70), size = 5)
+
+# Among observations with a ww flag calculated (i.e., no missing data), find out % which were also case flags
+
+workset_final_ww.nomiss = workset_final %>%
+  filter(!is.na(ntile_50)) %>%
+  # Convert missing values for flags into HOLDS
+  replace_na(list(case_flag = "Hold",
+                  case_flag_plus_comm.threshold = "Hold",
+                  slope_switch_flag = "Hold",
+                  flag_ntile50 = "Hold", flag_ntile60 = "Hold", flag_ntile70 = "Hold", flag_ntile80 = "Hold", flag_ntile90 = "Hold"))
+
+gmodels::CrossTable(workset_final_ww.nomiss$case_flag, workset_final_ww.nomiss$flag_ntile80)
+gmodels::CrossTable(workset_final_ww.nomiss$case_flag_plus_comm.threshold, workset_final_ww.nomiss$flag_ntile80)
+gmodels::CrossTable(workset_final_ww.nomiss$slope_switch_flag, workset_final_ww.nomiss$flag_ntile50)
+
+
+# Stratify by sewershed population size
+
+ws_final_small = workset_final_ww.nomiss %>%
+  filter(population_quartile == 1)
+
+gmodels::CrossTable(ws_final_small$case_flag, ws_final_small$flag_ntile60)
+
+
+
 ```
