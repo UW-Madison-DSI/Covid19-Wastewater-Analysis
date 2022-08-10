@@ -17,11 +17,24 @@ knitr::opts_chunk$set(
 ```
 
 ```{r assemble case dataframe}
+#TODO
+#get all data frames to have the same names
+#Separate classification from regression
+#quantile 
+#
+#code for Case flag
+#code for waste flag
+#how to best explore the relationship
+
+
 library(DSIWastewater)
 library(ggplot2)
 library(dplyr)
 library(zoo)
 library(tidyr)
+```
+
+```{r create case data in right format}
 data(Case_data, package = "DSIWastewater")
 
 CaseProcess <- Case_data%>%
@@ -37,6 +50,7 @@ CaseProcess <- Case_data%>%
 ```
 
 ```{r create case flags}
+
 ClassifyCaseRegression <- function(DF){
   RetDF <- DF%>%
         mutate(
@@ -53,14 +67,21 @@ ClassifyCaseRegression <- function(DF){
   return(RetDF)
 }
 
+#add pipe level comments
+#break up pipes?
+#create case flags
+#add tokeep parameter
+#current process:
+
+#prep -> regression -> classification
 CaseOutput <- CaseProcess%>%
+  #get 7 day slope of data
   buildRegressionEstimateTable(DataMod = .,
                              RunOn = "FirstConfirmed.Per100K",
                              SplitOn = "Site",
                              DaysRegressed = 7,
-                             verbose = TRUE,
-                             PSigTest = FALSE)%>%
-  full_join(CaseProcess[c("date","Site", "FirstConfirmed.Per100K")])%>%
+                             keep = "FirstConfirmed.Per100K")%>%
+  #add case flags
   ClassifyCaseRegression()
 ```
 
@@ -71,33 +92,6 @@ data(WasteWater_data, package = "DSIWastewater")
 baseWaste_data <- buildWasteAnalysisDF(WasteWater_data)%>%
   filter(date  >= as.Date("2021-02-01"))%>%
   filter(WWTP == "Madison MSD WWTF")
-
-
-WasteOutput <- baseWaste_data%>%
-  buildRegressionEstimateTable(DataMod = .,
-                             RunOn = "geoMean",
-                             SplitOn = "WWTP",
-                             DaysRegressed = 7,
-                             verbose = TRUE,
-                             PSigTest = FALSE)%>%
-  full_join(baseWaste_data[c("date","WWTP", "geoMean")])
-
-ClassifyWasteRegression <- function(DF, thresh = 5){
-  RetDF <- DF%>%
-        mutate(
-          # A flag when the slope for most recent week is greater than 5/100k/day
-          case_flag = case_when(lmreg_slope > thresh ~ 1,
-                                TRUE ~ 0),
-          case_flag_plus_comm.threshold = case_when(case_flag == 1 
-                                & geoMean > 200 ~ 1,
-                                TRUE ~ 0),
-          # What about a case flag where slope shifts from <5 to >5
-          slope_switch_flag = case_when(lag(lmreg_slope, 1) < thresh & 
-                                          lmreg_slope > thresh ~ 1,
-                                        TRUE ~ 0))
-  return(RetDF)
-}
-
 ```
 
 
@@ -133,9 +127,9 @@ WindowingFunc <- function(DF, windows, quants){
     mutate(pastKavg.wwlog10 = rollmean(sars_cov2_adj_load_log10, K, align = "right", na.pad = T))
   return(RetDF)
 }
-
+```
   
-
+```{r}
 data(WasteWater_data, package = "DSIWastewater")
 
 baseWaste_data <- buildWasteAnalysisDF(WasteWater_data)%>%
@@ -145,6 +139,7 @@ baseWaste_data <- buildWasteAnalysisDF(WasteWater_data)%>%
 
 windows <- c(14, 30, 60 , 90)
 quants <- c(5:9)/10
+
 Quantiles_DF <- baseWaste_data%>%
   split(baseWaste_data$WWTP)%>%
   lapply(WindowingFunc, quants = quants, windows = windows)%>%
@@ -161,9 +156,9 @@ pval = .3
 FULL_reg_DF <- full_join(Quantiles_DF, CDCMethod, by = c("WWTP", "date"))%>%
   mutate(cdc_flag = case_when(Catagory == "major increase"~ 1,
                               TRUE ~ 0),
-         flag_ntile = case_when(pastKavg.wwlog10 > ntile & cdc_flag~ 1,
+         flag_ntile = case_when(pastKavg.wwlog10 > ntile & cdc_flag ~ 1,
                               TRUE ~ 0),
-         flag_ntile_pval = case_when(flag_ntile & lmreg_sig < pval~ 1,
+         flag_ntile_pval = case_when(flag_ntile & lmreg_sig < pval ~ 1,
                               TRUE ~ 0))%>%
   mutate(across(where(is.numeric), ~ ifelse(is.na(.x), 0, .x)))
 ```
@@ -181,8 +176,6 @@ Full_wasteFlags <- FULL_reg_DF%>%
 
 Full_Flag_DF <- inner_join(Full_wasteFlags, CaseFlags, by = c("WWTP", "date"))
 Full_Flag_DF
-sum(!(CaseFlags$date %in% Full_wasteFlags$date))
-sum(!(Full_wasteFlags$date %in% CaseFlags$date))
 ```
 
 ```{r plot case and waste flags}
@@ -199,7 +192,7 @@ B <- CaseOutput%>%
   ggplot(aes(x = date))+
   geom_point(aes(y=FirstConfirmed.Per100K), size = .5) +
   geom_vline(aes(xintercept = date, color = "Waste flag"), color = "blue",
-             data = filter(Full_Flag_DF,flag_ntile==1,quant == .8, window == 90)) +
+             data = filter(Full_Flag_DF, flag_ntile==1, quant == .8, window == 90)) +
   ylab("case data with  flag_ntile .8 90 flags")#+
   #scale_y_log10()
 patchwork::wrap_plots(A,B, ncol = 1)
@@ -207,6 +200,16 @@ patchwork::wrap_plots(A,B, ncol = 1)
 
 
 ```{r shiny view of the problem, eval = FALSE}
+#in package
+#createCaseflag
+#createWasteflag
+#call common regression code
+#wastedata/some smoothing of waste data
+#how well does the case flags/waste flags work
+#for madison for state
+#how well do they do, at predicting own goals, each other
+
+
 library(shiny)
 windows <- c(14, 30, 60 , 90)
 quants <- c(5:9)/10
