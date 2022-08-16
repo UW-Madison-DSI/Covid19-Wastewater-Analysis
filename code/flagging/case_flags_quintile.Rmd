@@ -1,0 +1,234 @@
+---
+title: "Base_case_flags"
+author: "Marlin"
+date: '2022-07-27'
+output: pdf_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+
+```{r set up markdown settings, echo=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE
+)
+```
+
+```{r create case data in right format}
+library(DSIWastewater)
+```
+
+```{r create case flags}
+#load Case_data into the environment
+data(Case_data, package = "DSIWastewater")
+
+#restrict Case data to only Madison data
+Case_DF <- Case_data[Case_data$Site == "Madison",]
+
+#restrict Case data to dates after 2021-02-01
+Case_DF <- Case_DF[Case_DF$date  >= as.Date("2021-02-01"),]
+
+#get the case flags
+CaseFlags <- CreateCaseFlag(Case_DF)
+```
+
+```{r create waste flags}
+#load WasteWater_data into the environment
+data(WasteWater_data, package = "DSIWastewater")
+
+#restrict Waste data to only Madison data
+baseWaste_DF <- WasteWater_data[WasteWater_data$wwtp_name == "Madison MSD WWTF",]
+
+#restrict Waste data to dates after 2021-02-01
+baseWaste_DF <- baseWaste_DF[
+  as.Date(baseWaste_DF$sample_collect_date, format = "%m/%d/%Y") >= as.Date("2021-02-01"),]
+
+#get the waste flags
+Waste_reg_DF <- CreateWasteFlags(baseWaste_DF)
+```
+
+```{r Merge flag data frames}
+#merge flags data to get one DF containing all the flags
+Full_Flag_DF <- dplyr::inner_join(Waste_reg_DF, CaseFlags,
+                           by = c("Site", "date"))
+```
+
+```{r case number func}
+library(dplyr)
+
+Count_Flag(Full_Flag_DF)
+
+#Marlin: there stuff does not work: tweak it
+#for cases: lower threshold
+#for waste: try moderate increase -> change threshold
+
+#Steve
+#don't worry about there method
+#make your own
+#want something based on underlying smoothing 
+#look at slope where old algo called flag
+#look for repeated increase
+
+#graph(loess) + rolling 80th quant waste water
+#look at cases with less slope
+#add either a slope line, hover text, color ?DF
+#graph smooth slope vs raw slope
+#how to calculate slope of smooth curve: 
+#do regression? weird cuz its double related
+#take diff()/dims
+#check to see if its close to other methods
+#get TS comp
+#ggplotly
+#problem with line graphs -> lots of jumps
+#bar graph will also show it
+#barchart + line for loess 
+```
+
+```{r}
+#Get Wastewater data columns for ploting
+#Recombine DF now with loess column
+Waste_Smooth_DF <- do.call(rbind,
+                           #apply the loess method to each sub dataframe
+                              lapply(
+                                #break the dataframe by the WWTP column
+                                split(
+                                  #get DF into normal shape
+                                  buildWasteAnalysisDF(baseWaste_DF),
+                                  ~WWTP),
+                                LoessSmoothMod))
+
+#rename WWTP column to Site for easier ploting
+names(Waste_Smooth_DF)[names(Waste_Smooth_DF) == 'WWTP'] <- 'Site'
+
+#rename madison rows for easier merging
+Waste_Smooth_DF$Site <- ifelse(Waste_Smooth_DF$Site == "Madison MSD WWTF",
+                             "Madison",
+                             Waste_Smooth_DF$Site)
+#get case in easy format
+Case_DF <- buildCaseAnalysisDF(Case_DF)
+
+#create DF that merges Case data and Wastewater data
+Raw_Plot_DF <- dplyr::full_join(Case_DF, Waste_Smooth_DF, by = c("date", "Site"))
+```
+
+```{r Single plot code}
+
+
+#define color scheme for the plots to have
+colorScheme <- ggplot2::scale_color_manual(values = 
+                                c("slope_switch_flag" = "red",
+                                "flag_ntile" = "blue",
+                                "Both" = "green",
+                                "log.avg.casesperday.Per100K" = "deeppink",
+                                "Loess" = "black",
+                                "log.FirstConfirmed.Per100K" = "brown",
+                                "sars_cov2_adj_load_log10" = "grey"))
+
+#filter Wastewater DF tp only be the 80th quantile of the last 90 days flags
+Flag_80_90_DF <- Full_Flag_DF[Full_Flag_DF$quant == .8,]
+Flag_80_90_DF <- Flag_80_90_DF[Flag_80_90_DF$window == 90,]
+
+#add log version of Case data for easier comparison
+Raw_Plot_DF$log.FirstConfirmed.Per100K <- log(Raw_Plot_DF$FirstConfirmed.Per100K)
+
+#divide by 7 to make it an average instead of a sum
+Raw_Plot_DF$pastwk.avg.casesperday.Per100K <- Raw_Plot_DF$pastwk.sum.casesperday.Per100K/7
+
+#add log version of pastwk.avg.casesperday.Per100K
+Raw_Plot_DF$log.avg.casesperday.Per100K <- log(Raw_Plot_DF$pastwk.avg.casesperday.Per100K)
+
+#use old graphing code to 
+createFlagGraph_plot(Raw_Plot_DF, Flag_80_90_DF,
+                                  Flag1 = "slope_switch_flag",
+                                  Flag2 = "flag_ntile",
+                                      PointVal = NULL,
+                                      LineVal = c("log.avg.casesperday.Per100K", "Loess"),
+                                      facetFormula = " ~ Site") + 
+              colorScheme
+```
+
+```{r stacked plot}
+
+#create Case data and flags
+A <- createFlagGraph_plot(Raw_Plot_DF, Flag_80_90_DF,
+                          Flag1 = "slope_switch_flag",
+                          PointVal = c("log.FirstConfirmed.Per100K"),
+                          LineVal = c("log.avg.casesperday.Per100K"),
+                          facetFormula = " ~ Site") + 
+        colorScheme
+
+#create waste data and flags
+B <- createFlagGraph_plot(Raw_Plot_DF, Flag_80_90_DF,
+                          Flag1 = "flag_ntile",
+                          PointVal = c("sars_cov2_adj_load_log10"),
+                          LineVal = c("Loess"),
+                          facetFormula = " ~ Site") + 
+        colorScheme
+
+patchwork::wrap_plots(A,B, ncol = 1, guides = 'collect')
+```
+
+
+
+```{r shiny view of the problem, eval = FALSE}
+library(dplyr)
+library(shiny)
+windows <- c(14, 30, 60 , 90)
+quants <- c(5:9)/10
+ui <- fluidPage(
+    selectInput(inputId = "Window", 
+              label = "choose Wastewater Window", 
+              choices = windows,
+              selected = 90),
+    selectInput(inputId = "quants", 
+              label = "choose Wastewater quants", 
+              choices = quants,
+              selected = .8),
+    dateRangeInput("daterange", "Select date range:", start = min(Full_Flag_DF$date), end = max(Full_Flag_DF$date),
+                   min = min(Full_Flag_DF$date),
+                   max = max(Full_Flag_DF$date),
+                   startview = "year"),
+    checkboxInput("isLogCase", "log case data", value = FALSE),
+  plotOutput(outputId = "Flag_Compare_plot", width="100%")#, height="")
+
+)
+Raw_Plot_DF
+server <- function(input, output, session) {
+  
+  output$Flag_Compare_plot <- renderPlot({
+    
+    FlagDF <- Full_Flag_DF%>%
+      filter(quant == input$quants, window == input$Window)
+    
+    A <- Raw_Plot_DF%>%
+      filter(date >= input$daterange[1] & date <= input$daterange[2])%>% #filter using date range
+      createFlagGraph_plot(Flag_80_90_DF,
+                          Flag1 = "slope_switch_flag",
+                          PointVal = c("FirstConfirmed.Per100K"),
+                          LineVal = c("pastwk.avg.casesperday.Per100K"),
+                          facetFormula = " ~ Site") + 
+        colorScheme
+    
+    if(input$isLogCase){
+      A <- A+scale_y_log10()
+    }
+
+B <- Raw_Plot_DF%>%
+  filter(date >= input$daterange[1] & date <= input$daterange[2])%>% #filter using date range
+  createFlagGraph_plot( Flag_80_90_DF,
+                          Flag1 = "flag_ntile",
+                          PointVal = c("sars_cov2_adj_load_log10"),
+                          LineVal = c("Loess"),
+                          facetFormula = " ~ Site") + 
+        colorScheme
+
+patchwork::wrap_plots(A,B, ncol = 1)
+  })
+}
+
+shinyApp(ui = ui, server = server)
+
+
+```
