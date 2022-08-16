@@ -1,0 +1,176 @@
+---
+title: "alte_case_flags"
+author: "Marlin"
+date: '2022-07-27'
+output: pdf_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+
+```{r set up markdown settings, echo=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE
+)
+```
+
+```{r create case data in right format}
+library(DSIWastewater)
+```
+
+```{r create case flags}
+#load Case_data into the environment
+data(Case_data, package = "DSIWastewater")
+
+
+#restrict Case data to only Madison data
+Case_DF <- Case_data[Case_data$Site == "Madison",]
+
+
+#restrict Case data to dates after 2021-02-01
+Case_DF <- Case_DF[Case_DF$date  >= as.Date("2021-02-01"),]
+
+
+#get the case flags
+Case_DF <- buildCaseAnalysisDF(Case_DF)
+
+
+CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF, 
+    RunOn = c("FirstConfirmed.Per100K", "pastwk.avg.casesperday.Per100K"),
+    SplitOn = "Site", DaysRegressed = 7, 
+    PSigTest = FALSE)
+
+library(dplyr)
+
+BaseCaseFlagOutput <- CaseRegressionOutput%>%
+  filter(Method == "FirstConfirmed.Per100K")%>%
+  ClassifyCaseRegression(slopeThreshold = 5)%>%
+  select(Site, date, case_flag, slope_switch_flag)%>%
+  rename(Base_case_flag = case_flag, Base_switch_flag = slope_switch_flag)
+
+AltCaseFlagOutput <- CaseRegressionOutput%>%
+  filter(Method == "pastwk.avg.casesperday.Per100K")%>%
+  ClassifyCaseRegression(slopeThreshold = 1)%>%
+  select(Site, date, case_flag, slope_switch_flag)%>%
+  rename(Alt_case_flag = case_flag, Alt_switch_flag = slope_switch_flag)
+
+Full_Flag_DF <- inner_join(BaseCaseFlagOutput, AltCaseFlagOutput, by = c("date","Site"))
+
+#25	6	9
+#BaseCaseFlagOutput,AltCaseFlagOutput
+Count_Flag(Full_Flag_DF, group = c("Site"))
+```
+
+
+```{r Single plot code}
+
+
+#define color scheme for the plots to have
+colorScheme <- ggplot2::scale_color_manual(values = 
+                                c("slope_switch_flag" = "red",
+                                "flag_ntile" = "blue",
+                                "Both" = "green",
+                                "log.avg.casesperday.Per100K" = "deeppink",
+                                "Loess" = "black",
+                                "log.FirstConfirmed.Per100K" = "brown",
+                                "sars_cov2_adj_load_log10" = "grey"))
+
+library(ggplot2)
+#use old graphing code to 
+createFlagGraph_plot(Case_DF, Full_Flag_DF,
+                                  Flag1 = "Base_switch_flag",
+                                  Flag2 = "Alt_switch_flag",
+                                      PointVal = "FirstConfirmed.Per100K",
+                                      LineVal = c("pastwk.avg.casesperday.Per100K"),
+                                      facetFormula = " ~ Site") #+ 
+              #colorScheme+
+  scale_y_log10()
+
+#BaseCaseFlagOutput,AltCaseFlagOutput
+```
+
+```{r stacked plot}
+
+#create Case data and flags
+A <- createFlagGraph_plot(Raw_Plot_DF, Flag_80_90_DF,
+                          Flag1 = "slope_switch_flag",
+                          PointVal = c("log.FirstConfirmed.Per100K"),
+                          LineVal = c("log.avg.casesperday.Per100K"),
+                          facetFormula = " ~ Site") + 
+        colorScheme
+
+#create waste data and flags
+B <- createFlagGraph_plot(Raw_Plot_DF, Flag_80_90_DF,
+                          Flag1 = "flag_ntile",
+                          PointVal = c("sars_cov2_adj_load_log10"),
+                          LineVal = c("Loess"),
+                          facetFormula = " ~ Site") + 
+        colorScheme
+
+patchwork::wrap_plots(A,B, ncol = 1, guides = 'collect')
+```
+
+
+
+```{r shiny view of the problem, eval = FALSE}
+library(dplyr)
+library(shiny)
+windows <- c(14, 30, 60 , 90)
+quants <- c(5:9)/10
+ui <- fluidPage(
+    selectInput(inputId = "Window", 
+              label = "choose Wastewater Window", 
+              choices = windows,
+              selected = 90),
+    selectInput(inputId = "quants", 
+              label = "choose Wastewater quants", 
+              choices = quants,
+              selected = .8),
+    dateRangeInput("daterange", "Select date range:", start = min(Full_Flag_DF$date), end = max(Full_Flag_DF$date),
+                   min = min(Full_Flag_DF$date),
+                   max = max(Full_Flag_DF$date),
+                   startview = "year"),
+    checkboxInput("isLogCase", "log case data", value = FALSE),
+  plotOutput(outputId = "Flag_Compare_plot", width="100%")#, height="")
+
+)
+Raw_Plot_DF
+server <- function(input, output, session) {
+  
+  output$Flag_Compare_plot <- renderPlot({
+    
+    FlagDF <- Full_Flag_DF%>%
+      filter(quant == input$quants, window == input$Window)
+    
+    A <- Raw_Plot_DF%>%
+      filter(date >= input$daterange[1] & date <= input$daterange[2])%>% #filter using date range
+      createFlagGraph_plot(Flag_80_90_DF,
+                          Flag1 = "slope_switch_flag",
+                          PointVal = c("FirstConfirmed.Per100K"),
+                          LineVal = c("pastwk.avg.casesperday.Per100K"),
+                          facetFormula = " ~ Site") + 
+        colorScheme
+    
+    if(input$isLogCase){
+      A <- A+scale_y_log10()
+    }
+
+B <- Raw_Plot_DF%>%
+  filter(date >= input$daterange[1] & date <= input$daterange[2])%>% #filter using date range
+  createFlagGraph_plot( Flag_80_90_DF,
+                          Flag1 = "flag_ntile",
+                          PointVal = c("sars_cov2_adj_load_log10"),
+                          LineVal = c("Loess"),
+                          facetFormula = " ~ Site") + 
+        colorScheme
+
+patchwork::wrap_plots(A,B, ncol = 1)
+  })
+}
+
+shinyApp(ui = ui, server = server)
+
+
+```
