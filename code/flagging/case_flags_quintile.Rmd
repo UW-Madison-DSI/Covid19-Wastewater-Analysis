@@ -49,12 +49,6 @@ baseWaste_DF <- baseWaste_DF[
 Waste_reg_DF <- CreateWasteFlags(baseWaste_DF)
 ```
 
-```{r}
-Waste_reg_DF%>%
-  ggplot(aes(x = date))+
-  geom_line(aes(y = ))
-```
-
 ```{r Merge flag data frames}
 #merge flags data to get one DF containing all the flags
 Full_Flag_DF <- dplyr::inner_join(Waste_reg_DF, CaseFlags,
@@ -95,8 +89,6 @@ Raw_Plot_DF <- dplyr::full_join(Case_DF, Waste_Smooth_DF, by = c("date", "Site")
 ```
 
 ```{r Single plot code}
-
-
 #define color scheme for the plots to have
 colorScheme <- ggplot2::scale_color_manual(values = 
                                 c("slope_switch_flag" = "red",

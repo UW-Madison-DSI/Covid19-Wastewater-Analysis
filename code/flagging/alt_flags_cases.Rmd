@@ -53,19 +53,35 @@ Plot_DF <- CaseRegressionOutput%>%
 SlopeComp <- Plot_DF%>%
   ggplot()+
   geom_point(aes(x = FirstConfirmed.Per100K,
-                 y = pastwk.avg.casesperday.Per100K, info = date))
+                 y = pastwk.avg.casesperday.Per100K, info = date))+
+  geom_abline(color = "red")
 ggplotly(SlopeComp)
 
 SlopeComp <- Plot_DF%>%
   ggplot(aes(x = date))+
   geom_line(aes(y = FirstConfirmed.Per100K, color = "cases slope"))+
-  geom_line(aes(y = pastwk.avg.casesperday.Per100K, color = "smooth cases slope"))
+  geom_line(aes(y = pastwk.avg.casesperday.Per100K, color = "smooth cases slope"))+
+  geom_hline(yintercept = 5)
 
 ggplotly(SlopeComp)
 
 cor(Plot_DF$FirstConfirmed.Per100K, 
     Plot_DF$pastwk.avg.casesperday.Per100K,
     use = "pairwise.complete.obs")
+
+
+#Flagging problems doc:
+#mainly catching noise: Both
+#ignoring longer trends: Both
+#day of week effect: Case
+
+#remove period
+#increase window
+#add period term
+#smooth data
+#remove case outlier
+#?get longer trend first, backtrack to short term
+#remove outlier data not smooth
 ```
 
 ```{r}
@@ -146,65 +162,3 @@ B <- createFlagGraph_plot(Case_DF, Full_Flag_DF,
 patchwork::wrap_plots(A,B, ncol = 1, guides = 'collect')
 ```
 
-
-
-```{r shiny view of the problem, eval = FALSE}
-library(dplyr)
-library(shiny)
-windows <- c(14, 30, 60 , 90)
-quants <- c(5:9)/10
-ui <- fluidPage(
-    selectInput(inputId = "Window", 
-              label = "choose Wastewater Window", 
-              choices = windows,
-              selected = 90),
-    selectInput(inputId = "quants", 
-              label = "choose Wastewater quants", 
-              choices = quants,
-              selected = .8),
-    dateRangeInput("daterange", "Select date range:", start = min(Full_Flag_DF$date), end = max(Full_Flag_DF$date),
-                   min = min(Full_Flag_DF$date),
-                   max = max(Full_Flag_DF$date),
-                   startview = "year"),
-    checkboxInput("isLogCase", "log case data", value = FALSE),
-  plotOutput(outputId = "Flag_Compare_plot", width="100%")#, height="")
-
-)
-Raw_Plot_DF
-server <- function(input, output, session) {
-  
-  output$Flag_Compare_plot <- renderPlot({
-    
-    FlagDF <- Full_Flag_DF%>%
-      filter(quant == input$quants, window == input$Window)
-    
-    A <- Raw_Plot_DF%>%
-      filter(date >= input$daterange[1] & date <= input$daterange[2])%>% #filter using date range
-      createFlagGraph_plot(Flag_80_90_DF,
-                          Flag1 = "slope_switch_flag",
-                          PointVal = c("FirstConfirmed.Per100K"),
-                          LineVal = c("pastwk.avg.casesperday.Per100K"),
-                          facetFormula = " ~ Site") + 
-        colorScheme
-    
-    if(input$isLogCase){
-      A <- A+scale_y_log10()
-    }
-
-B <- Raw_Plot_DF%>%
-  filter(date >= input$daterange[1] & date <= input$daterange[2])%>% #filter using date range
-  createFlagGraph_plot( Flag_80_90_DF,
-                          Flag1 = "flag_ntile",
-                          PointVal = c("sars_cov2_adj_load_log10"),
-                          LineVal = c("Loess"),
-                          facetFormula = " ~ Site") + 
-        colorScheme
-
-patchwork::wrap_plots(A,B, ncol = 1)
-  })
-}
-
-shinyApp(ui = ui, server = server)
-
-
-```

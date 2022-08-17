@@ -61,11 +61,12 @@ Full_wasteFlags <- FULL_reg_DF[,c("WWTP", "date",
 
 ```{r}
 library(ggplot2)
-Full_wasteFlags%>%
+a <- Full_wasteFlags%>%
   ggplot(aes(x = date))+
   geom_point(aes(y = sars_cov2_adj_load_log10))+
   geom_line(aes(y = ntile))+
   geom_point(aes(x = date, y = sars_cov2_adj_load_log10,
                  color = "CDC flag"), 
              data = filter(Full_wasteFlags, cdc_flag == 1))
+ggplotly(a)
 ```
