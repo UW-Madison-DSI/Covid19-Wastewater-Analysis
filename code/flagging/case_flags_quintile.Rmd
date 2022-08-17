@@ -49,6 +49,12 @@ baseWaste_DF <- baseWaste_DF[
 Waste_reg_DF <- CreateWasteFlags(baseWaste_DF)
 ```
 
+```{r}
+Waste_reg_DF%>%
+  ggplot(aes(x = date))+
+  geom_line(aes(y = ))
+```
+
 ```{r Merge flag data frames}
 #merge flags data to get one DF containing all the flags
 Full_Flag_DF <- dplyr::inner_join(Waste_reg_DF, CaseFlags,
@@ -59,31 +65,6 @@ Full_Flag_DF <- dplyr::inner_join(Waste_reg_DF, CaseFlags,
 library(dplyr)
 
 Count_Flag(Full_Flag_DF)
-
-#Marlin: there stuff does not work: tweak it
-#for cases: lower threshold
-#for waste: try moderate increase -> change threshold
-
-#Steve
-#don't worry about there method
-#make your own
-#want something based on underlying smoothing 
-#look at slope where old algo called flag
-#look for repeated increase
-
-#graph(loess) + rolling 80th quant waste water
-#look at cases with less slope
-#add either a slope line, hover text, color ?DF
-#graph smooth slope vs raw slope
-#how to calculate slope of smooth curve: 
-#do regression? weird cuz its double related
-#take diff()/dims
-#check to see if its close to other methods
-#get TS comp
-#ggplotly
-#problem with line graphs -> lots of jumps
-#bar graph will also show it
-#barchart + line for loess 
 ```
 
 ```{r}

@@ -1,0 +1,71 @@
+---
+title: "alte_case_flags"
+author: "Marlin"
+date: '2022-07-27'
+output: pdf_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+
+```{r set up markdown settings, echo=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE
+)
+```
+
+```{r create case data in right format}
+library(DSIWastewater)
+```
+```{r}
+#load WasteWater_data into the environment
+data(WasteWater_data, package = "DSIWastewater")
+
+#restrict Waste data to only Madison data
+baseWaste_DF <- WasteWater_data[WasteWater_data$wwtp_name == "Madison MSD WWTF",]
+
+#restrict Waste data to dates after 2021-02-01
+baseWaste_DF <- baseWaste_DF[
+  as.Date(baseWaste_DF$sample_collect_date, format = "%m/%d/%Y") >= as.Date("2021-02-01"),]
+
+#get DF into format for buildRegressionEstimateTable
+baseWaste_DF <-  buildWasteAnalysisDF(baseWaste_DF)
+
+#add quantile data to merge with the regression results
+Quantiles_DF <- MakeQuantileColumns(baseWaste_DF,
+                                    .8, 90,
+                                    "sars_cov2_adj_load_log10")
+
+#Get 5 day rolling regression of data
+CDCMethod <- buildRegressionEstimateTable(baseWaste_DF, 
+                                          PSigTest=FALSE)
+#merge the regression DF and the quantile DF to get info for 
+
+FULL_reg_DF <- dplyr::full_join(Quantiles_DF, CDCMethod,
+                                by = c("WWTP", "date"))
+
+#create flags described in @return
+FULL_reg_DF <- ClassifyQuantileFlagRegression(FULL_reg_DF)
+
+#return only flags and type columns 
+Full_wasteFlags <- FULL_reg_DF[,c("WWTP", "date", 
+                                  "sars_cov2_adj_load_log10",
+                                  "ntile",
+                                  "cdc_flag",
+                                  "flag_ntile",
+                                  "flag_ntile_pval")]
+
+```
+
+```{r}
+library(ggplot2)
+Full_wasteFlags%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y = sars_cov2_adj_load_log10))+
+  geom_line(aes(y = ntile))+
+  geom_point(aes(x = date, y = sars_cov2_adj_load_log10,
+                 color = "CDC flag"), 
+             data = filter(Full_wasteFlags, cdc_flag == 1))
+```

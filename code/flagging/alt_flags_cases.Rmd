@@ -39,9 +39,30 @@ Case_DF <- buildCaseAnalysisDF(Case_DF)
 
 CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF, 
     RunOn = c("FirstConfirmed.Per100K", "pastwk.avg.casesperday.Per100K"),
-    SplitOn = "Site", DaysRegressed = 7, 
-    PSigTest = FALSE)
+    SplitOn = "Site", DaysRegressed = 7)
+```
 
+```{r}
+library(tidyr)
+library(plotly)
+SlopeComp <- CaseRegressionOutput%>%
+  select(date, Method, lmreg_slope)%>%
+  pivot_wider(names_from = Method, values_from = lmreg_slope)%>%
+  ggplot()+
+  geom_point(aes(x = FirstConfirmed.Per100K,
+                 y = pastwk.avg.casesperday.Per100K, info = date))
+ggplotly(SlopeComp)
+
+SlopeComp <- CaseRegressionOutput%>%
+  select(date, Method, lmreg_slope)%>%
+  pivot_wider(names_from = Method, values_from = lmreg_slope)%>%
+  ggplot(aes(x = date))+
+  geom_line(aes(y = FirstConfirmed.Per100K, color = "cases slope"))+
+  geom_line(aes(y = pastwk.avg.casesperday.Per100K, color = "smooth cases slope"))
+ggplotly(SlopeComp)
+```
+
+```{r}
 library(dplyr)
 
 BaseCaseFlagOutput <- CaseRegressionOutput%>%
