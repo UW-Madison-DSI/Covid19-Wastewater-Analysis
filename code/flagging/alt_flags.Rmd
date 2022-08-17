@@ -69,13 +69,14 @@ Count_Flag(Full_Flag_DF, group = c("Site"))
 
 #define color scheme for the plots to have
 colorScheme <- ggplot2::scale_color_manual(values = 
-                                c("slope_switch_flag" = "red",
-                                "flag_ntile" = "blue",
+                                c("Base_switch_flag" = "red",
+                                "Alt_switch_flag" = "blue",
                                 "Both" = "green",
-                                "log.avg.casesperday.Per100K" = "deeppink",
+                                "pastwk.avg.casesperday.Per100K" = "deeppink",
                                 "Loess" = "black",
-                                "log.FirstConfirmed.Per100K" = "brown",
-                                "sars_cov2_adj_load_log10" = "grey"))
+                                "FirstConfirmed.Per100K" = "brown",
+                                "sars_cov2_adj_load_log10" = "grey"),
+                                limits = force)
 
 library(ggplot2)
 #use old graphing code to 
@@ -84,8 +85,8 @@ createFlagGraph_plot(Case_DF, Full_Flag_DF,
                                   Flag2 = "Alt_switch_flag",
                                       PointVal = "FirstConfirmed.Per100K",
                                       LineVal = c("pastwk.avg.casesperday.Per100K"),
-                                      facetFormula = " ~ Site") #+ 
-              #colorScheme+
+                                      facetFormula = " ~ Site")+ 
+  colorScheme+
   scale_y_log10()
 
 #BaseCaseFlagOutput,AltCaseFlagOutput
@@ -93,21 +94,27 @@ createFlagGraph_plot(Case_DF, Full_Flag_DF,
 
 ```{r stacked plot}
 
-#create Case data and flags
-A <- createFlagGraph_plot(Raw_Plot_DF, Flag_80_90_DF,
-                          Flag1 = "slope_switch_flag",
-                          PointVal = c("log.FirstConfirmed.Per100K"),
-                          LineVal = c("log.avg.casesperday.Per100K"),
-                          facetFormula = " ~ Site") + 
-        colorScheme
+createFlagGraph_plot(Case_DF, Full_Flag_DF,
+                                  Flag1 = "Base_switch_flag",
+                                  Flag2 = "Alt_switch_flag",
+                                      PointVal = "FirstConfirmed.Per100K",
+                                      LineVal = c("pastwk.avg.casesperday.Per100K"),
+                                      facetFormula = " ~ Site")
 
-#create waste data and flags
-B <- createFlagGraph_plot(Raw_Plot_DF, Flag_80_90_DF,
-                          Flag1 = "flag_ntile",
-                          PointVal = c("sars_cov2_adj_load_log10"),
-                          LineVal = c("Loess"),
-                          facetFormula = " ~ Site") + 
-        colorScheme
+
+A <- createFlagGraph_plot(Case_DF, Full_Flag_DF,
+                          Flag1 = "Base_switch_flag",
+                          PointVal  = c("FirstConfirmed.Per100K"),
+                          facetFormula = " ~ Site")+ 
+  colorScheme+
+  scale_y_log10()
+
+B <- createFlagGraph_plot(Case_DF, Full_Flag_DF,
+                          Flag1 = "Alt_switch_flag",
+                          LineVal = c("pastwk.avg.casesperday.Per100K"),
+                          facetFormula = " ~ Site")+ 
+  colorScheme+
+  scale_y_log10()
 
 patchwork::wrap_plots(A,B, ncol = 1, guides = 'collect')
 ```
