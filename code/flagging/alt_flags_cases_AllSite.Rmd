@@ -127,7 +127,7 @@ library(ggplot2)
 
 Full_Flag_DF%>%
   FactorVecByVec(Case_DF, FacVar = "Site", NumVar = "population_served")%>%
-  createFlagGraph_plot(MainDF = Case_DF2,
+  createFlagGraph_plot(MainDF = Case_DF,
                         FlagDF = .,
                         Flag1 = "Base_switch_flag",
                         Flag2 = "Alt_switch_flag",

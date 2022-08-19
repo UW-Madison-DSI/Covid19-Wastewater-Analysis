@@ -32,6 +32,7 @@ Case_DF <- Case_DF[Case_DF$date  >= as.Date("2021-02-01"),]
 
 #get the case flags
 CaseFlags <- CreateCaseFlag(Case_DF)
+
 ```
 
 ```{r create waste flags}
@@ -58,7 +59,8 @@ Full_Flag_DF <- dplyr::inner_join(Waste_reg_DF, CaseFlags,
 ```{r case number func}
 library(dplyr)
 
-Count_Flag(Full_Flag_DF)
+Count_Flag(CaseFlags, group = c("Site"))
+
 ```
 
 ```{r}

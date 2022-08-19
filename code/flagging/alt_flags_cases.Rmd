@@ -41,7 +41,6 @@ CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF,
     RunOn = c("FirstConfirmed.Per100K", "pastwk.avg.casesperday.Per100K"),
     SplitOn = "Site", DaysRegressed = 7)
 ```
-
 ```{r}
 library(tidyr)
 library(plotly)
@@ -55,6 +54,7 @@ SlopeComp <- Plot_DF%>%
   geom_point(aes(x = FirstConfirmed.Per100K,
                  y = pastwk.avg.casesperday.Per100K, info = date))+
   geom_abline(color = "red")
+
 ggplotly(SlopeComp)
 
 SlopeComp <- Plot_DF%>%

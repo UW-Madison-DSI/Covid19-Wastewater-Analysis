@@ -1,0 +1,118 @@
+---
+title: "DHSMethodVsDSIOutput"
+author: "Marlin"
+date: "2022-08-18"
+output: html_document
+---
+```{r create case data in right format}
+library(DSIWastewater)
+```
+
+
+```{r peter output}
+Example_DF <- read.csv("../example_set.csv")%>%
+  filter(WWTP == "Madison MSD WWTF")%>%
+  mutate(date = as.Date(date))%>%
+  filter(date <= as.Date("2022-04-20"))
+```
+
+```{r create case flags}
+#load Case_data into the environment
+data(Case_data, package = "DSIWastewater")
+
+
+#restrict Case data to only Madison data
+Case_DF <- Case_data[Case_data$Site == "Madison",]
+
+
+#restrict Case data to dates after 2021-02-01
+Case_DF <- Case_DF[Case_DF$date  >= as.Date("2021-02-01"),]
+
+
+#get the case flags
+Case_DF <- buildCaseAnalysisDF(Case_DF)
+
+
+CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF, 
+    RunOn = c("FirstConfirmed.Per100K"),
+    SplitOn = "Site", DaysRegressed = 7)
+
+CaseFlags <- CaseRegressionOutput%>%
+  ClassifyCaseRegression(slopeThreshold = 5)
+```
+
+```{r case flags compare}
+Example_Cases_DF <- Example_DF%>%
+  filter(window == 90)%>%
+  mutate(case_flag = case_when(case_flag == date ~1, TRUE ~0),
+         case_flag_plus_comm.threshold = case_when(case_flag_plus_comm.threshold == date ~1, TRUE ~0),
+         slope_switch_flag = case_when(slope_switch_flag == date ~1, TRUE ~0))%>%
+  select(WWTP,date,case_flag,case_flag_plus_comm.threshold,slope_switch_flag)
+
+Example_Cases_DF%>%
+  filter(slope_switch_flag==1)
+
+CaseFlags%>%
+  filter(slope_switch_flag==1)
+```
+
+```{r waste flags}
+#load WasteWater_data into the environment
+data(WasteWater_data, package = "DSIWastewater")
+
+#restrict Waste data to only Madison data
+baseWaste_DF <- WasteWater_data[WasteWater_data$wwtp_name == "Madison MSD WWTF",]
+baseWaste_DF$population_served <- 380000#391815
+# 380000 391815
+#restrict Waste data to dates after 2021-02-01
+baseWaste_DF <- baseWaste_DF[
+  as.Date(baseWaste_DF$sample_collect_date, format = "%m/%d/%Y") >= as.Date("2021-02-01"),]
+
+#get DF into format for buildRegressionEstimateTable
+baseWaste_DF <-  buildWasteAnalysisDF(baseWaste_DF)
+
+#add quantile data to merge with the regression results
+Quantiles_DF <- MakeQuantileColumns(baseWaste_DF,
+                                    .8, 90,
+                                    "sars_cov2_adj_load_log10")
+
+#Get 5 day rolling regression of data
+CDCMethod <- buildRegressionEstimateTable(baseWaste_DF, 
+                                          PSigTest=FALSE)
+#merge the regression DF and the quantile DF to get info for 
+
+FULL_reg_DF <- dplyr::full_join(Quantiles_DF, CDCMethod,
+                                by = c("WWTP", "date"))
+
+#create flags described in @return
+FULL_reg_DF <- ClassifyQuantileFlagRegression(FULL_reg_DF)
+
+#return only flags and type columns 
+Full_wasteFlags <- FULL_reg_DF[,c("WWTP", "date", 
+                                  "sars_cov2_adj_load_log10",
+                                  "ntile",
+                                  "cdc_flag",
+                                  "flag_ntile",
+                                  "flag_ntile_pval")]
+
+```
+
+```{r waste flag compare}
+Example_Waste_DF <- Example_DF%>%
+  filter(window == 90)%>%
+  filter(!is.na(wastewatersampledate))
+
+ 
+Example_NtileFlags <- Example_Waste_DF%>%
+  filter(as.Date(flag_ntile80) == date)
+#1,776
+DSI_NtileFlags <- Full_wasteFlags%>%
+  filter(flag_ntile == 1)
+
+#ignore 2022-04-20
+Example_NtileFlags[(Example_NtileFlags$date %in% unique(DSI_NtileFlags$date)),]
+
+Full_wasteFlags[(Full_wasteFlags$date %in% unique(Example_NtileFlags$date))&
+                  !(Full_wasteFlags$date %in% unique(DSI_NtileFlags$date)),]
+```
+
