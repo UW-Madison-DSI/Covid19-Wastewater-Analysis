@@ -39,8 +39,9 @@ Case_DF <- buildCaseAnalysisDF(Case_DF)
 
 CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF, 
     RunOn = c("FirstConfirmed.Per100K", "pastwk.avg.casesperday.Per100K"),
-    SplitOn = "Site", DaysRegressed = 21)
+    SplitOn = "Site", DaysRegressed = 7)
 ```
+
 ```{r}
 library(tidyr)
 library(plotly)

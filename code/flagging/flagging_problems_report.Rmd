@@ -10,13 +10,19 @@ output:
     keep_tex: true
 ---
 
-This analysis looks to show three issues in the DHS wastewater and case flagging methods.
-The department of health services has created flagging methods to to predicatively warn of 
-spikes in Wisconsin community's to better inform decision making policy. 
-[add explanation of the two flags].
+Outline:
 
-We found three principle issues in these methods. some of these issues can be solved 
-by preprocessing the data but some require changing the methods.
+-   Describe report
+-   Describe viz used in analysis
+-   flagging noise
+-   Trend
+-   Day of week
+
+
+This analysis looks to show three issues in the DHS wastewater and case flagging methods.
+These methods have too narrow a scope leading to missing long term trends and over weighting
+fluctuations based on noise. Furthermore the case data has a strong day of the week effect 
+leading to unjustified flags being created.
 
 ```{r set up markdown settings, include =FALSE}
 knitr::opts_chunk$set(
@@ -38,7 +44,8 @@ knitr::knit_hooks$set(plot = function(x, options) {  # set new plot hook ...
 })
 ```
 
-```{r, out.width= "65%", fig.align = 'right', fig.cap = "Wastewater data with flagged days and quantintle info", fig.align="right", wrapfigure = list("R", .7)}
+```{r, out.width= "70%", fig.align = 'right', fig.cap = "Wastewater with flagged dates and quantintle info", fig.align="right", wrapfigure = list("R", .7)}
+#, fig.cap = "Wastewater data with flagged days and quantintle info"
 library(DSIWastewater)
 #load WasteWater_data into the environment
 data(WasteWater_data, package = "DSIWastewater")
@@ -71,29 +78,43 @@ Full_wasteFlags <- FULL_reg_DF[,c("WWTP", "date",
                                   "ntile",
                                   "cdc_flag",
                                   "flag_ntile",
-                                  "flag_ntile_pval")]
+                                  "flag_ntile_pval",
+                                  "modeled_percentchange",
+                                  "lmreg_sig")]
 
 
 library(ggplot2)
 library(dplyr)
 
-Full_wasteFlags%>%
+Quantile_Viz_Plot <- Full_wasteFlags%>%
   ggplot(aes(x = date))+
-  geom_point(aes(y = sars_cov2_adj_load_log10))+
-  geom_line(aes(y = ntile))+
-  geom_point(aes(y = sars_cov2_adj_load_log10,
+  geom_point(aes(y = 10^(sars_cov2_adj_load_log10)))+
+  geom_line(aes(y = 10^(ntile), color = "80th percentile of last 90 days"))+
+  geom_point(aes(y = 10^(sars_cov2_adj_load_log10),
                  color = "CDC flag"), 
              data = filter(Full_wasteFlags, cdc_flag == 1))+
-  ylab("Log 10 Wastewater messurement (Need beter lable)")+
+  ylab("Covid-19 gene copy per 100k")+
+  scale_y_log10()+
   scale_x_date(limits = c(as.Date("2021-01-01"),
                           max(Full_wasteFlags$date)))
+
+
+Quantile_Viz_Plot
 ```
+# The Data
 
-# Noise
 
-both flagging methods have are highly effected by the latent noise in the data. creating flags
-from outliers in the signal. Because the flags are aiming to predict spikes in the community that
-last for many measurements the expected behavior is for flags to happen in sequence. on the right is the wastewater
+The department of health services has created flagging methods to to predicatively warn of 
+spikes in Wisconsin community's to better inform decision making policy. 
+
+## Wastewater method
+
+The wastewater method uses a two step system to identify potential warning signs in the data. 
+The core method is using a five measurement rolling regression to calculate an estimated percent 
+change over the time period. Then if it is estimated to be over 100% increase it is logged as a 
+CDC flag. Then if the measurement is in the 80th percentile of the last 90 days it is logged as a flag. to the right is a visualization we will be using heavily in this report. It shows the wastewater data
+measurements with the color showing the flags with a line showing the quantile info. The flags are the
+red points above the line.
 
 ```{r, out.width= "65%", fig.align = 'right', fig.cap = "Case slope", fig.align="right", wrapfigure = list("R", .7)}
 library(DSIWastewater)
@@ -121,12 +142,46 @@ CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF,
 
 library(tidyr)
 
-CaseRegressionOutput%>%
+Case_Flag_Viz_Plot <- CaseRegressionOutput%>%
   select(date, Method, lmreg_slope)%>%
   pivot_wider(names_from = Method, values_from = lmreg_slope)%>%
   ggplot(aes(x = date))+
   geom_line(aes(y = FirstConfirmed.Per100K, color = "cases slope"))+
   geom_line(aes(y = pastwk.avg.casesperday.Per100K, color = "smooth cases slope"))+
-  geom_hline(yintercept = 5)
+  geom_hline(yintercept = 5)+
+  ylab("7 Slope")
+
+Case_Flag_Viz_Plot
+
+
+
+# both flagging methods have are highly effected by the latent noise in the data. creating flags
+# from outliers in the signal. Because the flags are aiming to predict spikes in the community that
+# last for many measurements the expected behavior is for flags to happen in sequence. on the right is the wastewater
 ```
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Adipiscing bibendum est ultricies integer. Eu nisl nunc mi ipsum faucibus vitae aliquet nec ullamcorper. Vestibulum sed arcu non odio euismod lacinia at. Magna eget est lorem ipsum dolor sit amet consectetur. Sodales ut eu sem integer. Blandit cursus risus at ultrices mi. Mauris rhoncus aenean vel elit scelerisque mauris pellentesque pulvinar. Consectetur a erat nam at lectus urna. Malesuada fames ac turpis egestas maecenas pharetra. Risus quis varius quam quisque id diam vel. At augue eget arcu dictum. Odio morbi quis commodo odio aenean sed adipiscing diam donec. Convallis convallis tellus id interdum velit laoreet id donec ultrices. Leo urna molestie at elementum. Nulla pharetra diam sit amet nisl suscipit adipiscing. Dictum varius duis at consectetur lorem. Massa placerat duis ultricies lacus sed. Turpis massa tincidunt dui ut.
+
+## Case method
+
+The case method uses a 7 day rolling regression to create flags. If the regressed slope is over 5
+It is logged as a case flag. Because the slopes are roughly continuous case flags are often repeated
+bringing use of the slope switch flag which logged only the first case flag in a sequence. On the right is a visualization we will use in this report. It shows the case slopes vs the seven day smoothing slope data with a horizontal line showing the threshold to be classified as a case flag
+
+# Trend
+
+# Noise
+
+
+```{r out.width= "65%", fig.align = 'right', fig.cap = "Zoomed in case slope plot", fig.align="right", wrapfigure = list("R", .7)}
+
+Case_Flag_Viz_Plot+
+  scale_x_date(limits = c(as.Date("2021-08-10"),
+                          as.Date("2021-10-01")))+
+  scale_y_continuous(limits = c(-8, 10))+
+  geom_vline(aes(xintercept = date, color = "Friday"),
+             data = filter(CaseRegressionOutput, weekdays(date) == "Friday"))
+```
+
+# Day of week effect
+
+The issue is subtle in how it effects the flagging method but close examination clearly shows a strong effect. in this time period we show a strong effect with the flag on September 17 being partial or
+entirely generated by this effect.

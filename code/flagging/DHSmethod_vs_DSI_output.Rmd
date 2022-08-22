@@ -40,6 +40,12 @@ CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF,
 
 CaseFlags <- CaseRegressionOutput%>%
   ClassifyCaseRegression(slopeThreshold = 5)
+
+
+CaseFlags[(Example_NtileFlags$date %in% unique(DSI_NtileFlags$date)),]
+
+Full_wasteFlags[(Full_wasteFlags$date %in% unique(Example_NtileFlags$date))&
+                  !(Full_wasteFlags$date %in% unique(DSI_NtileFlags$date)),]
 ```
 
 ```{r case flags compare}
@@ -60,6 +66,11 @@ CaseFlags%>%
 #for Madison, for all sites
 #look to see if differences are caused by edge
 #
+
+Example_NtileFlags[(Example_NtileFlags$date %in% unique(DSI_NtileFlags$date)),]
+
+Full_wasteFlags[(Full_wasteFlags$date %in% unique(Example_NtileFlags$date))&
+                  !(Full_wasteFlags$date %in% unique(DSI_NtileFlags$date)),]
 ```
 
 ```{r waste flags}
