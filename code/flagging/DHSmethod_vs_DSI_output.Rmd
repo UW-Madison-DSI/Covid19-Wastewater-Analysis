@@ -6,6 +6,7 @@ output: html_document
 ---
 ```{r create case data in right format}
 library(DSIWastewater)
+library(dplyr)
 ```
 
 
@@ -54,6 +55,11 @@ Example_Cases_DF%>%
 
 CaseFlags%>%
   filter(slope_switch_flag==1)
+
+#get list of flag difference
+#for Madison, for all sites
+#look to see if differences are caused by edge
+#
 ```
 
 ```{r waste flags}

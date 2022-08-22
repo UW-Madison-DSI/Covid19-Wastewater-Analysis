@@ -1,7 +1,132 @@
 ---
-title: "Flagging problems doc"
-author: "Marlin"
-date: "2022-08-19"
-output: html_document
+header-includes:
+  - \usepackage{wrapfig}
+title: "problems in the DHS Covid-19 Flagging methods"
+author:
+- Marlin Lee, Steve Goldstein, Kyllan Wunder, Abe Megahed
+- "University of Wisconsin Data Science Institute - August, 2022"
+output:
+  pdf_document:
+    keep_tex: true
 ---
 
+This analysis looks to show three issues in the DHS wastewater and case flagging methods.
+The department of health services has created flagging methods to to predicatively warn of 
+spikes in Wisconsin community's to better inform decision making policy. 
+[add explanation of the two flags].
+
+We found three principle issues in these methods. some of these issues can be solved 
+by preprocessing the data but some require changing the methods.
+
+```{r set up markdown settings, include =FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE
+)
+
+defOut <- knitr::knit_hooks$get("plot")  # save the default plot hook 
+knitr::knit_hooks$set(plot = function(x, options) {  # set new plot hook ...
+  x <- defOut(x, options)  # first apply the default hook
+  if(!is.null(options$wrapfigure)) {  # then, if option wrapfigure is given ...
+    # create the new opening string for the wrapfigure environment ...
+    wf <- sprintf("\\begin{wrapfigure}{%s}{%g\\textwidth}", options$wrapfigure[[1]], options$wrapfigure[[2]])
+    x  <- gsub("\\begin{figure}", wf, x, fixed = T)  # and replace the default one with it.
+    x  <- gsub("{figure}", "{wrapfigure}", x, fixed = T)  # also replace the environment ending
+  }
+  return(x)
+})
+```
+
+```{r, out.width= "65%", fig.align = 'right', fig.cap = "Wastewater data with flagged days and quantintle info", fig.align="right", wrapfigure = list("R", .7)}
+library(DSIWastewater)
+#load WasteWater_data into the environment
+data(WasteWater_data, package = "DSIWastewater")
+
+#restrict Waste data to only Madison data
+baseWaste_DF <- WasteWater_data[WasteWater_data$wwtp_name == "Madison MSD WWTF",]
+
+#get DF into format for buildRegressionEstimateTable
+baseWaste_DF <-  buildWasteAnalysisDF(baseWaste_DF)
+
+#add quantile data to merge with the regression results
+Quantiles_DF <- MakeQuantileColumns(baseWaste_DF,
+                                    .8, 90,
+                                    "sars_cov2_adj_load_log10")
+
+#Get 5 day rolling regression of data
+CDCMethod <- buildRegressionEstimateTable(baseWaste_DF, 
+                                          PSigTest=FALSE)
+#merge the regression DF and the quantile DF to get info for 
+
+FULL_reg_DF <- dplyr::full_join(Quantiles_DF, CDCMethod,
+                                by = c("WWTP", "date"))
+
+#create flags described in @return
+FULL_reg_DF <- ClassifyQuantileFlagRegression(FULL_reg_DF)
+
+#return only flags and type columns 
+Full_wasteFlags <- FULL_reg_DF[,c("WWTP", "date", 
+                                  "sars_cov2_adj_load_log10",
+                                  "ntile",
+                                  "cdc_flag",
+                                  "flag_ntile",
+                                  "flag_ntile_pval")]
+
+
+library(ggplot2)
+library(dplyr)
+
+Full_wasteFlags%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y = sars_cov2_adj_load_log10))+
+  geom_line(aes(y = ntile))+
+  geom_point(aes(y = sars_cov2_adj_load_log10,
+                 color = "CDC flag"), 
+             data = filter(Full_wasteFlags, cdc_flag == 1))+
+  ylab("Log 10 Wastewater messurement (Need beter lable)")+
+  scale_x_date(limits = c(as.Date("2021-01-01"),
+                          max(Full_wasteFlags$date)))
+```
+
+# Noise
+
+both flagging methods have are highly effected by the latent noise in the data. creating flags
+from outliers in the signal. Because the flags are aiming to predict spikes in the community that
+last for many measurements the expected behavior is for flags to happen in sequence. on the right is the wastewater
+
+```{r, out.width= "65%", fig.align = 'right', fig.cap = "Case slope", fig.align="right", wrapfigure = list("R", .7)}
+library(DSIWastewater)
+
+#load Case_data into the environment
+data(Case_data, package = "DSIWastewater")
+
+
+#restrict Case data to only Madison data
+Case_DF <- Case_data[Case_data$Site == "Madison",]
+
+
+#restrict Case data to dates after 2021-02-01
+Case_DF <- Case_DF[Case_DF$date  >= as.Date("2021-02-01"),]
+
+
+#get the case flags
+Case_DF <- buildCaseAnalysisDF(Case_DF)
+
+
+CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF, 
+    RunOn = c("FirstConfirmed.Per100K", "pastwk.avg.casesperday.Per100K"),
+    SplitOn = "Site", DaysRegressed = 7)
+
+
+library(tidyr)
+
+CaseRegressionOutput%>%
+  select(date, Method, lmreg_slope)%>%
+  pivot_wider(names_from = Method, values_from = lmreg_slope)%>%
+  ggplot(aes(x = date))+
+  geom_line(aes(y = FirstConfirmed.Per100K, color = "cases slope"))+
+  geom_line(aes(y = pastwk.avg.casesperday.Per100K, color = "smooth cases slope"))+
+  geom_hline(yintercept = 5)
+```
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Adipiscing bibendum est ultricies integer. Eu nisl nunc mi ipsum faucibus vitae aliquet nec ullamcorper. Vestibulum sed arcu non odio euismod lacinia at. Magna eget est lorem ipsum dolor sit amet consectetur. Sodales ut eu sem integer. Blandit cursus risus at ultrices mi. Mauris rhoncus aenean vel elit scelerisque mauris pellentesque pulvinar. Consectetur a erat nam at lectus urna. Malesuada fames ac turpis egestas maecenas pharetra. Risus quis varius quam quisque id diam vel. At augue eget arcu dictum. Odio morbi quis commodo odio aenean sed adipiscing diam donec. Convallis convallis tellus id interdum velit laoreet id donec ultrices. Leo urna molestie at elementum. Nulla pharetra diam sit amet nisl suscipit adipiscing. Dictum varius duis at consectetur lorem. Massa placerat duis ultricies lacus sed. Turpis massa tincidunt dui ut.

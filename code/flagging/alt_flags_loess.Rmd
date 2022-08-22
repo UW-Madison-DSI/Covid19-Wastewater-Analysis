@@ -60,6 +60,7 @@ Full_wasteFlags <- FULL_reg_DF[,c("WWTP", "date",
 ```
 
 ```{r}
+library(dplyr)
 library(ggplot2)
 a <- Full_wasteFlags%>%
   ggplot(aes(x = date))+

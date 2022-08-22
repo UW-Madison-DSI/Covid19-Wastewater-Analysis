@@ -39,7 +39,7 @@ Case_DF <- buildCaseAnalysisDF(Case_DF)
 
 CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF, 
     RunOn = c("FirstConfirmed.Per100K", "pastwk.avg.casesperday.Per100K"),
-    SplitOn = "Site", DaysRegressed = 7)
+    SplitOn = "Site", DaysRegressed = 21)
 ```
 ```{r}
 library(tidyr)
@@ -68,20 +68,6 @@ ggplotly(SlopeComp)
 cor(Plot_DF$FirstConfirmed.Per100K, 
     Plot_DF$pastwk.avg.casesperday.Per100K,
     use = "pairwise.complete.obs")
-
-
-#Flagging problems doc:
-#mainly catching noise: Both
-#ignoring longer trends: Both
-#day of week effect: Case
-
-#remove period
-#increase window
-#add period term
-#smooth data
-#remove case outlier
-#?get longer trend first, backtrack to short term
-#remove outlier data not smooth
 ```
 
 ```{r}
@@ -89,13 +75,13 @@ library(dplyr)
 
 BaseCaseFlagOutput <- CaseRegressionOutput%>%
   filter(Method == "FirstConfirmed.Per100K")%>%
-  ClassifyCaseRegression(slopeThreshold = 5)%>%
+  ClassifyCaseRegression(slopeThreshold = 2)%>%
   select(Site, date, case_flag, slope_switch_flag)%>%
   rename(Base_case_flag = case_flag, Base_switch_flag = slope_switch_flag)
 
 AltCaseFlagOutput <- CaseRegressionOutput%>%
   filter(Method == "pastwk.avg.casesperday.Per100K")%>%
-  ClassifyCaseRegression(slopeThreshold = 1)%>%
+  ClassifyCaseRegression(slopeThreshold = 0)%>%
   select(Site, date, case_flag, slope_switch_flag)%>%
   rename(Alt_case_flag = case_flag, Alt_switch_flag = slope_switch_flag)
 
@@ -104,6 +90,8 @@ Full_Flag_DF <- inner_join(BaseCaseFlagOutput, AltCaseFlagOutput, by = c("date",
 #25	6	9
 #BaseCaseFlagOutput,AltCaseFlagOutput
 Count_Flag(Full_Flag_DF, group = c("Site"))
+
+mean(AltCaseFlagOutput$Base_case_flag)
 ```
 
 
