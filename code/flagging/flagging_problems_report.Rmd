@@ -1,13 +1,13 @@
 ---
 header-includes:
-  - \usepackage{wrapfig}
+- \usepackage{wrapfig}
 title: "problems in the DHS Covid-19 Flagging methods"
 author:
 - Marlin Lee, Steve Goldstein, Kyllan Wunder, Abe Megahed
 - "University of Wisconsin Data Science Institute - August, 2022"
 output:
   pdf_document:
-    keep_tex: true
+    keep_tex: true     
 ---
 
 Outline:
@@ -28,24 +28,29 @@ leading to unjustified flags being created.
 knitr::opts_chunk$set(
 	message = FALSE,
 	warning = FALSE,
-	echo = FALSE
+	echo = FALSE,
+	#fig.pos = 'H',
+	fig.align = 'Right'#,
+	#out.width= "65%"
 )
 
-defOut <- knitr::knit_hooks$get("plot")  # save the default plot hook 
+defOut <- knitr::knit_hooks$get("plot")  # save the default plot hook
+
 knitr::knit_hooks$set(plot = function(x, options) {  # set new plot hook ...
+  
   x <- defOut(x, options)  # first apply the default hook
-  if(!is.null(options$wrapfigure)) {  # then, if option wrapfigure is given ...
-    # create the new opening string for the wrapfigure environment ...
-    wf <- sprintf("\\begin{wrapfigure}{%s}{%g\\textwidth}", options$wrapfigure[[1]], options$wrapfigure[[2]])
-    x  <- gsub("\\begin{figure}", wf, x, fixed = T)  # and replace the default one with it.
-    x  <- gsub("{figure}", "{wrapfigure}", x, fixed = T)  # also replace the environment ending
-  }
+  # create the new opening string for the wrapfigure environment ...
+  wf <- sprintf("\\begin{wrapfigure}{%s}{%g\\textwidth}", "R", .7)
+  
+  x  <- gsub("\\begin{figure}", wf, x, fixed = T)  # and replace the default one with it.
+  
+  x  <- gsub("{figure}", "{wrapfigure}", x, fixed = T)  # also replace the environment ending
   return(x)
 })
 ```
 
-```{r, out.width= "70%", fig.align = 'right', fig.cap = "Wastewater with flagged dates and quantintle info", fig.align="right", wrapfigure = list("R", .7)}
-#, fig.cap = "Wastewater data with flagged days and quantintle info"
+```{r,  fig.cap = "Wastewater with flagged dates and quantintle info"}
+
 library(DSIWastewater)
 #load WasteWater_data into the environment
 data(WasteWater_data, package = "DSIWastewater")
@@ -62,7 +67,7 @@ Quantiles_DF <- MakeQuantileColumns(baseWaste_DF,
                                     "sars_cov2_adj_load_log10")
 
 #Get 5 day rolling regression of data
-CDCMethod <- buildRegressionEstimateTable(baseWaste_DF, 
+CDCMethod <- buildRegressionEstimateTable(baseWaste_DF,
                                           PSigTest=FALSE)
 #merge the regression DF and the quantile DF to get info for 
 
@@ -86,10 +91,11 @@ Full_wasteFlags <- FULL_reg_DF[,c("WWTP", "date",
 library(ggplot2)
 library(dplyr)
 
+#"80th percentile of last 90 days"
 Quantile_Viz_Plot <- Full_wasteFlags%>%
   ggplot(aes(x = date))+
   geom_point(aes(y = 10^(sars_cov2_adj_load_log10)))+
-  geom_line(aes(y = 10^(ntile), color = "80th percentile of last 90 days"))+
+  geom_line(aes(y = 10^(ntile), color = "Filtered CDC Flag"))+
   geom_point(aes(y = 10^(sars_cov2_adj_load_log10),
                  color = "CDC flag"), 
              data = filter(Full_wasteFlags, cdc_flag == 1))+
@@ -101,6 +107,8 @@ Quantile_Viz_Plot <- Full_wasteFlags%>%
 
 Quantile_Viz_Plot
 ```
+\
+
 # The Data
 
 
@@ -116,7 +124,7 @@ CDC flag. Then if the measurement is in the 80th percentile of the last 90 days 
 measurements with the color showing the flags with a line showing the quantile info. The flags are the
 red points above the line.
 
-```{r, out.width= "65%", fig.align = 'right', fig.cap = "Case slope", fig.align="right", wrapfigure = list("R", .7)}
+```{r, fig.cap = "Case slope"}
 library(DSIWastewater)
 
 #load Case_data into the environment
@@ -149,16 +157,12 @@ Case_Flag_Viz_Plot <- CaseRegressionOutput%>%
   geom_line(aes(y = FirstConfirmed.Per100K, color = "cases slope"))+
   geom_line(aes(y = pastwk.avg.casesperday.Per100K, color = "smooth cases slope"))+
   geom_hline(yintercept = 5)+
-  ylab("7 Slope")
+  ylab("7 day estimated slope (Cases per day)")
 
 Case_Flag_Viz_Plot
-
-
-
-# both flagging methods have are highly effected by the latent noise in the data. creating flags
-# from outliers in the signal. Because the flags are aiming to predict spikes in the community that
-# last for many measurements the expected behavior is for flags to happen in sequence. on the right is the wastewater
 ```
+\
+
 
 ## Case method
 
@@ -166,12 +170,67 @@ The case method uses a 7 day rolling regression to create flags. If the regresse
 It is logged as a case flag. Because the slopes are roughly continuous case flags are often repeated
 bringing use of the slope switch flag which logged only the first case flag in a sequence. On the right is a visualization we will use in this report. It shows the case slopes vs the seven day smoothing slope data with a horizontal line showing the threshold to be classified as a case flag
 
+
+
+```{r}
+Full_wasteFlags%>%
+  mutate(Date_Case = case_when(
+    date < as.Date("2021-06-01") ~ 1,
+    date > as.Date("2022-01-01") ~ 3,
+    TRUE ~ 2
+  ))%>%
+  group_by(Date_Case)%>%
+  summarise(AVG_CDC_Flag = 100*sum(cdc_flag)/n(), AVG_flag_ntile = 100*sum(flag_ntile)/n())
+```
+\
+
 # Trend
+
+The largest problem is a structural one. Both flagging methods rely on short term
+information to try to detect long term changes in the data. This inherently means
+a lack of confidence in the flags because in the short term there is no difference
+between normal fluctuation and start of a spike. The 90 day rolling 80th percentile
+filter for the waste water flags is a good first step of correcting this. 
+
+
+```{r fig.cap = "waste counts", out.height="200%}
+
+linedata <- data.frame(x = c(as.Date("2021-05-1"), as.Date("2021-05-1"), 
+                             as.Date("2021-08-1"), as.Date("2021-08-1"),
+                             as.Date("2021-05-1")),
+                       y = c(2, 150, 150, 2, 2))
+
+A <- Quantile_Viz_Plot+
+  geom_path(data = linedata, aes(x, y),
+            linetype = "solid")
+
+B <- Quantile_Viz_Plot+
+  scale_x_date(limits = c(as.Date("2021-05-1"),
+                          as.Date("2021-08-1")))+
+  scale_y_continuous(limits = c(2, 150))
+
+library(patchwork)
+
+A/B
+```
+
+\
 
 # Noise
 
+Because Covid-19 spikes happen over many measurements flagging method should have
+auto correlated flags. This is shown in the case flag where the flags are extremely
+auto correlated. If this is not the case it can be a sign that the method 
+is strongly effected by natural variance in the system. The right plot shows that 
+many of the CDC flags are created by natural jumps in the measurement not caused 
+by any underlying trend. The quantile filter helps filter some of the more egregious
+flags but if the measurement is especially unusual high it can pass the filter
+even if the rest of the measurements fall well below the line.
 
-```{r out.width= "65%", fig.align = 'right', fig.cap = "Zoomed in case slope plot", fig.align="right", wrapfigure = list("R", .7)}
+
+
+
+```{r fig.cap = "Zoomed in case slope plot"}
 
 Case_Flag_Viz_Plot+
   scale_x_date(limits = c(as.Date("2021-08-10"),
@@ -181,7 +240,11 @@ Case_Flag_Viz_Plot+
              data = filter(CaseRegressionOutput, weekdays(date) == "Friday"))
 ```
 
+\
+
 # Day of week effect
 
-The issue is subtle in how it effects the flagging method but close examination clearly shows a strong effect. in this time period we show a strong effect with the flag on September 17 being partial or
-entirely generated by this effect.
+Case data is known to have a day of the week effect where regardless of trends some days have more reported cases then others. It is not immediately obvious that this would effect the output of the 7 day regression but the plot on the right clearly shows that this effect causes Fridays estimated slope
+to be larger. On September 17th this effect combined with an unusual high measurement causes
+it to labeled as a flag. This effect is removed by using a 7 day smoothing before regression or by
+using a regression window larger then 7 days.
