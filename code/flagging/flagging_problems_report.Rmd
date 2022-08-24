@@ -16,6 +16,7 @@ fluctuations based on noise. Furthermore the case data has a strong day of the w
 leading to unjustified flags being created.
 
 ```{r set up markdown settings, include =FALSE}
+#Explain issues above
 knitr::opts_chunk$set(
 	message = FALSE,
 	warning = FALSE,
@@ -170,8 +171,6 @@ It is logged as a case flag. Because the slopes are roughly continuous case flag
 bringing use of the slope switch flag which logged only the first case flag in a sequence. On the right is a visualization we will use in this report. It shows the case slopes vs the seven day smoothing slope data with a horizontal line showing the threshold to be classified as a case flag
 
 
-
-
 ```{r, eval=FALSE}
 Full_wasteFlags%>%
   mutate(Date_Case = case_when(
@@ -185,7 +184,7 @@ Full_wasteFlags%>%
 
 
 
-# Trend
+# Flags miss long term trend
 
 The largest problem is a structural one. Both flagging methods rely on short term
 information to try to detect long term changes in the data. This inherently means
@@ -204,26 +203,13 @@ issue.
 \pagebreak
 
 
-```{r fig.cap = "waste counts", fig.height=10, PlotHeight = 75}
-#Plot.size = 1
-
-linedata <- data.frame(x = c(as.Date("2021-05-1"), as.Date("2021-05-1"), 
-                             as.Date("2021-08-1"), as.Date("2021-08-1"),
-                             as.Date("2021-05-1")),
-                       y = c(2, 150, 150, 2, 2))
-
-A <- Quantile_Viz_Plot+
-  geom_path(data = linedata, aes(x, y),
-            linetype = "solid")
-
-B <- Quantile_Viz_Plot+
+```{r fig.cap = "waste counts", PlotHeight = 15}
+  
+Quantile_Viz_Plot+
   scale_x_date(limits = c(as.Date("2021-05-1"),
                           as.Date("2021-08-1")))+
   scale_y_continuous(limits = c(2, 150))
 
-library(patchwork)
-
-A/B
 ```
 
 
@@ -237,8 +223,6 @@ many of the CDC flags are created by natural jumps in the measurement not caused
 by any underlying trend. The quantile filter helps filter some of the more egregious
 flags but if the measurement is especially unusual high it can pass the filter
 even if the rest of the measurements fall well below the line.
-
-\pagebreak
 
 ```{r fig.cap = "Zoomed in case slope plot", PlotHeight = 15}
 
