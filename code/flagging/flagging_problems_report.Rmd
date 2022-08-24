@@ -10,9 +10,6 @@ output:
     keep_tex: true     
 ---
 
-Outline:
-
-
 This analysis looks to show three issues in the DHS wastewater and case flagging methods.
 These methods have too narrow a scope leading to missing long term trends and over weighting
 fluctuations based on noise. Furthermore the case data has a strong day of the week effect 
@@ -35,8 +32,8 @@ knitr::knit_hooks$set(plot = function(x, options) {  # set new plot hook ...
   
   x <- defOut(x, options)  # first apply the default hook
   # create the new opening string for the wrapfigure environment ...
-  wf <- sprintf("\\noindent\\begin{wrapfigure}[%g]{%s}{%g\\textwidth}", options$PlotHeight,
-                "R", options$Plot.size)
+  wf <- sprintf("\\noindent\\begin{wrapfigure}[%g]{%s}{%g\\textwidth}", 
+                options$PlotHeight, "R", options$Plot.size)
   
   x  <- gsub("\\begin{figure}", wf, x, fixed = T)  # and replace the default one with it.
   
@@ -47,7 +44,14 @@ knitr::knit_hooks$set(plot = function(x, options) {  # set new plot hook ...
 sprintf("\\noindent\\begin{wrapfigure}{%s}{%g\\textwidth}", "R", .7)
 ```
 
-```{r,  fig.cap = "Wastewater with flagged dates and quantintle info"}
+# The Data
+
+
+The department of health services has created flagging methods to to predicatively warn of 
+spikes in Wisconsin communities to better inform decision making policy. 
+
+
+```{r,  fig.cap = "Wastewater with flagged dates and quantintle info", PlotHeight = 25}
 
 library(DSIWastewater)
 #load WasteWater_data into the environment
@@ -105,14 +109,9 @@ Quantile_Viz_Plot <- Full_wasteFlags%>%
 
 Quantile_Viz_Plot
 ```
-\
 
 
-# The Data
 
-
-The department of health services has created flagging methods to to predicatively warn of 
-spikes in Wisconsin community's to better inform decision making policy. 
 
 ## Wastewater method
 
@@ -122,6 +121,9 @@ change over the time period. Then if it is estimated to be over 100% increase it
 CDC flag. Then if the measurement is in the 80th percentile of the last 90 days it is logged as a flag. to the right is a visualization we will be using heavily in this report. It shows the wastewater data
 measurements with the color showing the flags with a line showing the quantile info. The flags are the
 red points above the line.
+
+\pagebreak
+
 
 ```{r, fig.cap = "Case slope", PlotHeight = 17}
 library(DSIWastewater)
@@ -161,8 +163,6 @@ Case_Flag_Viz_Plot <- CaseRegressionOutput%>%
 Case_Flag_Viz_Plot
 ```
 
-
-
 ## Case method
 
 The case method uses a 7 day rolling regression to create flags. If the regressed slope is over 5
@@ -190,10 +190,10 @@ Full_wasteFlags%>%
 The largest problem is a structural one. Both flagging methods rely on short term
 information to try to detect long term changes in the data. This inherently means
 a lack of confidence in the flags because in the short term there is no difference
-between normal fluctuation and start of a spike. 
+between normal fluctuation and and the start of a spike.
 
 A single case flag is suspect but 5 case flags in a row is much more likely to 
-repersent a true rise in covid-19 in the population. This confidence is not currently
+represent a true rise in Covid-19 in the population. This confidence is not currently
 being represented in the system hurting effectiveness. 
 
 The wastewater flagging does a better job overall then the case method due to
@@ -201,7 +201,9 @@ The 90 day rolling 80th percentile filter. however the CDC method is very bad
 at detecting long term trends meaning that the filter only masks the underlying
 issue.
 
-\
+\pagebreak
+
+
 ```{r fig.cap = "waste counts", fig.height=10, PlotHeight = 75}
 #Plot.size = 1
 
@@ -223,7 +225,6 @@ library(patchwork)
 
 A/B
 ```
-\
 
 
 # Noise
@@ -231,16 +232,15 @@ A/B
 Because Covid-19 spikes happen over many measurements flagging method should have
 auto correlated flags. This is shown in the case flag where the flags are extremely
 auto correlated. If this is not the case it can be a sign that the method 
-is strongly effected by natural variance in the system. The right plot shows that 
+is strongly affected by natural variance in the system. The right plot shows that 
 many of the CDC flags are created by natural jumps in the measurement not caused 
 by any underlying trend. The quantile filter helps filter some of the more egregious
 flags but if the measurement is especially unusual high it can pass the filter
 even if the rest of the measurements fall well below the line.
 
+\pagebreak
 
-
-\
-```{r fig.cap = "Zoomed in case slope plot", PlotHeight = 20}
+```{r fig.cap = "Zoomed in case slope plot", PlotHeight = 15}
 
 Case_Flag_Viz_Plot+
   scale_x_date(limits = c(as.Date("2021-08-10"),
@@ -248,13 +248,12 @@ Case_Flag_Viz_Plot+
   scale_y_continuous(limits = c(-8, 10))+
   geom_vline(aes(xintercept = date, color = "Friday"),
              data = filter(CaseRegressionOutput, weekdays(date) == "Friday"))
-```
-\
 
+```
 
 # Day of week effect
 
-Case data is known to have a day of the week effect where regardless of trends some days have more reported cases then others. It is not immediately obvious that this would effect the output of the 7 day regression but the plot on the right clearly shows that this effect causes Fridays estimated slope
+Case data is known to have a day of the week effect where regardless of trends some days have more reported cases then others. It is not immediately obvious that this would affect the output of the 7 day regression but the plot on the right clearly shows that this effect causes Fridays estimated slope
 to be larger. On September 17th this effect combined with an unusual high measurement causes
-it to labeled as a flag. This effect is removed by using a 7 day smoothing before regression or by
-using a regression window larger then 7 days.
+It is labeled as a flag. This effect is removed by using a 7 day smoothing before regression or by
+using a regression window larger than 7 days.
