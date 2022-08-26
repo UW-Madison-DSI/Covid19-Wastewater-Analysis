@@ -1,0 +1,432 @@
+---
+title: "Heuristic exploration of the relationship between cases and viral load"
+author: "Marlin Lee"
+date: "1/28/2022"
+output: 
+  bookdown::html_document2: 
+    fig_width: 8
+    fig_height: 4
+    code_folding: hide
+bibliography: references.bib  
+editor_options: 
+  chunk_output_type: inline
+---
+
+**This report looks is an update to the analysis shown on 1/14/2022. Most steps are the same with tweaking due to different data and outlier procedure**
+
+at exploring the relationship between wastewater and cases. 
+There are four components to this analysis.
+
+  1) Removing putative outliers
+  
+  2) Binning analysis
+  
+  3) Smoothing signal
+  
+  4) Statistical analysis
+
+  This report does not present any final answers but presents some very convincing heuristics.
+
+
+
+```{r set up markdown settings, echo=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+
+```{r Start enviroment, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+library(dplyr)
+library(ggplot2)
+library(lmtest)
+library(lubridate)
+library(limma)
+library(plotly)
+library(gridExtra)
+library(zoo)
+library(formattable)
+#Data Files and prep work
+
+```
+
+
+
+```{r helpful data manipulations, include = FALSE}
+
+#Custom_color_scale
+PlotColors <- c("#F8766D", "#00BFC4", "#4057A2", "#999999", "#800080", "#D6544B")
+PlotObjects <- c("Wastewater","Cases","Seven Day MA Cases","Wastewater outlier","SLD Cases","loess Wastewater")
+ColorRule <- scale_color_manual(
+  values = setNames(as.list(PlotColors),PlotObjects))
+
+
+SecondAxisFormat <- list(#Second Axis components
+  tickfont = list(size=11.7),
+  titlefont=list(size=14.6),
+  overlaying = "y",
+  nticks = 4,
+  dtick = 5e5,
+  side = "right",
+  title = "Wastewater (GC/L)",
+  exponentformat = "e"
+)
+
+
+```
+
+"data Used from DSIWastewater package"
+
+
+```{r DF Set Up, echo=FALSE}
+library(DSIWastewater)
+data(WasteWater_data, package = "DSIWastewater")
+data(Case_data, package = "DSIWastewater")
+
+#Importing the Madison case data
+LatCaseDF <- Case_data%>% 
+  rename(Cases = FirstConfirmed,
+         Date = date)%>%
+  filter(Site == "Madison")%>%
+  arrange(Date)%>%
+  mutate(SevenDayMACases = rollmean(Cases, 7, align = "right",
+                            na.rm = TRUE,fill=NA))%>%
+  filter(Date>ymd("2020-9-10"))%>%
+  select(Date, Site, Cases, SevenDayMACases)
+
+#Importing the Madison waste water data
+LIMSFullDF <- WasteWater_data%>%
+  rename(Site = wwtp_name,
+         Date = sample_collect_date,
+         N1 = n1_sars_cov2_conc,
+         N2 = n2_sars_cov2_conc)%>%
+  filter(Site == "Madison MSD WWTF")%>%
+  mutate(Site = "Madison",
+         Date = as.Date(Date,format="%m/%d/%Y"),
+         population_served = as.numeric(gsub(",", "", population_served)),
+         GeoMean = sqrt(N1 * N2),
+         GeoMean_Per_cap  = (GeoMean * average_flow_rate) / population_served,
+         sars_cov2_adj_load = GeoMean_Per_cap)%>%
+  select(Date, Site, sars_cov2_adj_load)
+
+#joining the two data frames together
+FullDF <- full_join(LatCaseDF,LIMSFullDF, by = c("Date","Site"))
+```
+
+# Data: The first look
+
+The two data sets used in this analysis are the Madison case data sourced from the Wisconsin DHS and wastewater  concentration data produced by the Wisconsin State Laboratory of Hygiene. This wastewater data has entries every couple of days from `r format(min(LIMSFullDF$Date), "%d %B %Y")` to `r format(max(LIMSFullDF$Date), "%d %B %Y")`.
+
+```{r First look, echo=FALSE}
+#what does the data look like? 
+FullDF%>%
+  filter(!is.na(sars_cov2_adj_load))%>%
+  head()%>%
+  formattable()
+
+#diff()
+AVGLimsSample <- LIMSFullDF%>%
+  filter(!is.na(sars_cov2_adj_load))%>%
+  pull(Date)%>%
+  sort()%>%
+  diff()%>%
+  mean()%>%
+  as.numeric()
+
+
+FullDF%>%
+  filter(!is.na(sars_cov2_adj_load))%>%
+  summarise(min(Date),max(Date))
+```
+
+The case data has a strong weekend effect so for this section we look at a seven day smoothing of cases. The simple display of the data shows the core components of this story. First, wastewater data is noisy. And that there is a clear relationship between the two signals.
+
+```{r fig.cap= 'Wastewater concentration and daily Covid-19 case data for Madison. A seven day moving average of cases is used to reduce a day of the week effect.'}
+FirstImpressionDF <- FullDF%>%
+  filter(!is.na(sars_cov2_adj_load),
+         !is.na(Cases))#Removing NA
+
+MinMaxNorm <- function(Vec, NormTerm, Base = NULL){
+  if(is.null(Base)){
+    Base <- Vec
+  }
+  maxBase = quantile(Base, .75, na.rm = TRUE)
+  minBase = quantile(Base, .25, na.rm = TRUE)
+  maxTerm = quantile(NormTerm, .75, na.rm = TRUE)
+  minTerm = quantile(NormTerm, .25, na.rm = TRUE)
+  Ret <- ((Vec-minBase)/(maxBase - minBase))*(maxTerm - minTerm) + minTerm
+}
+
+FirstImpression <- FirstImpressionDF%>%
+  ggplot(aes(x=Date))+#Data depends on time
+  geom_point(aes(y= Cases, color="Cases",info=Cases),size = 1)+
+  geom_line(aes(y=MinMaxNorm(sars_cov2_adj_load, Cases), 
+                color="Wastewater",
+                info=sars_cov2_adj_load))+#compares sars_cov2_adj_load to Cases
+  geom_line(aes(y= SevenDayMACases, 
+                color="Seven Day MA Cases",
+                info=Cases))+
+  labs(y="Reported cases")+
+  ColorRule
+
+
+ggplotly(FirstImpression)%>%
+    add_lines(x=~Date, y=FirstImpressionDF$sars_cov2_adj_load,
+            yaxis="y2", data=FirstImpressionDF, showlegend=FALSE, inherit=FALSE) %>%
+    layout(yaxis2 = SecondAxisFormat,
+           legend=list(title=list(text=''),x = 1.15, y = 0.9),
+           margin = list(l = 50, r = 75, b = 50, t = 50, pad = 4))
+
+
+#To remove weekend effects we are looking at the 7 day smoothing of cases.
+```
+  
+
+# Removing potential outliers
+
+Looking at the wastewater measurements we observe there were some points many times larger than adjacent values hinting at them being outliers. We used the adjacent 10 values on each side and marked points 2.5 standard deviations away from the group mean as outliers.
+
+```{r fig.cap= 'Wastewater concentration for Madison with potential outliers marked. Using a rolling symmetrical bin of 21 days as a sample we use 2.5 standard deviations of the bin as a metric to reject extreme points. This process is ran multiple times to get a robust process to select outliers.'}
+#default pass to IdentifyOutliers
+#method="SD", align="center", n = 5, Bin = 21, Action = "Flag"
+
+source("OutlierDetectionFuncs.R")
+
+ErrorMarkedDF <- FullDF%>%#
+    mutate(FlagedOutliers = IdentifyOutliers(sars_cov2_adj_load, Action = "Flag"),
+           #Manual flagging that method misses due to boundary effect with binning
+           NoOutlierVar = ifelse(FlagedOutliers, NA, sars_cov2_adj_load))
+
+#Split N1 into outlier and non outlier for next ggplot
+OutLierPlotDF <- ErrorMarkedDF%>%#outlier_sars_cov2_adj_load
+  mutate(outlier_sars_cov2_adj_load = ifelse(FlagedOutliers, sars_cov2_adj_load,NA))%>%
+           mutate(sars_cov2_adj_load = NoOutlierVar)
+
+OutLierPlotObject <- OutLierPlotDF%>%
+  filter(!(is.na(sars_cov2_adj_load)&is.na(outlier_sars_cov2_adj_load)))%>%
+  ggplot(aes(x=Date))+#Data depends on time 
+  geom_line(aes(y=sars_cov2_adj_load,
+                color="sars_cov2_adj_load", 
+                info = sars_cov2_adj_load))+#compares Var to Cases
+  geom_point(aes(y = outlier_sars_cov2_adj_load,
+                 color= "outlier_sars_cov2_adj_load",
+                 info = outlier_sars_cov2_adj_load))#+
+  #ColorRule
+
+#mentioned hand picked list other choices
+ggplotly(OutLierPlotObject,tooltip=c("info","Date"))%>%
+    layout(yaxis = SecondAxisFormat,
+           legend=list(title=list(text=''),x = 1.15, y = 0.9),
+           margin = list(l = 50, r = 75, b = 50, t = 50, pad = 4))
+
+#Drop Var create Var filter 
+UpdatedDF <- ErrorMarkedDF%>%
+  select(-sars_cov2_adj_load)%>%
+  rename(sars_cov2_adj_load = NoOutlierVar)
+```
+
+
+# Data smoothing
+
+The goal in this section is to smooth the data to get a similar effect without losing
+resolution.
+
+## Case smoothing
+
+A key component to this is that the relationship between sars_cov2_adj_load and Case involves a gamma distribution modeling both the time between catching Covid-19 and getting a test and the concentration of the shedded particles. We found a gamma distribution with mean 11.73 days and a standard deviation of 7.68 gives good results and matches other research [@SLDPaper].
+
+
+```{r, fig.cap= 'gamma distribution used for shedding lag distribution'}
+Mean <- 11.73
+StandardDeviation <- 7.68
+Scale = StandardDeviation^2/Mean
+Shape = Mean/Scale
+SLDWidth <- 21
+
+weights <- dgamma(1:SLDWidth, scale = Scale, shape = Shape)
+par(mar=c(4,4,4,10))
+plot(weights,  
+        main=paste("Gamma Distribution with mean =",Mean, "days,and SD =",StandardDeviation), 
+            ylab = "Weight", 
+            xlab = "Lag")
+```
+
+```{r, fig.cap= 'Madison Case data for Madison. SLD Cases is a weighted mean of cases using the gamma distribution as the weight distribution.'}
+SLDSmoothedDF <- UpdatedDF%>%
+  mutate(
+    SLDCases = c(rep(NA,SLDWidth-1), #elimination of starting values not relevant
+                                     #as we have a 50+ day buffer of case data
+                        rollapply(Cases,width=SLDWidth,FUN=weighted.mean,
+                                  w=weights,
+                                  na.rm = FALSE)
+                 #,rep(NA,10)
+                 ))#no missing data to remove
+
+SLDPlot = SLDSmoothedDF%>%
+  filter(!is.na(SLDCases))%>%
+  ggplot(aes(x=Date))+
+  geom_line(aes(y=Cases, 
+                color="Cases" , info = Cases),alpha=.2)+
+  geom_line(aes(y=SevenDayMACases,
+                color="Seven Day MA Cases" , info = SevenDayMACases),alpha=.4)+
+  geom_line(aes(y=SLDCases, color="SLD Cases",info = SLDCases))+
+  labs(y="Reported Cases")+
+  ColorRule
+
+ggplotly(SLDPlot,tooltip=c("info","Date"))%>%
+  layout(legend=list(title=list(text=''),x = 1.15, y = 0.9),
+         margin = list(l = 50, r = 75, b = 50, t = 50, pad = 4))
+```
+
+```{r, include=FALSE}
+#.165
+SpanConstant = .06
+#4.047397
+AVGLimsSample*length(LIMSFullDF$sars_cov2_adj_load)*SpanConstant/14
+```
+
+
+
+## viral load smoothing
+
+To get a good smoothing of the sars_cov2_adj_load measurement we employ loess smoothing. Loess smoothing takes a locally weighted sliding window using some number of points. we found the best smoothing when it uses data within approximately `r floor(AVGLimsSample*length(LIMSFullDF$N1)*SpanConstant/14)` weeks of both sides of the data. The displayed plot shows the visual power of this smoothing. We see in general that the smoothed N1 trails SLD. However loess is symmetric meaning that it can not be used in predictive modeling due to it using points from the future to smooth points.
+
+
+
+```{r fig.cap= 'Loess smoothed N1 and SLD cases for Madison data. Using a Locally Weighted Scatterplot Smoothing process along with the previous figure SLD cases we get the most sophisticated relationship between the two signals discussed in this document.'}
+SpanConstant = .06
+
+SLDSmoothedDF$loess_sars_cov2_adj_load <- loessFit(y=(SLDSmoothedDF$sars_cov2_adj_load), 
+                      x=SLDSmoothedDF$Date, #create loess fit of the data
+                      span=SpanConstant, #span of .2 seems to give the best result, not rigorously chosen
+                      iterations=2)$fitted#2 iterations remove some bad patterns
+
+
+SLDLoessGraphic <- SLDSmoothedDF%>%
+  filter(!is.na(loess_sars_cov2_adj_load),
+         !is.na(SLDCases))%>%
+  ggplot(aes(x=Date))+
+  geom_line(aes(y=Cases, color="Cases" , info = Cases),alpha=.1)+
+  geom_line(aes(y=MinMaxNorm(sars_cov2_adj_load, Cases),
+                color="sars_cov2_adj_load",
+                info = sars_cov2_adj_load),
+            alpha=.2)+
+  geom_line(aes(y=SevenDayMACases,
+                color="Seven Day MA Cases" , 
+                info = SevenDayMACases),
+            alpha=.3)+
+  geom_line(aes(y=MinMaxNorm(loess_sars_cov2_adj_load, Cases, sars_cov2_adj_load), 
+                color = "loess_sars_cov2_adj_load" ,
+                info = loess_sars_cov2_adj_load))+
+  geom_line(aes(y=SLDCases,
+                color="SLD Cases" ,
+                info = SLDCases))+
+  labs(y="Reported cases")#+
+  #ColorRule
+
+
+ggplotly(SLDLoessGraphic,tooltip=c("info","Date"))%>%
+    add_lines(x=~Date, y=SLDSmoothedDF$sars_cov2_adj_load,
+            yaxis="y2", data=SLDSmoothedDF, showlegend=FALSE, inherit=FALSE) %>%
+    layout(yaxis2 = SecondAxisFormat,
+           legend=list(title=list(text=''),x = 1.15, y = 0.9),
+           margin = list(l = 50, r = 75, b = 50, t = 50, pad = 4))
+```
+
+```{r,eval=FALSE}
+RelationShipDF <- SLDSmoothedDF%>%
+  select(Date, Cases, SevenDayMACases, SLDCases, N1, N2, PMMoV, loessN1,  DetectedOutlier)
+
+RelationShipDF%>%
+  filter(!is.na(DetectedOutlier))
+
+
+DiffDF <- RelationShipDF%>%
+  mutate(DiffLoessN1 = c(NA,diff(loessN1)),
+         DiffSLDCases = c(NA,diff(SLDCases)))%>%
+  select(Date,DiffLoessN1,DiffSLDCases)
+
+DiffDF%>%
+  NoNa("DiffLoessN1")%>%
+  ggplot()+
+  aes(x=Date)+
+  geom_line(aes(y=DiffSLDCases,color="DiffSLDCases"))+
+  geom_line(aes(y=MinMaxFixing(DiffLoessN1,DiffSLDCases),color="DiffLoessN1"))
+
+x <- ccf(RelationShipDF$loessN1,RelationShipDF$SLDCases,na.action=na.pass)
+max(x$acf)
+
+
+
+```
+
+# Towards a formal analysis
+
+
+Cross correlation and Granger Causality are key components to formalize this analysis. Cross correlation looks at the correlation at a range of time shifts and Granger analysis performs a test for predictive power.
+
+
+```{r}
+CCFChar <- function(ccfObject){
+  LargestC = max(ccfObject$acf)
+  
+  Lag = which.max(ccfObject$acf)-21
+  
+  return(c(LargestC,Lag))
+}
+
+ModelTesting <- function(DF,Var1,Var2){
+  #removing rows from before both series started
+  UsedDF <- DF%>%
+    filter(!is.na(Var1),
+           !is.na(Var2))
+  
+  
+  Vec1 <- unname(unlist(UsedDF[Var1]))
+  
+  Vec2 <- unname(unlist(UsedDF[Var2]))
+
+  CCFReport <- CCFChar(ccf(Vec1,Vec2,na.action=na.pass,plot = FALSE))
+
+  VarPredCase <- grangertest(Vec1, Vec2, order = 1)$"Pr(>F)"[2]
+  
+  CasePredVar <- grangertest(Vec2,Vec1, order = 1)$"Pr(>F)"[2]
+  
+  return(round(c(CCFReport,CasePredVar,VarPredCase),4))
+}
+
+#ErrorRemovedDF
+BaseLine <- ModelTesting(FullDF, "sars_cov2_adj_load","Cases")
+BaseLineSevenDay <- ModelTesting(FullDF, "sars_cov2_adj_load","SevenDayMACases")
+ErrorRemoved <- ModelTesting(UpdatedDF, "sars_cov2_adj_load","SevenDayMACases")
+SLDVar <- ModelTesting(SLDSmoothedDF, "sars_cov2_adj_load","SLDCases")
+SevenLoess <- ModelTesting(SLDSmoothedDF, "loess_sars_cov2_adj_load","SevenDayMACases")
+SLDLoess <- ModelTesting(SLDSmoothedDF, "loess_sars_cov2_adj_load","SLDCases")
+
+
+Output <- data.frame(row.names=c("Max Cross Correlation",
+                                 "Lag of largest Cross correlation",
+                                 "P-value Wastewater predicts Cases",
+                                 "P-value Cases predicts wastewater"),
+  CasesvsVar = BaseLine,
+  SevenDayMACasesvsVar = BaseLineSevenDay,
+  ErrorRemoved = ErrorRemoved,
+  SLDVar = SLDVar,
+  SevenLoess = SevenLoess,
+  SLDLoess = SLDLoess)
+
+OutputRightPosition <- data.frame(t(Output))
+
+colnames(OutputRightPosition) <- rownames(Output)
+
+rownames(OutputRightPosition) <- c(paste("Section 1: Cases vs sars_cov2_adj_load"),
+                                   paste("Section 1: 7 Day MA Cases vs sars_cov2_adj_load"),
+                                   paste("Section 2: Cases vs sars_cov2_adj_load"),
+                                   paste(" Section 4.2: SLD Cases vs sars_cov2_adj_load"),
+                                   paste("Section 4.3: 7 Day MA Cases vs Loess smoothing of sars_cov2_adj_load"),
+                                   paste("Section 4.3: SLD Cases vs Loess smoothing of sars_cov2_adj_load"))
+
+formattable(OutputRightPosition)
+```
+
