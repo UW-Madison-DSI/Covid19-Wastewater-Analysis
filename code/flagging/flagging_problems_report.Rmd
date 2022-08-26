@@ -1,22 +1,18 @@
 ---
 header-includes:
 - \usepackage{wrapfig}
-title: "problems in the DHS Covid-19 Flagging methods"
+title: "Problems with Current DHS COVID-19 Flagging Methods"
 author:
-- Marlin Lee, Steve Goldstein, Kyllan Wunder, Abe Megahed
+- Steve Goldstein, Marlin Lee, Abe Megahed, Kyllan Wunder
 - "University of Wisconsin Data Science Institute - August, 2022"
 output:
   pdf_document:
     keep_tex: true     
 ---
 
-This analysis looks to show three issues in the DHS wastewater and case flagging methods.
-These methods have too narrow a scope leading to missing long term trends and over weighting
-fluctuations based on noise. Furthermore the case data has a strong day of the week effect 
-leading to unjustified flags being created.
-
+This analysis shows three issues in the Department of Health Services (DHS) wastewater and case flagging methods: (1) Missing long-term trends, (2) Flagging false positives based on noise, (3) Day-of-the-week effect.
+ 
 ```{r set up markdown settings, include =FALSE}
-#Explain issues above
 knitr::opts_chunk$set(
 	message = FALSE,
 	warning = FALSE,
@@ -45,14 +41,11 @@ knitr::knit_hooks$set(plot = function(x, options) {  # set new plot hook ...
 sprintf("\\noindent\\begin{wrapfigure}{%s}{%g\\textwidth}", "R", .7)
 ```
 
-# The Data
+# Flagging methods
 
+The DHS has created multiple flagging methods to warn of COVID-19 spikes in Wisconsin communities to better inform decision-making policy. We analysed the wastewater and case flagging methods.
 
-The department of health services has created flagging methods to to predicatively warn of 
-spikes in Wisconsin communities to better inform decision making policy. 
-
-
-```{r,  fig.cap = "Wastewater with flagged dates and quantintle info", PlotHeight = 25}
+```{r,  fig.cap = "The red points are CDC flags using the wastewater method, and there is little to no correlation between an increase in gene copies in the wastewater and the CDC flags.", PlotHeight = 25}
 
 library(DSIWastewater)
 #load WasteWater_data into the environment
@@ -102,31 +95,23 @@ Quantile_Viz_Plot <- Full_wasteFlags%>%
   geom_point(aes(y = 10^(sars_cov2_adj_load_log10),
                  color = "CDC flag"), 
              data = filter(Full_wasteFlags, cdc_flag == 1))+
-  ylab("Covid-19 gene copy per 100k")+
+  ylab("COVID-19 gene copy per 100k people")+
   scale_y_log10()+
   scale_x_date(limits = c(as.Date("2021-01-01"),
-                          max(Full_wasteFlags$date)))
+                          max(Full_wasteFlags$date))) +
+  ggtitle("Wastewater with flagged dates and quantintle information")
 
 
 Quantile_Viz_Plot
 ```
 
+### Wastewater method
 
-
-
-## Wastewater method
-
-The wastewater method uses a two step system to identify potential warning signs in the data. 
-The core method is using a five measurement rolling regression to calculate an estimated percent 
-change over the time period. Then if it is estimated to be over 100% increase it is logged as a 
-CDC flag. Then if the measurement is in the 80th percentile of the last 90 days it is logged as a flag. to the right is a visualization we will be using heavily in this report. It shows the wastewater data
-measurements with the color showing the flags with a line showing the quantile info. The flags are the
-red points above the line.
+The wastewater method uses a two-step system to identify potential warning signs in the data. The core method uses a five-measurement rolling regression to calculate an estimated percent change over time. Then if it is estimated to be over 100% increase, it is logged as a CDC flag. Then if the measurement is in the 80th percentile of the last 90 days, it is logged as a flag. 
 
 \pagebreak
 
-
-```{r, fig.cap = "Case slope", PlotHeight = 17}
+```{r, fig.cap = "Values above the black line have a slope greater than 5 and are flagged.", PlotHeight = 17}
 library(DSIWastewater)
 
 #load Case_data into the environment
@@ -158,18 +143,16 @@ Case_Flag_Viz_Plot <- CaseRegressionOutput%>%
   ggplot(aes(x = date))+
   geom_line(aes(y = FirstConfirmed.Per100K, color = "cases slope"))+
   geom_line(aes(y = pastwk.avg.casesperday.Per100K, color = "smooth cases slope"))+
-  geom_hline(yintercept = 5)+
-  ylab("7 day estimated slope (Cases per day)")
+  geom_hline(color="black", aes(linetype= "Flagging Threshold", yintercept = 5))+
+  ylab("7 day estimated slope (Cases per day)") +
+  ggtitle("Case Slopes with flagging threshold")
 
 Case_Flag_Viz_Plot
 ```
 
-## Case method
+### Case method
 
-The case method uses a 7 day rolling regression to create flags. If the regressed slope is over 5
-It is logged as a case flag. Because the slopes are roughly continuous case flags are often repeated
-bringing use of the slope switch flag which logged only the first case flag in a sequence. On the right is a visualization we will use in this report. It shows the case slopes vs the seven day smoothing slope data with a horizontal line showing the threshold to be classified as a case flag
-
+The case flagging method uses a 7-day rolling regression to create flags. If the regressed slope is over 5, it is a case flag. Because the slopes are roughly continuous, case flags often cluster. Using the slope switch flag, we can log only the first case flag in a cluster. This method is very good at detecting an increase in the slope, but if cases increase at a steady rate with a slope of less than five, it will go undetected. 
 
 ```{r, eval=FALSE}
 Full_wasteFlags%>%
@@ -182,62 +165,64 @@ Full_wasteFlags%>%
   summarise(AVG_CDC_Flag = 100*sum(cdc_flag)/n(), AVG_flag_ntile = 100*sum(flag_ntile)/n())
 ```
 
+```{r fig.cap = "Case and waste flags", PlotHeight = 15}
 
-
-# Flags miss long term trend
-
-The largest problem is a structural one. Both flagging methods rely on short term
-information to try to detect long term changes in the data. This inherently means
-a lack of confidence in the flags because in the short term there is no difference
-between normal fluctuation and and the start of a spike.
-
-A single case flag is suspect but 5 case flags in a row is much more likely to 
-represent a true rise in Covid-19 in the population. This confidence is not currently
-being represented in the system hurting effectiveness. 
-
-The wastewater flagging does a better job overall then the case method due to
-The 90 day rolling 80th percentile filter. however the CDC method is very bad
-at detecting long term trends meaning that the filter only masks the underlying
-issue.
-
-\pagebreak
-
-
-```{r fig.cap = "waste counts", PlotHeight = 15}
-  
-Quantile_Viz_Plot+
-  scale_x_date(limits = c(as.Date("2021-05-1"),
-                          as.Date("2021-08-1")))+
-  scale_y_continuous(limits = c(2, 150))
-
+#use package to make grapg and just highlight section
 ```
 
 
-# Noise
+# Missing long-term trends
 
-Because Covid-19 spikes happen over many measurements flagging method should have
-auto correlated flags. This is shown in the case flag where the flags are extremely
-auto correlated. If this is not the case it can be a sign that the method 
-is strongly affected by natural variance in the system. The right plot shows that 
-many of the CDC flags are created by natural jumps in the measurement not caused 
-by any underlying trend. The quantile filter helps filter some of the more egregious
-flags but if the measurement is especially unusual high it can pass the filter
-even if the rest of the measurements fall well below the line.
+Both flagging methods rely on short-term information to detect long-term changes in the data. This inherently means a lack of confidence in the flags because there is no difference between normal fluctuation and the start of a spike in the short term.
 
-```{r fig.cap = "Zoomed in case slope plot", PlotHeight = 15}
+A single case flag is suspect, but 5 case flags in a row are much more likely to represent a genuine rise in COVID-19 in the population. This confidence is not being represented in the system, hurting effectiveness. 
+
+The wastewater flagging does a better job overall than the case method due to The 90-day rolling 80th percentile filter. However, the CDC method is terrible at detecting long-term trends meaning that the filter only masks the underlying issue.
+
+Many flags even appear when the concentration is decreasing.
+
+
+\pagebreak
+
+```{r fig.cap = "Zoomed-in Figure 1", PlotHeight = 15}
+#Plot.size = 1
+
+linedata <- data.frame(x = c(as.Date("2021-05-1"), as.Date("2021-05-1"), 
+                             as.Date("2021-08-1"), as.Date("2021-08-1"),
+                             as.Date("2021-05-1")),
+                       y = c(2, 150, 150, 2, 2))
+
+
+B <- Quantile_Viz_Plot+
+  scale_x_date(limits = c(as.Date("2021-05-1"),
+                          as.Date("2021-08-1")))+
+  scale_y_continuous(limits = c(2, 150)) +
+  ggtitle("False flags caused from unsusal variance")
+
+library(patchwork)
+
+B
+```
+
+
+# Flagging false positives based on noise
+
+COVID-19 data can be exceptionally noisy; effective flagging methods should combat this. The CDC flagging method does not account for noise leading to many points that could be considered noise or outliers being flagged because they are in the 80th percentile and increase the slope dramatically. The quantile filter helps filter some of the more notable false positives. Still, if the measurement is unusually high, it can pass the filter even if the rest of the measurements fall well below the line.
+
+
+
+```{r fig.cap = "This plot is a zoomed-in version of the plot in the Case Method section with green lines added to highlight Friday", PlotHeight = 15}
 
 Case_Flag_Viz_Plot+
   scale_x_date(limits = c(as.Date("2021-08-10"),
                           as.Date("2021-10-01")))+
   scale_y_continuous(limits = c(-8, 10))+
   geom_vline(aes(xintercept = date, color = "Friday"),
-             data = filter(CaseRegressionOutput, weekdays(date) == "Friday"))
+             data = filter(CaseRegressionOutput, weekdays(date) == "Friday")) +
+  ggtitle("Day-of-the-week effect shown in Friday high slopes")
 
 ```
 
-# Day of week effect
+# Day-of-the-week effect 
 
-Case data is known to have a day of the week effect where regardless of trends some days have more reported cases then others. It is not immediately obvious that this would affect the output of the 7 day regression but the plot on the right clearly shows that this effect causes Fridays estimated slope
-to be larger. On September 17th this effect combined with an unusual high measurement causes
-It is labeled as a flag. This effect is removed by using a 7 day smoothing before regression or by
-using a regression window larger than 7 days.
+Case data is known to have a day-of-the-week effect; regardless of trends, some days have more reported cases than others. It is not immediately evident that this would affect the output of the 7-day regression, but the plot on the right clearly shows that this effect causes Friday's estimated slope to be larger. On September 17th, this effect, combined with an unusual high measurement, was labeled as a flag. A 7-day smoothing before regression or a regression window larger than seven days can remove this effect.
