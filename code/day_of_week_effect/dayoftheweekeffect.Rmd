@@ -1,0 +1,160 @@
+---
+header-includes:
+  - \usepackage{wrapfig}
+title: "problems in the DHS Covid-19 Flagging methods"
+author:
+- Marlin Lee, Steve Goldstein, Kyllan Wunder, Abe Megahed
+- "University of Wisconsin Data Science Institute - August, 2022"
+output:
+  pdf_document:
+    keep_tex: true
+---
+
+```{r set up markdown settings, echo=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE
+)
+```
+
+```{r create case data in right format}
+library(DSIWastewater)
+library(ggplot2)
+library(tidyquant)
+library(lubridate)
+library(dplyr)
+library(plotly)
+```
+
+```{r create case flags}
+#load Case_data into the environment
+data(Case_data, package = "DSIWastewater")
+
+
+#restrict Case data to only Madison data
+Case_DF <- Case_data[Case_data$Site == "Madison",]
+
+
+#restrict Case data to dates after 2021-02-01
+Case_DF <- Case_DF[Case_DF$date  >= as.Date("2021-02-01"),]
+
+
+#get the case flags
+Case_DF <- buildCaseAnalysisDF(Case_DF)
+
+
+CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF, 
+    RunOn = c("FirstConfirmed.Per100K", "pastwk.sum.casesperday.Per100K"),
+    SplitOn = "Site", DaysRegressed = 7)
+```
+
+
+
+```{r plot}
+
+ggplot(Case_DF, aes(x=date, y=FirstConfirmed)) +
+  geom_point( alpha = .1) +
+  ylim(0,600) +
+  geom_ma(ma_fun = SMA, n = 7)
+
+
+
+```
+
+```{r day of week}
+
+year_week <- function(x,base) week(x) - week(base) + 52*(year(x) - year(base))
+
+Case_DF_Week <- Case_DF %>% mutate(week = year_week(date, "2021-02-01")) %>%
+  group_by(week) %>%
+  mutate(weekavg = sum(FirstConfirmed)/7) %>%
+  distinct(week, .keep_all = TRUE)
+  
+ggplot(Case_DF, aes(x=date, y=FirstConfirmed)) +
+  geom_point( alpha = .1) +
+  geom_point(data = Case_DF_Week, aes(x=date, y=weekavg))+
+  ylim(0,600) + 
+  geom_ma(ma_fun = SMA, n = 7)
+
+
+```
+
+
+
+```{r day of week effect}
+
+Case_DF_DoWe <- Case_DF %>% mutate(dayofweek = wday(date)) %>%
+  group_by(dayofweek) %>%
+  mutate(sumperday = sum(FirstConfirmed)) %>%
+  distinct(Site, dayofweek, sumperday)
+
+
+
+Case_DF_DoWe <- Case_DF_DoWe %>% 
+  group_by(dayofweek, sumperday) %>%
+  tally() %>%
+  ungroup() %>%
+  mutate(prop = sumperday/sum(sumperday)) 
+
+
+
+mean(Case_DF_DoWe$prop)
+
+Case_DF_DoWe <- Case_DF_DoWe %>%
+  mutate(normalizingfactor = mean(Case_DF_DoWe$prop)/prop)
+
+head(Case_DF_DoWe)
+
+```
+
+
+```{r trying to normilaze based on day of week}
+
+Case_DF_DoWe_pt2 <- Case_DF_DoWe[-c(2,3)]
+
+#head(Case_DF_DoWe_pt2)
+
+
+
+Case_DF_norm_Cases <- Case_DF %>% mutate(dayofweek = wday(date))
+
+Case_DF_norm_Cases <- right_join(Case_DF_norm_Cases, Case_DF_DoWe_pt2,by = "dayofweek") 
+  
+
+Case_DF_norm_Cases <- Case_DF_norm_Cases %>% mutate(normcases = FirstConfirmed * normalizingfactor)
+
+head(Case_DF_norm_Cases)
+
+
+```
+
+
+
+
+
+```{r plotting norm cases}
+
+plot <- ggplot(Case_DF_norm_Cases, aes(x=date, y=normcases)) +
+  geom_point(aes(color = "weighted cases")) +
+  geom_point(data=Case_DF, aes(x=date, y=FirstConfirmed, color="cases"))+
+  ylim(0,600) 
+  #
+
+plot2 <- ggplot(Case_DF_norm_Cases, aes(x=date, y=(FirstConfirmed-normcases))) +
+  geom_point() +
+  ylim(0,600) 
+
+
+ggplotly(plot)
+ggplotly(plot2)
+
+
+ggplot(Case_DF_norm_Cases, aes(x=date, y=FirstConfirmed, color = as.character(dayofweek))) +
+  #geom_point() +
+  geom_ma(ma_fun = SMA, n = 7) +
+  scale_y_log10()
+
+
+```
+
