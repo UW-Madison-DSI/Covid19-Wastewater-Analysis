@@ -38,7 +38,6 @@ knitr::knit_hooks$set(plot = function(x, options) {  # set new plot hook ...
   return(x)
 })
 
-sprintf("\\noindent\\begin{wrapfigure}{%s}{%g\\textwidth}", "R", .7)
 ```
 
 # Flagging methods
