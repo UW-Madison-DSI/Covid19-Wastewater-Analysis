@@ -225,3 +225,13 @@ Case_Flag_Viz_Plot+
 # Day-of-the-week effect 
 
 Case data is known to have a day-of-the-week effect; regardless of trends, some days have more reported cases than others. It is not immediately evident that this would affect the output of the 7-day regression, but the plot on the right clearly shows that this effect causes Friday's estimated slope to be larger. On September 17th, this effect, combined with an unusual high measurement, was labeled as a flag. A 7-day smoothing before regression or a regression window larger than seven days can remove this effect.
+
+
+\pagebreak
+
+# Conclusion
+
+The problems described in the analysis hinder any usability these flags have in there
+current state. Each problem can be solved with some degree of modification. This is seen
+in the day of the week effect where using a 7 day mean removes the effect entirely. Looking
+for solutions is still an ongoing process.
