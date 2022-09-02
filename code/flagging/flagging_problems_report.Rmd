@@ -94,11 +94,15 @@ Quantile_Viz_Plot <- Full_wasteFlags%>%
   geom_point(aes(y = 10^(sars_cov2_adj_load_log10),
                  color = "CDC flag"), 
              data = filter(Full_wasteFlags, cdc_flag == 1))+
-  ylab("COVID-19 gene copy per 100k people")+
   scale_y_log10()+
   scale_x_date(limits = c(as.Date("2021-01-01"),
                           max(Full_wasteFlags$date))) +
-  ggtitle("Wastewater with flagged dates and quantintle information")
+  labs(title = "Wastewater with Flagged Dates and Quantintles\n", 
+       x = "Date", 
+       y = "COVID-19 Gene Copy per 100k People", 
+       color = "Flags\n") +
+  scale_color_manual(labels = c("CDC Flag", "Filtered CDC Flag"), 
+                     values = c("#fc8d62", "#beaed4"))
 
 
 Quantile_Viz_Plot
@@ -140,11 +144,16 @@ Case_Flag_Viz_Plot <- CaseRegressionOutput%>%
   select(date, Method, lmreg_slope)%>%
   pivot_wider(names_from = Method, values_from = lmreg_slope)%>%
   ggplot(aes(x = date))+
-  geom_line(aes(y = FirstConfirmed.Per100K, color = "cases slope"))+
-  geom_line(aes(y = pastwk.avg.casesperday.Per100K, color = "smooth cases slope"))+
-  geom_hline(color="black", aes(linetype= "Flagging Threshold", yintercept = 5))+
-  ylab("7 day estimated slope (Cases per day)") +
-  ggtitle("Case Slopes with flagging threshold")
+  geom_line(aes(y = FirstConfirmed.Per100K, color = "A"))+
+  geom_line(aes(y = pastwk.avg.casesperday.Per100K, color = "B"))+
+  geom_hline(aes(yintercept = 5, linetype = "Slope above 5"))+
+  labs(title = "Case slopes with flagging threshold\n", 
+       x = "Date", 
+       y = "7 day estimated slope (Cases per day)", 
+       color = "Signal Slopes\n", 
+       linetype = "Flagging Threshold\n") +
+  scale_color_manual(labels = c("Cases Slope", "Smooth Cases Slope"), 
+                     values = c("#33dcd1", "#457b00"))
 
 Case_Flag_Viz_Plot
 ```
@@ -164,9 +173,26 @@ Full_wasteFlags%>%
   summarise(AVG_CDC_Flag = 100*sum(cdc_flag)/n(), AVG_flag_ntile = 100*sum(flag_ntile)/n())
 ```
 
-```{r fig.cap = "Case and waste flags", PlotHeight = 15}
 
-#use package to make grapg and just highlight section
+```{r fig.cap = "Zoomed-in Figure 1", PlotHeight = 15}
+#Plot.size = 1
+
+Trend <- Quantile_Viz_Plot+ 
+  scale_x_date(limits = c(as.Date("2021-04-01"),
+                          as.Date("2021-10-01")))+
+  scale_y_log10(limits = c (1,300))+ 
+  labs(title = "Wastewater Method Missing Trends\n", 
+       x = "Date", 
+       y = "COVID-19 Gene Copy per 100k People", 
+       color = "Flags\n") +
+  scale_color_manual(labels = c("CDC Flag", "Filtered CDC Flag"), 
+                     values = c("#fc8d62", "#66c2a5"))
+
+
+
+library(patchwork)
+
+Trend
 ```
 
 
@@ -178,12 +204,12 @@ A single case flag is suspect, but 5 case flags in a row are much more likely to
 
 The wastewater flagging does a better job overall than the case method due to The 90-day rolling 80th percentile filter. However, the CDC method is terrible at detecting long-term trends meaning that the filter only masks the underlying issue.
 
-Many flags even appear when the concentration is decreasing.
+The plot to the right shows when the signal slope is decreasing more flags appear then when the slope is increasing. 
 
 
 \pagebreak
 
-```{r fig.cap = "Zoomed-in Figure 1", PlotHeight = 15}
+```{r fig.cap = "Zoomed-in Figure 1 showing false flags based on noise", PlotHeight = 15}
 #Plot.size = 1
 
 linedata <- data.frame(x = c(as.Date("2021-05-1"), as.Date("2021-05-1"), 
@@ -192,22 +218,26 @@ linedata <- data.frame(x = c(as.Date("2021-05-1"), as.Date("2021-05-1"),
                        y = c(2, 150, 150, 2, 2))
 
 
-B <- Quantile_Viz_Plot+
+variance <- Quantile_Viz_Plot+
   scale_x_date(limits = c(as.Date("2021-05-1"),
                           as.Date("2021-08-1")))+
   scale_y_continuous(limits = c(2, 150)) +
-  ggtitle("False flags caused from unsusal variance")
+  labs(title = "False Flags From Unsusal Variance\n", 
+       x = "Date", 
+       y = "COVID-19 Gene Copy per 100k People", 
+       color = "Flags\n") +
+  scale_color_manual(labels = c("CDC Flag", "Filtered CDC Flag"), 
+                     values = c("#fc8d62", "#66c2a5"))
 
 library(patchwork)
 
-B
+variance
 ```
 
 
 # Flagging false positives based on noise
 
 COVID-19 data can be exceptionally noisy; effective flagging methods should combat this. The CDC flagging method does not account for noise leading to many points that could be considered noise or outliers being flagged because they are in the 80th percentile and increase the slope dramatically. The quantile filter helps filter some of the more notable false positives. Still, if the measurement is unusually high, it can pass the filter even if the rest of the measurements fall well below the line.
-
 
 
 ```{r fig.cap = "This plot is a zoomed-in version of the plot in the Case Method section with green lines added to highlight Friday", PlotHeight = 15}
@@ -218,7 +248,13 @@ Case_Flag_Viz_Plot+
   scale_y_continuous(limits = c(-8, 10))+
   geom_vline(aes(xintercept = date, color = "Friday"),
              data = filter(CaseRegressionOutput, weekdays(date) == "Friday")) +
-  ggtitle("Day-of-the-week effect shown in Friday high slopes")
+   labs(title = "Day-of-the-week effect shown in Friday high slopes\n", 
+       x = "Date", 
+       y = "7 Day Estimated Slope (Cases per Day)", 
+       color = "Signal Slopes\n", 
+       linetype = "Flagging Threshold\n",) +
+  scale_color_manual(labels = c("Cases Slope", "Smooth Cases Slope", "Friday"), 
+                     values = c("#ff6361", "#ffa600", "#58508d"))
 
 ```
 
