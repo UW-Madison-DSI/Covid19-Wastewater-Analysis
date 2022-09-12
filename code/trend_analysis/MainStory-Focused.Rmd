@@ -1,5 +1,5 @@
 ---
-title: "Heuristic exploration of the relationship between cases and viral load"
+title: "Heuristic exploration of the relationship between FirstConfirmed and viral load"
 author: "Marlin Lee"
 date: "1/28/2022"
 output:
@@ -16,7 +16,7 @@ editor_options:
 
 **This report looks is an update to the analysis shown on 1/14/2022. Most steps are the same with tweaking due to different data and outlier procedure**
 
-at exploring the relationship between wastewater and cases. 
+at exploring the relationship between wastewater and FirstConfirmed. 
 There are four components to this analysis.
 
   1) Removing putative outliers
@@ -43,17 +43,20 @@ output.format <- knitr::opts_knit$get("rmarkdown.pandoc.to")
 
 
 ```{r Start enviroment, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+#Used library for visualization
 library(dplyr)
 library(ggplot2)
 library(lmtest)
 library(lubridate)
-library(limma)
-library(plotly)
-library(gridExtra)
+#library(limma)
 library(zoo)
-library(formattable)
-#Data Files and prep work
 
+if ("html" != output.format) {
+  
+}else{
+  library(plotly)
+  library(formattable)
+}
 ```
 
 
@@ -62,14 +65,11 @@ library(formattable)
 
 #Custom_color_scale
 PlotColors <- c("#F8766D", "#00BFC4", "#4057A2", "#999999", "#D6544B")
-PlotObjects <- c("Wastewater","Cases","Seven Day MA Cases",
+PlotObjects <- c("Wastewater","FirstConfirmed","Seven Day MA FirstConfirmed",
                  "Wastewater outlier","loess Wastewater")
 
 ColorRule <- scale_color_manual(
   values = setNames(as.list(PlotColors),PlotObjects))
-
-
-
 ```
 
 "data Used from DSIWastewater package"
@@ -77,37 +77,31 @@ ColorRule <- scale_color_manual(
 
 ```{r DF Set Up, echo=FALSE}
 library(DSIWastewater)
-data(WasteWater_data, package = "DSIWastewater")
 data(Case_data, package = "DSIWastewater")
 
-#Importing the Madison case data
-LatCaseDF <- Case_data%>% 
-  rename(Cases = FirstConfirmed,
-         Date = date)%>%
-  filter(Site == "Madison")%>%
-  arrange(Date)%>%
-  mutate(MACases = rollmean(Cases, 7, align = "right",
-                            na.rm = TRUE,fill=NA))%>%
-  filter(Date>ymd("2020-9-10"))%>%
-  select(Date, Site, Cases, MACases)
+#restrict Case data to only Madison data
+Case_DF <- Case_data[Case_data$Site == "Madison",]
 
-#Importing the Madison waste water data
-LIMSFullDF <- WasteWater_data%>%
-  rename(Site = wwtp_name,
-         Date = sample_collect_date,
-         N1 = n1_sars_cov2_conc,
-         N2 = n2_sars_cov2_conc)%>%
-  filter(Site == "Madison MSD WWTF")%>%
-  mutate(Site = "Madison",
-         Date = as.Date(Date,format="%m/%d/%Y"),
-         population_served = as.numeric(gsub(",", "", population_served)),
-         GeoMean = sqrt(N1 * N2),
-         GeoMean_Per_cap  = 5 * (GeoMean * average_flow_rate) / population_served,
-         sars_cov2_adj_load = GeoMean_Per_cap)%>%
-  arrange(Date)%>%
-  mutate(MAWaste = rollmean(sars_cov2_adj_load, 7, align = "right",
-                            na.rm = TRUE,fill=NA))%>%
-  select(Date, Site, sars_cov2_adj_load,MAWaste)
+
+#restrict Case data to dates after 2021-02-01
+Case_DF <- Case_DF[Case_DF$date  >= as.Date("2020-9-10"),]
+
+#get the case flags
+Case_DF <- buildCaseAnalysisDF(Case_DF)
+
+Case_DF <- Case_DF[,c(1:2, 5, 7)]
+
+data(WasteWater_data, package = "DSIWastewater")
+
+#restrict Waste data to only Madison data
+baseWaste_DF <- WasteWater_data[WasteWater_data$wwtp_name == "Madison MSD WWTF",]
+
+#get DF into format for buildRegressionEstimateTable
+baseWaste_DF <-  buildWasteAnalysisDF(baseWaste_DF)
+
+#Select columns needed in analysis
+
+LIMSFullDF <- baseWaste_DF[,c(1:2,7)]
 
 #joining the two data frames together
 FullDF <- full_join(LatCaseDF,LIMSFullDF, by = c("Date","Site"))
@@ -146,28 +140,28 @@ if ("html" != output.format) {
 
 ```
 
-The case data has a strong weekend effect so for this section we look at a seven day smoothing of cases. The simple display of the data shows the core components of this story. First, wastewater data is noisy. And that there is a clear relationship between the two signals.
+The case data has a strong weekend effect so for this section we look at a seven day smoothing of FirstConfirmed. The simple display of the data shows the core components of this story. First, wastewater data is noisy. And that there is a clear relationship between the two signals.
 
-```{r fig.cap= 'Wastewater concentration and daily Covid-19 case data for Madison. A seven day moving average of cases is used to reduce a day of the week effect.'}
+```{r fig.cap= 'Wastewater concentration and daily Covid-19 case data for Madison. A seven day moving average of FirstConfirmed is used to reduce a day of the week effect.'}
 FirstImpressionDF <- FullDF%>%
   filter(!is.na(sars_cov2_adj_load),
-         !is.na(Cases))#Removing NA
+         !is.na(FirstConfirmed))#Removing NA
 
 FirstImpression <- FirstImpressionDF%>%
-  ggplot(aes(x=Date))+#Data depends on time
-  geom_point(aes(y= Cases, color="Cases",info=Cases),
+  ggplot(aes(x = Date))+#Data depends on time
+  geom_point(aes(y = FirstConfirmed, color = "FirstConfirmed", info = FirstConfirmed),
              size = 1)+
-  geom_point(aes(y=sars_cov2_adj_load, 
-                color="Wastewater",
-                info=sars_cov2_adj_load),
-             size = 1)+#compares sars_cov2_adj_load to Cases
-  geom_line(aes(y= MAWaste, 
-                color="Seven Day MA Waste",
-                info=Cases))+
-  geom_line(aes(y= MACases, 
-                color="Seven Day MA Cases",
-                info=Cases))+
-  labs(y="Reported cases")+
+  geom_point(aes(y = sars_cov2_adj_load, 
+                color = "Wastewater",
+                info = sars_cov2_adj_load),
+             size = 1)+#compares sars_cov2_adj_load to FirstConfirmed
+  geom_line(aes( y= MAWaste, 
+                color = "Seven Day MA Waste",
+                info = FirstConfirmed))+
+  geom_line(aes(y = MAFirstConfirmed, 
+                color = "Seven Day MA FirstConfirmed",
+                info = FirstConfirmed))+
+  labs(y = "Reported FirstConfirmed")+
   scale_y_log10()
 
 
@@ -177,7 +171,7 @@ if ("html" != output.format) {
   PrintPlot <- ggplotly(FirstImpression)
 }
 PrintPlot
-#To remove weekend effects we are looking at the 7 day smoothing of cases.
+#To remove weekend effects we are looking at the 7 day smoothing of FirstConfirmed.
 ```
   
 
@@ -197,7 +191,7 @@ ErrorMarkedDF <- FullDF%>%#
            NoOutlierVar = ifelse(FlagedOutliers, NA, sars_cov2_adj_load))
 
 #Split N1 into outlier and non outlier for next ggplot
-OutLierPlotDF <- ErrorMarkedDF%>%#outlier_sars_cov2_adj_load
+OutLierPlotDF <- ErrorMarkedDF%>%#
   mutate(outlier_sars_cov2_adj_load = ifelse(FlagedOutliers, sars_cov2_adj_load,NA))%>%
            mutate(sars_cov2_adj_load = NoOutlierVar)%>%
   arrange(Date)%>%
@@ -218,18 +212,17 @@ OutLierPlotObject <- OutLierPlotDF%>%
   geom_point(aes(y=sars_cov2_adj_load,
                 color="sars_cov2_adj_load", 
                 info = sars_cov2_adj_load),
-             size = 1)+#compares Var to Cases
+             size = 1)+#compares Var to FirstConfirmed
   geom_line(aes(y= MAWaste, 
                 color="Seven Day MA Waste",
-                info=Cases))+
+                info=FirstConfirmed))+
   geom_line(aes(y= MAWasteWOOutlier, 
                 color="Seven Day MA Waste W/O Outlier",
-                info=Cases))+
+                info=FirstConfirmed))+
   geom_point(aes(y = outlier_sars_cov2_adj_load,
                  color= "outlier_sars_cov2_adj_load",
                  info = outlier_sars_cov2_adj_load))+
-  scale_y_log10()#+
-  #ColorRule
+  scale_y_log10()
 
 if ("html" != output.format) {
   PrintPlot <- OutLierPlotObject
@@ -246,12 +239,10 @@ The goal in this section is to smooth the data to get a similar effect without l
 resolution.
 
 
-
-
 ```{r, include=FALSE}
-#.165
+
 SpanConstant = .06
-#4.047397
+
 AVGLimsSample*length(LIMSFullDF$sars_cov2_adj_load)*SpanConstant/14
 ```
 
@@ -263,36 +254,36 @@ To get a good smoothing of the sars_cov2_adj_load measurement we employ loess sm
 
 
 
-```{r fig.cap= 'Loess smoothed N1 and SLD cases for Madison data. Using a Locally Weighted Scatterplot Smoothing process along with the previous figure SLD cases we get the most sophisticated relationship between the two signals discussed in this document.'}
+```{r fig.cap= 'Loess smoothed N1 and SLD FirstConfirmed for Madison data. Using a Locally Weighted Scatterplot Smoothing process along with the previous figure SLD FirstConfirmed we get the most sophisticated relationship between the two signals discussed in this document.'}
 SpanConstant = .06
 
-UpdatedDF$loess_sars_cov2_adj_load <- loessFit(y=(UpdatedDF$sars_cov2_adj_load), 
-                      x=UpdatedDF$Date, #create loess fit of the data
-                      span=SpanConstant, #span of .2 seems to give the best result, not rigorously chosen
-                      iterations=2)$fitted#2 iterations remove some bad patterns
+UpdatedDFLoess <- LoessSmoothMod(UpdatedDF,
+                                "sars_cov2_adj_load",
+                                "loess_sars_cov2_adj_load",
+                                span = SpanConstant)
 
 
 LoessGraphic <- UpdatedDF%>%
   filter(!is.na(loess_sars_cov2_adj_load))%>%
-  ggplot(aes(x=Date))+
-  geom_point(aes(y = Cases, color="Cases" , info = Cases),
+  ggplot(aes(x = Date))+
+  geom_point(aes(y = FirstConfirmed, color = "FirstConfirmed" , info = FirstConfirmed),
              alpha = .1,
              size = 1)+
-  geom_point(aes(y=sars_cov2_adj_load,
-                color="sars_cov2_adj_load",
+  geom_point(aes(y = sars_cov2_adj_load,
+                color = "sars_cov2_adj_load",
                 info = sars_cov2_adj_load),
             alpha = .2)+
-  geom_line(aes(y= MAWaste, 
-                color="Seven Day MA Waste",
-                info=Cases),
+  geom_line(aes(y = MAWaste, 
+                color = "Seven Day MA Waste",
+                info = FirstConfirmed),
             alpha = .3)+
-  geom_line(aes(y=MACases,
-                color="Seven Day MA Cases" , 
-                info = MACases))+
-  geom_line(aes(y=loess_sars_cov2_adj_load, 
+  geom_line(aes(y = MAFirstConfirmed,
+                color = "Seven Day MA FirstConfirmed" , 
+                info = MAFirstConfirmed))+
+  geom_line(aes(y = loess_sars_cov2_adj_load, 
                 color = "loess_sars_cov2_adj_load" ,
                 info = loess_sars_cov2_adj_load))+
-  labs(y="Reported cases")+
+  labs(y = "Reported FirstConfirmed")+
   scale_y_log10()#+
   #ColorRule
 
@@ -306,33 +297,6 @@ if ("html" != output.format) {
 PrintPlot
 ```
 
-```{r,eval=FALSE}
-RelationShipDF <- UpdatedDF%>%
-  select(Date, Cases, MACases, N1, N2, PMMoV, loessN1,  DetectedOutlier)
-
-RelationShipDF%>%
-  filter(!is.na(DetectedOutlier))
-
-
-DiffDF <- RelationShipDF%>%
-  mutate(DiffLoessN1 = c(NA,diff(loessN1)),
-         DiffMACasesCases = c(NA,diff(MACases)))%>%
-  select(Date,DiffLoessN1,DiffMACasesCases)
-
-
-x <- ccf(RelationShipDF$loessN1,RelationShipDF$DiffMACasesCases,na.action=na.pass)
-max(x$acf)
-
-
-PrintPlot <- DiffDF%>%
-    NoNa("DiffLoessN1")%>%
-    ggplot()+
-    aes(x=Date)+
-    geom_line(aes(y=DiffMACasesCases, color="DiffMACasesCases"))+
-    geom_line(aes(y=DiffLoessN1, color="DiffLoessN1"))
-              
-print(PrintPlot)
-```
 
 # Towards a formal analysis
 
@@ -382,29 +346,29 @@ ModelTesting <- function(DF,Var1,Var2){
 }
 
 #ErrorRemovedDF
-BaseLine <- ModelTesting(FullDF, "sars_cov2_adj_load", "Cases")
-BaseLineSevenDay <- ModelTesting(FullDF, "sars_cov2_adj_load", "MACases")
-ErrorRemoved <- ModelTesting(UpdatedDF, "sars_cov2_adj_load", "MACases")
-SevenLoess <- ModelTesting(UpdatedDF, "loess_sars_cov2_adj_load","MACases")
+BaseLine <- ModelTesting(FullDF, "sars_cov2_adj_load", "FirstConfirmed")
+BaseLineSevenDay <- ModelTesting(FullDF, "sars_cov2_adj_load", "MAFirstConfirmed")
+ErrorRemoved <- ModelTesting(UpdatedDF, "sars_cov2_adj_load", "MAFirstConfirmed")
+SevenLoess <- ModelTesting(UpdatedDF, "loess_sars_cov2_adj_load","MAFirstConfirmed")
 
 
 Output <- data.frame(row.names=c("Max Cross Correlation",
                                  "Lag of largest Cross correlation",
-                                 "P-value Wastewater predicts Cases",
-                                 "P-value Cases predicts wastewater"),
-  CasesvsWaste = BaseLine,
-  MACasesvsWaste = BaseLineSevenDay,
-  MACasesvsErrorRemovedWaste = ErrorRemoved,
+                                 "P-value Wastewater predicts FirstConfirmed",
+                                 "P-value FirstConfirmed predicts wastewater"),
+  FirstConfirmedvsWaste = BaseLine,
+  MAFirstConfirmedvsWaste = BaseLineSevenDay,
+  MAFirstConfirmedvsErrorRemovedWaste = ErrorRemoved,
   SevenLoess = SevenLoess)
 
 OutputRightPosition <- data.frame(t(Output))
 
 colnames(OutputRightPosition) <- rownames(Output)
 
-rownames(OutputRightPosition) <- c(paste("Section 1: Cases vs sars_cov2_adj_load"),
-                                   paste("Section 1: 7 Day MA Cases vs sars_cov2_adj_load"),
-                                  paste("Section 2: Cases vs sars_cov2_adj_load"),
-                                   paste("Section 4.3: 7 Day MA Cases vs Loess smoothing of sars_cov2_adj_load"))
+rownames(OutputRightPosition) <- c(paste("Section 1: FirstConfirmed vs sars_cov2_adj_load"),
+                                   paste("Section 1: 7 Day MA FirstConfirmed vs sars_cov2_adj_load"),
+                                  paste("Section 2: FirstConfirmed vs sars_cov2_adj_load"),
+                                   paste("Section 4.3: 7 Day MA FirstConfirmed vs Loess smoothing of sars_cov2_adj_load"))
 
 if ("html" != output.format) {
   OutputRightPosition%>%
