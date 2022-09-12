@@ -1,5 +1,5 @@
 ---
-title: "Heuristic exploration of the relationship between FirstConfirmed and viral load"
+title: "Heuristic exploration of the relationship between FirstConfirmed.Per100K and viral load"
 author: "Marlin Lee"
 date: "1/28/2022"
 output:
@@ -16,7 +16,7 @@ editor_options:
 
 **This report looks is an update to the analysis shown on 1/14/2022. Most steps are the same with tweaking due to different data and outlier procedure**
 
-at exploring the relationship between wastewater and FirstConfirmed. 
+at exploring the relationship between wastewater and FirstConfirmed.Per100K. 
 There are four components to this analysis.
 
   1) Removing putative outliers
@@ -51,7 +51,9 @@ library(lubridate)
 #library(limma)
 library(zoo)
 
-if ("html" != output.format) {
+if(is.null(output.format)){
+  library(plotly)
+}else if("html" != output.format) {
   
 }else{
   library(plotly)
@@ -65,7 +67,7 @@ if ("html" != output.format) {
 
 #Custom_color_scale
 PlotColors <- c("#F8766D", "#00BFC4", "#4057A2", "#999999", "#D6544B")
-PlotObjects <- c("Wastewater","FirstConfirmed","Seven Day MA FirstConfirmed",
+PlotObjects <- c("Wastewater","FirstConfirmed.Per100K","Seven Day MA FirstConfirmed.Per100K",
                  "Wastewater outlier","loess Wastewater")
 
 ColorRule <- scale_color_manual(
@@ -98,18 +100,22 @@ baseWaste_DF <- WasteWater_data[WasteWater_data$wwtp_name == "Madison MSD WWTF",
 
 #get DF into format for buildRegressionEstimateTable
 baseWaste_DF <-  buildWasteAnalysisDF(baseWaste_DF)
-
+baseWaste_DF$site <- "Madison"
 #Select columns needed in analysis
 
-LIMSFullDF <- baseWaste_DF[,c(1:2,7)]
+LIMSDF <- baseWaste_DF[,c(1:2,8)]
+
+LIMSDF$sars_cov2_adj_load <- 10**LIMSDF$sars_cov2_adj_load_log10
 
 #joining the two data frames together
-FullDF <- full_join(LatCaseDF,LIMSFullDF, by = c("Date","Site"))
+FullDF <- full_join(Case_DF, LIMSDF, by = c("date","site"))
+
+FullDF <- FullDF[,c(1:4,6)]
 ```
 
 # Data: The first look
 
-The two data sets used in this analysis are the Madison case data sourced from the Wisconsin DHS and wastewater  concentration data produced by the Wisconsin State Laboratory of Hygiene. This wastewater data has entries every couple of days from `r format(min(LIMSFullDF$Date), "%d %B %Y")` to `r format(max(LIMSFullDF$Date), "%d %B %Y")`.
+The two data sets used in this analysis are the Madison case data sourced from the Wisconsin DHS and wastewater  concentration data produced by the Wisconsin State Laboratory of Hygiene. This wastewater data has entries every couple of days from `r format(min(LIMSDF$date), "%d %B %Y")` to `r format(max(LIMSDF$date), "%d %B %Y")`.
 
 ```{r First look, echo=FALSE}
 #what does the data look like? 
@@ -118,9 +124,9 @@ Disp1 <- FullDF%>%
   head()
 
 #diff()
-AVGLimsSample <- LIMSFullDF%>%
+AVGLimsSample <- FullDF%>%
   filter(!is.na(sars_cov2_adj_load))%>%
-  pull(Date)%>%
+  pull(date)%>%
   sort()%>%
   diff()%>%
   mean()%>%
@@ -128,9 +134,12 @@ AVGLimsSample <- LIMSFullDF%>%
 
 FullDF%>%
   filter(!is.na(sars_cov2_adj_load))%>%
-  summarise(min(Date),max(Date))
+  summarise(min(date), max(date))
   
-if ("html" != output.format) {
+if(is.null(output.format)){
+  Disp1%>%
+    knitr::kable()
+}else if ("html" != output.format) {
   Disp1%>%
     knitr::kable()
 }else{
@@ -140,38 +149,34 @@ if ("html" != output.format) {
 
 ```
 
-The case data has a strong weekend effect so for this section we look at a seven day smoothing of FirstConfirmed. The simple display of the data shows the core components of this story. First, wastewater data is noisy. And that there is a clear relationship between the two signals.
+The case data has a strong weekend effect so for this section we look at a seven day smoothing of FirstConfirmed.Per100K. The simple display of the data shows the core components of this story. First, wastewater data is noisy. And that there is a clear relationship between the two signals.
 
-```{r fig.cap= 'Wastewater concentration and daily Covid-19 case data for Madison. A seven day moving average of FirstConfirmed is used to reduce a day of the week effect.'}
+```{r fig.cap= 'Wastewater concentration and daily Covid-19 case data for Madison. A seven day moving average of FirstConfirmed.Per100K is used to reduce a day of the week effect.'}
 FirstImpressionDF <- FullDF%>%
-  filter(!is.na(sars_cov2_adj_load),
-         !is.na(FirstConfirmed))#Removing NA
+  filter(!is.na(sars_cov2_adj_load))#Removing NA
 
 FirstImpression <- FirstImpressionDF%>%
-  ggplot(aes(x = Date))+#Data depends on time
-  geom_point(aes(y = FirstConfirmed, color = "FirstConfirmed", info = FirstConfirmed),
+  ggplot(aes(x = date))+#Data depends on time
+  geom_point(aes(y = FirstConfirmed.Per100K, color = "FirstConfirmed.Per100K"),
              size = 1)+
   geom_point(aes(y = sars_cov2_adj_load, 
-                color = "Wastewater",
-                info = sars_cov2_adj_load),
-             size = 1)+#compares sars_cov2_adj_load to FirstConfirmed
-  geom_line(aes( y= MAWaste, 
-                color = "Seven Day MA Waste",
-                info = FirstConfirmed))+
-  geom_line(aes(y = MAFirstConfirmed, 
-                color = "Seven Day MA FirstConfirmed",
-                info = FirstConfirmed))+
-  labs(y = "Reported FirstConfirmed")+
+                color = "Wastewater"),
+             size = 1)+#compares sars_cov2_adj_load to FirstConfirmed.Per100K
+  geom_line(aes(y = pastwk.avg.casesperday.Per100K, 
+                color = "Seven Day MA FirstConfirmed.Per100K"))+
+  labs(y = "Reported FirstConfirmed.Per100K")+
   scale_y_log10()
 
 
-if ("html" != output.format) {
+if(is.null(output.format)){
+  PrintPlot <- ggplotly(FirstImpression)
+}else if ("html" != output.format) {
   PrintPlot <- FirstImpression
 }else{
   PrintPlot <- ggplotly(FirstImpression)
 }
 PrintPlot
-#To remove weekend effects we are looking at the 7 day smoothing of FirstConfirmed.
+#To remove weekend effects we are looking at the 7 day smoothing of FirstConfirmed.Per100K.
 ```
   
 
@@ -193,8 +198,8 @@ ErrorMarkedDF <- FullDF%>%#
 #Split N1 into outlier and non outlier for next ggplot
 OutLierPlotDF <- ErrorMarkedDF%>%#
   mutate(outlier_sars_cov2_adj_load = ifelse(FlagedOutliers, sars_cov2_adj_load,NA))%>%
-           mutate(sars_cov2_adj_load = NoOutlierVar)%>%
-  arrange(Date)%>%
+  mutate(sars_cov2_adj_load = NoOutlierVar)%>%
+  arrange(date)%>%
   mutate(MAWasteWOOutlier = rollmean(sars_cov2_adj_load, 7, align = "right",
                             na.rm = TRUE,fill=NA))
 
@@ -202,32 +207,26 @@ OutLierPlotDF <- ErrorMarkedDF%>%#
 UpdatedDF <- ErrorMarkedDF%>%
   select(-sars_cov2_adj_load)%>%
   rename(sars_cov2_adj_load = NoOutlierVar)%>%
-  arrange(Date)%>%
+  arrange(date)%>%
   mutate(MAWaste = rollmean(sars_cov2_adj_load, 7, align = "right",
                             na.rm = TRUE,fill=NA))
 
 OutLierPlotObject <- OutLierPlotDF%>%
   filter(!(is.na(sars_cov2_adj_load)&is.na(outlier_sars_cov2_adj_load)))%>%
-  ggplot(aes(x=Date))+#Data depends on time 
+  ggplot(aes(x=date))+#Data depends on time 
   geom_point(aes(y=sars_cov2_adj_load,
-                color="sars_cov2_adj_load", 
-                info = sars_cov2_adj_load),
-             size = 1)+#compares Var to FirstConfirmed
-  geom_line(aes(y= MAWaste, 
-                color="Seven Day MA Waste",
-                info=FirstConfirmed))+
-  geom_line(aes(y= MAWasteWOOutlier, 
-                color="Seven Day MA Waste W/O Outlier",
-                info=FirstConfirmed))+
+                color="sars_cov2_adj_load"),
+             size = 1)+#compares Var to FirstConfirmed.Per100K
   geom_point(aes(y = outlier_sars_cov2_adj_load,
-                 color= "outlier_sars_cov2_adj_load",
-                 info = outlier_sars_cov2_adj_load))+
+                 color= "outlier_sars_cov2_adj_load"))+
   scale_y_log10()
 
-if ("html" != output.format) {
+if(is.null(output.format)){
+  PrintPlot <- ggplotly(OutLierPlotObject, tooltip=c("y","date"))
+}else if ("html" != output.format) {
   PrintPlot <- OutLierPlotObject
 }else{
-  PrintPlot <- ggplotly(OutLierPlotObject, tooltip=c("info","Date"))
+  PrintPlot <- ggplotly(OutLierPlotObject, tooltip=c("y","date"))
 }
 PrintPlot
 ```
@@ -243,18 +242,18 @@ resolution.
 
 SpanConstant = .06
 
-AVGLimsSample*length(LIMSFullDF$sars_cov2_adj_load)*SpanConstant/14
+AVGLimsSample*length(LIMSDF$sars_cov2_adj_load)*SpanConstant/14
 ```
 
 
 
 ## viral load smoothing
 
-To get a good smoothing of the sars_cov2_adj_load measurement we employ loess smoothing. Loess smoothing takes a locally weighted sliding window using some number of points. we found the best smoothing when it uses data within approximately `r floor(AVGLimsSample*length(LIMSFullDF$N1)*SpanConstant/14)` weeks of both sides of the data. The displayed plot shows the visual power of this smoothing. We see in general that the smoothed N1 trails SLD. However loess is symmetric meaning that it can not be used in predictive modeling due to it using points from the future to smooth points.
+To get a good smoothing of the sars_cov2_adj_load measurement we employ loess smoothing. Loess smoothing takes a locally weighted sliding window using some number of points. we found the best smoothing when it uses data within approximately `r floor(AVGLimsSample*length(LIMSDF$N1)*SpanConstant/14)` weeks of both sides of the data. The displayed plot shows the visual power of this smoothing. We see in general that the smoothed N1 trails SLD. However loess is symmetric meaning that it can not be used in predictive modeling due to it using points from the future to smooth points.
 
 
 
-```{r fig.cap= 'Loess smoothed N1 and SLD FirstConfirmed for Madison data. Using a Locally Weighted Scatterplot Smoothing process along with the previous figure SLD FirstConfirmed we get the most sophisticated relationship between the two signals discussed in this document.'}
+```{r fig.cap= 'Loess smoothed N1 and SLD FirstConfirmed.Per100K for Madison data. Using a Locally Weighted Scatterplot Smoothing process along with the previous figure SLD FirstConfirmed.Per100K we get the most sophisticated relationship between the two signals discussed in this document.'}
 SpanConstant = .06
 
 UpdatedDFLoess <- LoessSmoothMod(UpdatedDF,
@@ -263,36 +262,30 @@ UpdatedDFLoess <- LoessSmoothMod(UpdatedDF,
                                 span = SpanConstant)
 
 
-LoessGraphic <- UpdatedDF%>%
-  filter(!is.na(loess_sars_cov2_adj_load))%>%
-  ggplot(aes(x = Date))+
-  geom_point(aes(y = FirstConfirmed, color = "FirstConfirmed" , info = FirstConfirmed),
+LoessGraphic <- UpdatedDFLoess%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y = FirstConfirmed.Per100K, color = "FirstConfirmed.Per100K"),
              alpha = .1,
              size = 1)+
   geom_point(aes(y = sars_cov2_adj_load,
-                color = "sars_cov2_adj_load",
-                info = sars_cov2_adj_load),
+                color = "sars_cov2_adj_load"),
             alpha = .2)+
-  geom_line(aes(y = MAWaste, 
-                color = "Seven Day MA Waste",
-                info = FirstConfirmed),
-            alpha = .3)+
-  geom_line(aes(y = MAFirstConfirmed,
-                color = "Seven Day MA FirstConfirmed" , 
-                info = MAFirstConfirmed))+
+  geom_line(aes(y = pastwk.avg.casesperday.Per100K,
+                color = "Seven Day MA FirstConfirmed.Per100K"))+
   geom_line(aes(y = loess_sars_cov2_adj_load, 
-                color = "loess_sars_cov2_adj_load" ,
-                info = loess_sars_cov2_adj_load))+
-  labs(y = "Reported FirstConfirmed")+
+                color = "loess_sars_cov2_adj_load"))+
+  labs(y = "Reported FirstConfirmed.Per100K")+
   scale_y_log10()#+
   #ColorRule
 
 
 
-if ("html" != output.format) {
+if(is.null(output.format)){
+  PrintPlot <- ggplotly(LoessGraphic,tooltip=c("y","date"))
+}else if ("html" != output.format) {
   PrintPlot <- LoessGraphic
 }else{
-  PrintPlot <- ggplotly(LoessGraphic,tooltip=c("info","Date"))
+  PrintPlot <- ggplotly(LoessGraphic,tooltip=c("y","date"))
 }
 PrintPlot
 ```
@@ -346,31 +339,34 @@ ModelTesting <- function(DF,Var1,Var2){
 }
 
 #ErrorRemovedDF
-BaseLine <- ModelTesting(FullDF, "sars_cov2_adj_load", "FirstConfirmed")
-BaseLineSevenDay <- ModelTesting(FullDF, "sars_cov2_adj_load", "MAFirstConfirmed")
-ErrorRemoved <- ModelTesting(UpdatedDF, "sars_cov2_adj_load", "MAFirstConfirmed")
-SevenLoess <- ModelTesting(UpdatedDF, "loess_sars_cov2_adj_load","MAFirstConfirmed")
+BaseLine <- ModelTesting(FullDF, "sars_cov2_adj_load", "FirstConfirmed.Per100K")
+BaseLineSevenDay <- ModelTesting(FullDF, "sars_cov2_adj_load", "pastwk.avg.casesperday.Per100K")
+ErrorRemoved <- ModelTesting(UpdatedDF, "sars_cov2_adj_load", "pastwk.avg.casesperday.Per100K")
+SevenLoess <- ModelTesting(UpdatedDFLoess, "loess_sars_cov2_adj_load","pastwk.avg.casesperday.Per100K")
 
 
 Output <- data.frame(row.names=c("Max Cross Correlation",
                                  "Lag of largest Cross correlation",
-                                 "P-value Wastewater predicts FirstConfirmed",
-                                 "P-value FirstConfirmed predicts wastewater"),
-  FirstConfirmedvsWaste = BaseLine,
-  MAFirstConfirmedvsWaste = BaseLineSevenDay,
-  MAFirstConfirmedvsErrorRemovedWaste = ErrorRemoved,
+                                 "P-value Wastewater predicts FirstConfirmed.Per100K",
+                                 "P-value FirstConfirmed.Per100K predicts wastewater"),
+  FirstConfirmed.Per100KvsWaste = BaseLine,
+  pastwk.avg.casesperday.Per100KvsWaste = BaseLineSevenDay,
+  pastwk.avg.casesperday.Per100KvsErrorRemovedWaste = ErrorRemoved,
   SevenLoess = SevenLoess)
 
 OutputRightPosition <- data.frame(t(Output))
 
 colnames(OutputRightPosition) <- rownames(Output)
 
-rownames(OutputRightPosition) <- c(paste("Section 1: FirstConfirmed vs sars_cov2_adj_load"),
-                                   paste("Section 1: 7 Day MA FirstConfirmed vs sars_cov2_adj_load"),
-                                  paste("Section 2: FirstConfirmed vs sars_cov2_adj_load"),
-                                   paste("Section 4.3: 7 Day MA FirstConfirmed vs Loess smoothing of sars_cov2_adj_load"))
+rownames(OutputRightPosition) <- c(paste("Section 1: FirstConfirmed.Per100K vs sars_cov2_adj_load"),
+                                   paste("Section 1: 7 Day MA FirstConfirmed.Per100K vs sars_cov2_adj_load"),
+                                  paste("Section 2: FirstConfirmed.Per100K vs sars_cov2_adj_load"),
+                                   paste("Section 4.3: 7 Day MA FirstConfirmed.Per100K vs Loess smoothing of sars_cov2_adj_load"))
 
-if ("html" != output.format) {
+if(is.null(output.format)){
+  OutputRightPosition%>%
+    knitr::kable()
+}else if ("html" != output.format) {
   OutputRightPosition%>%
     knitr::kable()
 }else{

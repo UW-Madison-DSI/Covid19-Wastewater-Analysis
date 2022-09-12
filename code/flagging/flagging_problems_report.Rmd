@@ -67,13 +67,13 @@ CDCMethod <- buildRegressionEstimateTable(baseWaste_DF,
 #merge the regression DF and the quantile DF to get info for 
 
 FULL_reg_DF <- dplyr::full_join(Quantiles_DF, CDCMethod,
-                                by = c("WWTP", "date"))
+                                by = c("site", "date"))
 
 #create flags described in @return
 FULL_reg_DF <- ClassifyQuantileFlagRegression(FULL_reg_DF)
 
 #return only flags and type columns 
-Full_wasteFlags <- FULL_reg_DF[,c("WWTP", "date", 
+Full_wasteFlags <- FULL_reg_DF[,c("site", "date", 
                                   "sars_cov2_adj_load_log10",
                                   "ntile",
                                   "cdc_flag",
@@ -135,7 +135,7 @@ Case_DF <- buildCaseAnalysisDF(Case_DF)
 
 CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF, 
     RunOn = c("FirstConfirmed.Per100K", "pastwk.avg.casesperday.Per100K"),
-    SplitOn = "Site", DaysRegressed = 7)
+    SplitOn = "site", DaysRegressed = 7)
 
 
 library(tidyr)
