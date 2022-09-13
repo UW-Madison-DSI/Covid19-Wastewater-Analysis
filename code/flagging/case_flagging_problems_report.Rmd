@@ -1,0 +1,73 @@
+---
+header-includes:
+- \usepackage{wrapfig}
+title: "day of week effect in DHS COVID-19 case Flagging Method"
+author:
+- Steve Goldstein, Marlin Lee, Abe Megahed, Kyllan Wunder
+- "University of Wisconsin Data Science Institute - August, 2022"
+output:
+  pdf_document:
+    keep_tex: true     
+---
+
+```{r set up markdown settings, echo=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE
+)
+```
+
+
+```{r}
+library(DSIWastewater)
+
+#load Case_data into the environment
+data(Case_data, package = "DSIWastewater")
+
+
+#get the case flags
+Case_DF <- buildCaseAnalysisDF(Case_data)
+
+
+CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF, 
+    RunOn = c("FirstConfirmed.Per100K", "pastwk.avg.casesperday.Per100K"),
+    SplitOn = "site", DaysRegressed = 7, verbose = FALSE)
+
+```
+
+
+```{r}
+library(lubridate)
+library(dplyr)
+library(tidyr)
+
+DOWCaseRegression <- CaseRegressionOutput%>%
+  mutate(NumWeek = week(date), dayweek = wday(date, label = TRUE))
+```
+
+This is an extension of the analysis shown on 9/8. We aim to show that the case flag method
+has a meaningful day of the week effect across the whole data set.
+
+The first table shows the mean slope of each day of the week. with Friday having a mean
+slope of 2 and Sunday having mean slope of -1.7 there is a huge difference between days
+
+
+```{r}
+DOWCaseRegression%>%
+  group_by(Method, dayweek)%>%
+  summarise(meanSlope = mean(lmreg_slope))%>%
+  pivot_wider(names_from  = Method, values_from  = c(meanSlope))
+
+#show over flaging
+```
+The second table has the percent each weekday as a flag. having a 3x difference is large
+enough to have concern that this could be affecting the flagging method
+
+```{r}
+DOWCaseRegression%>%
+  mutate(flag = lmreg_slope>5)%>%
+  group_by(Method, dayweek)%>%
+  summarise(meanflag = 100*mean(flag))%>%
+  pivot_wider(names_from  = Method, values_from  = meanflag)
+```
