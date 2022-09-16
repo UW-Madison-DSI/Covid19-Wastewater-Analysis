@@ -1,7 +1,7 @@
 ---
 header-includes:
   - \usepackage{wrapfig}
-title: "problems in the DHS Covid-19 Flagging methods"
+title: "Does a Day-of-the-Week effect exist?"
 author:
 - Marlin Lee, Steve Goldstein, Kyllan Wunder, Abe Megahed
 - "University of Wisconsin Data Science Institute - August, 2022"
@@ -10,12 +10,32 @@ output:
     keep_tex: true
 ---
 
-```{r set up markdown settings, echo=FALSE}
+```{r set up markdown settings, include =FALSE}
 knitr::opts_chunk$set(
 	message = FALSE,
 	warning = FALSE,
-	echo = FALSE
+	echo = FALSE,
+	fig.align = 'Right',
+	Plot.size = .6,
+	PlotHeight = 15
+	#out.width= "65%"
 )
+
+defOut <- knitr::knit_hooks$get("plot")  # save the default plot hook
+
+knitr::knit_hooks$set(plot = function(x, options) {  # set new plot hook ...
+  
+  x <- defOut(x, options)  # first apply the default hook
+  # create the new opening string for the wrapfigure environment ...
+  wf <- sprintf("\\noindent\\begin{wrapfigure}[%g]{%s}{%g\\textwidth}", 
+                options$PlotHeight, "R", options$Plot.size)
+  
+  x  <- gsub("\\begin{figure}", wf, x, fixed = T)  # and replace the default one with it.
+  
+  x  <- gsub("{figure}", "{wrapfigure}", x, fixed = T)  # also replace the environment ending
+  return(x)
+})
+
 ```
 
 ```{r create case data in right format}
@@ -51,7 +71,8 @@ CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF,
 
 
 
-```{r plot}
+
+```{r plot, eval=FALSE}
 
 ggplot(Case_DF, aes(x=date, y=FirstConfirmed)) +
   geom_point( alpha = .1) +
@@ -61,6 +82,11 @@ ggplot(Case_DF, aes(x=date, y=FirstConfirmed)) +
 
 
 ```
+
+### 7 Day smoothing
+
+When a 7-day smoothing is applied to the case data it is apparent that the data does not always follow the line perfectly. When we add in the average of every week we can see that many values are not close to the weekly average at all. 
+
 
 ```{r day of week}
 
@@ -79,7 +105,9 @@ ggplot(Case_DF, aes(x=date, y=FirstConfirmed)) +
 
 
 ```
+### Cases per day
 
+Looking closer at the data if we sum all of the cases by the day of week in which they were reported and find the proportion of how many cases land on each day we can clearly see that Sunday has the highest proportion of cases confirmed followed by Wednesday, while Friday has the lowest proportion. To try and combat this issue we have created a normalizing factor based off of the proportions for each day of the week. This is just the reciprocal of the proportion. 
 
 
 ```{r day of week effect}
@@ -99,10 +127,10 @@ Case_DF_DoWe <- Case_DF_DoWe %>%
 
 
 
-mean(Case_DF_DoWe$prop)
+#mean(Case_DF_DoWe$prop)
 
 Case_DF_DoWe <- Case_DF_DoWe %>%
-  mutate(normalizingfactor = mean(Case_DF_DoWe$prop)/prop)
+  mutate(normalizingfactor = mean(Case_DF_DoWe$prop)/prop, dayofweek = wday(dayofweek, label = TRUE))
 
 head(Case_DF_DoWe)
 
@@ -117,44 +145,59 @@ Case_DF_DoWe_pt2 <- Case_DF_DoWe[-c(2,3)]
 
 
 
-Case_DF_norm_Cases <- Case_DF %>% mutate(dayofweek = wday(date))
+Case_DF_norm_Cases <- Case_DF %>% mutate(dayofweek = wday(date), dayofweek = wday(dayofweek, label = TRUE))
 
 Case_DF_norm_Cases <- right_join(Case_DF_norm_Cases, Case_DF_DoWe_pt2,by = "dayofweek") 
   
 
 Case_DF_norm_Cases <- Case_DF_norm_Cases %>% mutate(normcases = FirstConfirmed * normalizingfactor)
 
-head(Case_DF_norm_Cases)
+#head(Case_DF_norm_Cases)
 
 
 ```
 
+### Normilizing cases
+
+As shown normalizing cases is strange. In some places cases are shifted up and some are shifted down. It is hard to tell weather if this has helped or not. But as shown using the same graph from before with the weekly averages not being changed clearly the cases have shifted a lot.
 
 
 
+```{r plotting norm cases vs cases}
 
-```{r plotting norm cases}
-
-plot <- ggplot(Case_DF_norm_Cases, aes(x=date, y=normcases)) +
+Casesvsnormcasesplot <- ggplot(Case_DF_norm_Cases, aes(x=date, y=normcases)) +
   geom_point(aes(color = "weighted cases")) +
   geom_point(data=Case_DF, aes(x=date, y=FirstConfirmed, color="cases"))+
   ylim(0,600) 
-  #
 
-plot2 <- ggplot(Case_DF_norm_Cases, aes(x=date, y=(FirstConfirmed-normcases))) +
-  geom_point() +
-  ylim(0,600) 
+Casesvsnormcasesplot
 
+normcaseswithsmooth <- ggplot(Case_DF_norm_Cases, aes(x=date, y=normcases)) +
+  geom_point( alpha = .1) +
+  geom_point(data = Case_DF_Week, aes(x=date, y=weekavg))+
+  ylim(0,600) + 
+  geom_ma(ma_fun = SMA, n = 7)
 
-ggplotly(plot)
-ggplotly(plot2)
+normcaseswithsmooth
+```
+### Does normlizing help day-of-week effect
 
+If we plot out number of cases per day we can see that some days are always higher like Wednesday (Pink) and some are always lower like Saturday (Green) and Sunday (Light Green). After normalization while Saturday and Sunday are still usually the lowest the rest of the days converge and come closer together and less distinct. It is also clear to see that the days that have the highest and lowest proportions change over time leading us to belive that a better normalizing factor is needed as the proportion of cases changes.
 
-ggplot(Case_DF_norm_Cases, aes(x=date, y=FirstConfirmed, color = as.character(dayofweek))) +
+```{r plotting norm cases vs cases per day}
+dayofweek <- ggplot(Case_DF_norm_Cases, aes(x=date, y=FirstConfirmed, color = as.character(dayofweek))) +
   #geom_point() +
   geom_ma(ma_fun = SMA, n = 7) +
   scale_y_log10()
 
+dayofweeknorm <- ggplot(Case_DF_norm_Cases, aes(x=date, y=normcases, color = as.character(dayofweek))) +
+  #geom_point() +
+  geom_ma(ma_fun = SMA, n = 7) +
+  scale_y_log10()
+
+
+dayofweek
+dayofweeknorm
 
 ```
 
