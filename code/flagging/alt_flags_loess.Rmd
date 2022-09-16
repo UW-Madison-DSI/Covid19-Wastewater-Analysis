@@ -34,7 +34,7 @@ baseWaste_DF <- baseWaste_DF[
 baseWaste_DF <-  buildWasteAnalysisDF(baseWaste_DF)
 
 #add quantile data to merge with the regression results
-Quantiles_DF <- MakeQuantileColumns(baseWaste_DF,
+Quantiles_DF <- makeQuantileColumns(baseWaste_DF,
                                     .8, 90,
                                     "sars_cov2_adj_load_log10")
 
@@ -47,7 +47,7 @@ FULL_reg_DF <- dplyr::full_join(Quantiles_DF, CDCMethod,
                                 by = c("WWTP", "date"))
 
 #create flags described in @return
-FULL_reg_DF <- ClassifyQuantileFlagRegression(FULL_reg_DF)
+FULL_reg_DF <- classifyQuantileFlagRegression(FULL_reg_DF)
 
 #return only flags and type columns 
 Full_wasteFlags <- FULL_reg_DF[,c("WWTP", "date", 

@@ -1,4 +1,4 @@
-ParameterGuess <- function(DF,InVar, Base, max){
+parameterGuess <- function(DF,InVar, Base, max){
   temp <- DF%>%
     filter(!is.na((!!sym(InVar))))%>%
     summarise(n=n())
@@ -6,15 +6,15 @@ ParameterGuess <- function(DF,InVar, Base, max){
   return(span)
 }
 
-ExpSmoothMod <- function(DF,InVar="sars_cov2_adj_load_log10",
+expSmoothMod <- function(DF,InVar="sars_cov2_adj_load_log10",
                          OutVar="EXP", alpha="guess", beta="guess",
                          Filter = NULL ){
   
   if(alpha=="guess"){
-    alpha <- ParameterGuess(DF,InVar, 35.6, .4)
+    alpha <- parameterGuess(DF,InVar, 35.6, .4)
   }
   if(beta=="guess"){
-    beta <- ParameterGuess(DF,InVar, 8.9, .4)
+    beta <- parameterGuess(DF,InVar, 8.9, .4)
   }
   if(!is.null(Filter)){
     OutDF <- DF%>%
@@ -74,7 +74,7 @@ PrepDataSmoothings <- function(DF, filterVec = NA){
   RetDF <- RetDF%>%
     arrange(date)%>%
     loessSmoothMod()%>%
-    ExpSmoothMod(alpha = 0.07688985,
+    expSmoothMod(alpha = 0.07688985,
                  beta = 0.01922246)
   
   RetDF <- RetDF%>%

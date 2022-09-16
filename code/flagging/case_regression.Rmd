@@ -159,7 +159,7 @@ wwtp_characteristics = postJAN_cases %>%
       
       
 ####My Code
-ClassifyCaseRegression <- function(DF){
+classifyCaseRegression <- function(DF){
   RetDF <- DF%>%
         mutate(
           # A flag when the slope for most recent week is greater than 5/100k/day
@@ -185,7 +185,7 @@ CaseOutput <- CaseProcess%>%
                              verbose = TRUE,
                              PSigTest = FALSE)%>%
   full_join(CaseProcess[c("date","Site", "FirstConfirmed.Per100K")])%>%
-  ClassifyCaseRegression()
+  classifyCaseRegression()
 
 ###
 CaseOutput%>%

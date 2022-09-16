@@ -83,13 +83,13 @@ library(dplyr)
 
 BaseCaseFlagOutput <- CaseRegressionOutput%>%
   filter(Method == "FirstConfirmed.Per100K")%>%
-  ClassifyCaseRegression(slopeThreshold = 5)%>%
+  classifyCaseRegression(slopeThreshold = 5)%>%
   select(Site, date, case_flag, slope_switch_flag)%>%
   rename(Base_case_flag = case_flag, Base_switch_flag = slope_switch_flag)
 
 AltCaseFlagOutput <- CaseRegressionOutput%>%
   filter(Method == "pastwk.avg.casesperday.Per100K")%>%
-  ClassifyCaseRegression(slopeThreshold = 1)%>%
+  classifyCaseRegression(slopeThreshold = 1)%>%
   select(Site, date, case_flag, slope_switch_flag)%>%
   rename(Alt_case_flag = case_flag, Alt_switch_flag = slope_switch_flag)
 
@@ -97,7 +97,7 @@ Full_Flag_DF <- inner_join(BaseCaseFlagOutput, AltCaseFlagOutput, by = c("date",
 
 #25	6	9
 #BaseCaseFlagOutput,AltCaseFlagOutput
-FlagCount <- Count_Flag(Full_Flag_DF, group = c("Site"))
+FlagCount <- countFlag(Full_Flag_DF, group = c("Site"))
 
 library(ggplot2)
 All_Site_Count_Plot <- FlagCount%>%

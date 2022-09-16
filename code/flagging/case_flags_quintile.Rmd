@@ -31,7 +31,7 @@ Case_DF <- Case_data[Case_data$Site == "Madison",]
 Case_DF <- Case_DF[Case_DF$date  >= as.Date("2021-02-01"),]
 
 #get the case flags
-CaseFlags <- CreateCaseFlag(Case_DF)
+CaseFlags <- createCaseFlag(Case_DF)
 
 ```
 
@@ -47,7 +47,7 @@ baseWaste_DF <- baseWaste_DF[
   as.Date(baseWaste_DF$sample_collect_date, format = "%m/%d/%Y") >= as.Date("2021-02-01"),]
 
 #get the waste flags
-Waste_reg_DF <- CreateWasteFlags(baseWaste_DF)
+Waste_reg_DF <- createWasteFlags(baseWaste_DF)
 ```
 
 ```{r Merge flag data frames}
@@ -59,7 +59,7 @@ Full_Flag_DF <- dplyr::inner_join(Waste_reg_DF, CaseFlags,
 ```{r case number func}
 library(dplyr)
 
-Count_Flag(CaseFlags, group = c("Site"))
+countFlag(CaseFlags, group = c("Site"))
 
 ```
 
@@ -74,7 +74,7 @@ Waste_Smooth_DF <- do.call(rbind,
                                   #get DF into normal shape
                                   buildWasteAnalysisDF(baseWaste_DF),
                                   ~WWTP),
-                                LoessSmoothMod))
+                                loessSmoothMod))
 
 #rename WWTP column to Site for easier ploting
 names(Waste_Smooth_DF)[names(Waste_Smooth_DF) == 'WWTP'] <- 'Site'

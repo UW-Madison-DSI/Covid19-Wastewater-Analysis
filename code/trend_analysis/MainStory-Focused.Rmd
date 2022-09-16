@@ -256,7 +256,7 @@ To get a good smoothing of the sars_cov2_adj_load measurement we employ loess sm
 ```{r fig.cap= 'Loess smoothed N1 and SLD FirstConfirmed.Per100K for Madison data. Using a Locally Weighted Scatterplot Smoothing process along with the previous figure SLD FirstConfirmed.Per100K we get the most sophisticated relationship between the two signals discussed in this document.'}
 SpanConstant = .06
 
-UpdatedDFLoess <- LoessSmoothMod(UpdatedDF,
+UpdatedDFLoess <- loessSmoothMod(UpdatedDF,
                                 "sars_cov2_adj_load",
                                 "loess_sars_cov2_adj_load",
                                 span = SpanConstant)
