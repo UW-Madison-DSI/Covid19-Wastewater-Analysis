@@ -8,6 +8,8 @@ author:
 output:
   pdf_document:
     keep_tex: true     
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r set up markdown settings, echo=FALSE}

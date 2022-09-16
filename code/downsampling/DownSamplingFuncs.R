@@ -73,7 +73,7 @@ PrepDataSmoothings <- function(DF, filterVec = NA){
   RetDF <- full_join(RetDF, dateTOMERGEVec)
   RetDF <- RetDF%>%
     arrange(date)%>%
-    LoessSmoothMod()%>%
+    loessSmoothMod()%>%
     ExpSmoothMod(alpha = 0.07688985,
                  beta = 0.01922246)
   
