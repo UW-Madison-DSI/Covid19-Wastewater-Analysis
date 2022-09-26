@@ -1,0 +1,103 @@
+---
+title: "test server"
+author: "Marlin"
+date: "2022-09-23"
+output: html_document
+---
+
+
+
+```{r cars}
+library(DSIWastewater)
+#load WasteWater_data into the environment
+data(WasteWater_data, package = "DSIWastewater")
+
+#restrict Waste data to only Madison data
+baseWaste_DF <- WasteWater_data[WasteWater_data$wwtp_name == "Madison MSD WWTF",]
+baseWaste_DF$wwtp_name <- "Madison"
+
+#get DF into format for buildRegressionEstimateTable
+baseWaste_DF <-  buildWasteAnalysisDF(baseWaste_DF)
+
+#add quantile data to merge with the regression results
+Quantiles_DF <- makeQuantileColumns(baseWaste_DF,
+                                    .8, 90,
+                                    "sars_cov2_adj_load_log10")
+
+#Get 5 day rolling regression of data
+CDCMethod <- buildRegressionEstimateTable(baseWaste_DF,
+                                          PSigTest=FALSE)
+#merge the regression DF and the quantile DF to get info for 
+
+FULL_reg_DF <- dplyr::full_join(Quantiles_DF, CDCMethod,
+                                by = c("site", "date"))
+
+#create flags described in @return
+FULL_reg_DF <- classifyQuantileFlagRegression(FULL_reg_DF)
+
+#return only flags and type columns 
+Full_wasteFlags <- FULL_reg_DF[,c("site", "date", 
+                                  "cdc_flag",
+                                  "flag_ntile",
+                                  "flag_ntile_Pval")]
+```
+
+
+```{r}
+data(Case_data, package = "DSIWastewater")
+
+
+#restrict Case data to only Madison data
+Case_DF <- Case_data[Case_data$Site == "Madison",]
+
+#restrict Case data to dates after 2021-02-01
+Case_DF <- Case_DF[Case_DF$date  >= as.Date("2021-02-01"),]
+
+#get the case flags
+Case_DF <- buildCaseAnalysisDF(Case_DF)
+
+
+CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF, 
+    RunOn = c("FirstConfirmed.Per100K", "pastwk.avg.casesperday.Per100K"),
+    SplitOn = "site", DaysRegressed = 7)
+
+#Classify slope to create 3 flags described in @return  
+CaseFlagOutput <- classifyCaseRegression(CaseRegressionOutput)
+  
+#return only flags and type columns
+CaseFlags <- CaseFlagOutput[,c("site", "date", "case_flag",
+                                 "case_flag_plus_comm.threshold",
+                                 "slope_switch_flag")]
+```
+
+```{r}
+library(dplyr)
+
+
+
+DF_date_vector(CaseFlags, "date", 
+               c("case_flag", "case_flag_plus_comm.threshold", "slope_switch_flag"))
+
+Flag_DF <- full_join(Full_wasteFlags, CaseFlags, 
+                     by = c("site", "date"))
+
+date_Flag_DF <- DF_date_vector(Flag_DF, "date", 
+               c("cdc_flag","flag_ntile","flag_ntile_Pval",
+               "case_flag", "case_flag_plus_comm.threshold", "slope_switch_flag"))
+```
+
+```{r}
+dep_flags <- c("cdc_flag","flag_ntile","flag_ntile_Pval")
+DateDistDF <- date_distance_calc(date_Flag_DF, "case_flag", dep_flags, edge = 21)
+
+DateDistDF%>%
+  summarise(across(all_of(dep_flags),
+               ~mean(.x, na.rm = TRUE)))
+
+DateDistDF%>%
+  summarise(across(all_of(dep_flags),
+               ~var(.x, na.rm = TRUE)))
+
+DateDistDF%>%
+  filter(!is.na(cdc_flag), !is.na(case_flag))
+```
