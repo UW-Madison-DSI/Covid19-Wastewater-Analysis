@@ -12,31 +12,48 @@ library(DSIWastewater)
 #load WasteWater_data into the environment
 data(WasteWater_data, package = "DSIWastewater")
 
-#restrict Waste data to only Madison data
-baseWaste_DF <- WasteWater_data[WasteWater_data$wwtp_name == "Madison MSD WWTF",]
-baseWaste_DF$wwtp_name <- "Madison"
-
 #get DF into format for buildRegressionEstimateTable
-baseWaste_DF <-  buildWasteAnalysisDF(baseWaste_DF)
+baseWaste_DF <-  buildWasteAnalysisDF(WasteWater_data)
+baseWaste_DF$site <- ifelse(baseWaste_DF$site == "Madison MSD WWTF",
+                            "Madison", baseWaste_DF$site)
+baseWaste_DF <- baseWaste_DF[!(baseWaste_DF$site %in% c("Portage WWTF","Cedarburg WWTF")),]
+
+
+baseWaste_DF <- baseWaste_DF[baseWaste_DF$n > 10,]
 
 #add quantile data to merge with the regression results
 Quantiles_DF <- makeQuantileColumns(baseWaste_DF,
-                                    .8, 90,
+                                    3:8/10, c(14, 30, 60, 90),
                                     "sars_cov2_adj_load_log10")
+
+Quantiles_DF <- Quantiles_DF[,c("site", "date", "window", "quant", "ntile", "pastKavg.wwlog10")]
+Quantiles_DF <- tidyr::pivot_wider(Quantiles_DF, 
+                                   names_from = c(window, quant), 
+                                  values_from = c(ntile, pastKavg.wwlog10))
 
 #Get 5 day rolling regression of data
 CDCMethod <- buildRegressionEstimateTable(baseWaste_DF,
                                           PSigTest=FALSE)
+
+CDCMethod <- CDCMethod[,c("date","site", "modeled_percentchange", "lmreg_sig")]
 #merge the regression DF and the quantile DF to get info for 
 
-FULL_reg_DF <- dplyr::full_join(Quantiles_DF, CDCMethod,
-                                by = c("site", "date"))
+library(dplyr)
+
+FULL_reg_DF <- full_join(Quantiles_DF, CDCMethod,
+                                by = c("site", "date"))%>%
+  tidyr::pivot_longer(cols = 'ntile_14_0.3':'pastKavg.wwlog10_90_0.8',
+                      names_to = c("column_Name","window", "quant"),
+                      values_to = "value",
+                      names_sep = "_")%>%
+  tidyr::pivot_wider(names_from = column_Name,values_from = value)
 
 #create flags described in @return
 FULL_reg_DF <- classifyQuantileFlagRegression(FULL_reg_DF)
 
 #return only flags and type columns 
-Full_wasteFlags <- FULL_reg_DF[,c("site", "date", 
+Full_wasteFlags <- FULL_reg_DF[,c("site", "date",
+                                  "window", "quant",
                                   "cdc_flag",
                                   "flag_ntile",
                                   "flag_ntile_Pval")]
@@ -46,12 +63,7 @@ Full_wasteFlags <- FULL_reg_DF[,c("site", "date",
 ```{r}
 data(Case_data, package = "DSIWastewater")
 
-
-#restrict Case data to only Madison data
-Case_DF <- Case_data[Case_data$Site == "Madison",]
-
-#restrict Case data to dates after 2021-02-01
-Case_DF <- Case_DF[Case_DF$date  >= as.Date("2021-02-01"),]
+Case_DF <- Case_data
 
 #get the case flags
 Case_DF <- buildCaseAnalysisDF(Case_DF)
@@ -61,43 +73,58 @@ CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF,
     RunOn = c("FirstConfirmed.Per100K", "pastwk.avg.casesperday.Per100K"),
     SplitOn = "site", DaysRegressed = 7)
 
-#Classify slope to create 3 flags described in @return  
-CaseFlagOutput <- classifyCaseRegression(CaseRegressionOutput)
-  
-#return only flags and type columns
-CaseFlags <- CaseFlagOutput[,c("site", "date", "case_flag",
+case_flags_names <- c("case_flag", 
                                  "case_flag_plus_comm.threshold",
-                                 "slope_switch_flag")]
+                                 "slope_switch_flag")
+
+CaseRegressionOutput$Method <- ifelse(CaseRegressionOutput$Method == "FirstConfirmed.Per100K",
+                                      "Cases", "7DayCases")
+
+
+library(dplyr)
+#Classify slope to create 3 flags described in @return  
+CaseFlags <- classifyCaseRegression(CaseRegressionOutput)%>%
+  select(Method, site, date,all_of(case_flags_names))%>%
+  tidyr:::pivot_wider(names_from = "Method", values_from = case_flags_names)
 ```
 
 ```{r}
-library(dplyr)
+Full_wasteFlags <- Full_wasteFlags%>%
+  rename(cdc.flag = cdc_flag, flag.ntile = flag_ntile, flag.ntile.Pval = flag_ntile_Pval)%>%
+  tidyr::pivot_wider(names_from = c(window, quant), 
+                     values_from = c(cdc.flag, flag.ntile, flag.ntile.Pval))
 
-
-
-DF_date_vector(CaseFlags, "date", 
-               c("case_flag", "case_flag_plus_comm.threshold", "slope_switch_flag"))
-
-Flag_DF <- full_join(Full_wasteFlags, CaseFlags, 
+Flag_DF <- left_join(CaseFlags, Full_wasteFlags, 
                      by = c("site", "date"))
 
 date_Flag_DF <- DF_date_vector(Flag_DF, "date", 
-               c("cdc_flag","flag_ntile","flag_ntile_Pval",
-               "case_flag", "case_flag_plus_comm.threshold", "slope_switch_flag"))
+               names(Flag_DF)[3:80])
 ```
 
 ```{r}
-dep_flags <- c("cdc_flag","flag_ntile","flag_ntile_Pval")
-DateDistDF <- date_distance_calc(date_Flag_DF, "case_flag", dep_flags, edge = 21)
-
-DateDistDF%>%
+dep_flags <- names(Flag_DF)[9:80]
+DateDistDF <- date_distance_calc(date_Flag_DF, "case_flag_Cases", 
+                                 dep_flags, edge = 21)
+DistMean <- DateDistDF%>%
+  ungroup()%>%
   summarise(across(all_of(dep_flags),
-               ~mean(.x, na.rm = TRUE)))
+               ~mean(.x, na.rm = TRUE)))%>%
+  tidyr::pivot_longer(cols = dep_flags,
+                      names_to = c("FlagType","window", "quant"),
+                      values_to = "Mean",
+                      names_sep = "_")
+library(plotly)
+plot_ly(DistMean, x = ~window, y = ~quant, z = ~Mean, color = ~FlagType)%>% add_markers()
 
-DateDistDF%>%
+DistVar <- DateDistDF%>%
+  ungroup()%>%
   summarise(across(all_of(dep_flags),
-               ~var(.x, na.rm = TRUE)))
+               ~var(.x, na.rm = TRUE)))%>%
+  tidyr::pivot_longer(cols = dep_flags,
+                      names_to = c("FlagType","window", "quant"),
+                      values_to = "Var",
+                      names_sep = "_")
 
-DateDistDF%>%
-  filter(!is.na(cdc_flag), !is.na(case_flag))
+
+plot_ly(DistVar, x = ~window, y = ~quant, z = ~Var, color = ~FlagType)%>% add_markers()
 ```
