@@ -8,6 +8,8 @@ output: html_document
 
 
 ```{r cars}
+library(plotly)
+library(ggplot2)
 library(DSIWastewater)
 #load WasteWater_data into the environment
 data(WasteWater_data, package = "DSIWastewater")
@@ -102,29 +104,78 @@ date_Flag_DF <- DF_date_vector(Flag_DF, "date",
 ```
 
 ```{r}
-dep_flags <- names(Flag_DF)[9:80]
+#"case_flag_Cases"                         "case_flag_7DayCases"                    
+#"case_flag_plus_comm.threshold_Cases"     "case_flag_plus_comm.threshold_7DayCases"
+#"slope_switch_flag_Cases"                 "slope_switch_flag_7DayCases"
+edgeThresh <- 7
 DateDistDF <- date_distance_calc(date_Flag_DF, "case_flag_Cases", 
-                                 dep_flags, edge = 21)
-DistMean <- DateDistDF%>%
-  ungroup()%>%
-  summarise(across(all_of(dep_flags),
-               ~mean(.x, na.rm = TRUE)))%>%
+                                 dep_flags, edge = edgeThresh)%>%
+  select(site, date, dep_flags)%>%
   tidyr::pivot_longer(cols = dep_flags,
                       names_to = c("FlagType","window", "quant"),
-                      values_to = "Mean",
-                      names_sep = "_")
-library(plotly)
-plot_ly(DistMean, x = ~window, y = ~quant, z = ~Mean, color = ~FlagType)%>% add_markers()
+                      values_to = "FlagError",
+                      names_sep = "_")%>%
+  mutate(window = as.numeric(window), quant = as.numeric(quant))
 
-DistVar <- DateDistDF%>%
-  ungroup()%>%
-  summarise(across(all_of(dep_flags),
-               ~var(.x, na.rm = TRUE)))%>%
-  tidyr::pivot_longer(cols = dep_flags,
-                      names_to = c("FlagType","window", "quant"),
-                      values_to = "Var",
-                      names_sep = "_")
+DistSummary <- DateDistDF%>%
+  group_by(window, quant, FlagType)%>%
+  summarise(MeanErrorSquard = mean(FlagError^2, na.rm = TRUE),
+            Var = var(FlagError, na.rm = TRUE),
+            n = sum(!is.na(FlagError)),
+            Missed = mean(FlagError == edgeThresh, na.rm = TRUE))
 
+plot_ly(DistSummary, x = ~window, y = ~quant, z = ~MeanErrorSquard, color = ~FlagType)%>% add_markers()
+plot_ly(DistSummary, x = ~window, y = ~quant, z = ~Var, color = ~FlagType)%>% add_markers()
+plot_ly(DistSummary, x = ~window, y = ~quant, z = ~Missed, color = ~FlagType)%>% add_markers()
+plot_ly(DistSummary, x = ~window, y = ~quant, z = ~n, color = ~FlagType)%>% add_markers()
 
-plot_ly(DistVar, x = ~window, y = ~quant, z = ~Var, color = ~FlagType)%>% add_markers()
+DateDistDF%>%
+  ggplot()+
+  stat_count(aes(x = FlagError, fill = FlagType,
+                     y = ..prop..),
+                 position = "dodge")+
+  facet_grid(window~quant)
+
+DistSummary%>%
+  arrange(MeanErrorSquard)
 ```
+
+
+
+```{r}
+#"case_flag_Cases"                         "case_flag_7DayCases"                    
+#"case_flag_plus_comm.threshold_Cases"     "case_flag_plus_comm.threshold_7DayCases"
+#"slope_switch_flag_Cases"                 "slope_switch_flag_7DayCases"
+edgeThresh <- 21
+DateDistDF <- date_distance_calc(date_Flag_DF, "case_flag_7DayCases", 
+                                 dep_flags, edge = edgeThresh)%>%
+  select(site, date, dep_flags)%>%
+  tidyr::pivot_longer(cols = dep_flags,
+                      names_to = c("FlagType","window", "quant"),
+                      values_to = "FlagError",
+                      names_sep = "_")%>%
+  mutate(window = as.numeric(window), quant = as.numeric(quant))
+
+DistSummary <- DateDistDF%>%
+  group_by(window, quant, FlagType)%>%
+  summarise(MeanErrorSquard = mean(FlagError^2, na.rm = TRUE),
+            Var = var(FlagError, na.rm = TRUE),
+            n = sum(!is.na(FlagError)),
+            Missed = mean(FlagError == edgeThresh, na.rm = TRUE))
+
+plot_ly(DistSummary, x = ~window, y = ~quant, z = ~MeanErrorSquard, color = ~FlagType)%>% add_markers()
+plot_ly(DistSummary, x = ~window, y = ~quant, z = ~Var, color = ~FlagType)%>% add_markers()
+plot_ly(DistSummary, x = ~window, y = ~quant, z = ~Missed, color = ~FlagType)%>% add_markers()
+plot_ly(DistSummary, x = ~window, y = ~quant, z = ~n, color = ~FlagType)%>% add_markers()
+
+DateDistDF%>%
+  ggplot()+
+  stat_count(aes(x = FlagError, fill = FlagType,
+                     y = ..prop..),
+                 position = "dodge")+
+  facet_grid(window~quant)
+
+DistSummary%>%
+  arrange(MeanErrorSquard)
+```
+
