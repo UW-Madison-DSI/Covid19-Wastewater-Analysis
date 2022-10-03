@@ -3,12 +3,15 @@ title: "test server"
 author: "Marlin"
 date: "2022-09-23"
 output: html_document
+editor_options: 
+  chunk_output_type: inline
 ---
 
 
 
-```{r cars}
+```{r create wastewater data}
 library(plotly)
+library(zoo)
 library(ggplot2)
 library(DSIWastewater)
 #load WasteWater_data into the environment
@@ -22,18 +25,30 @@ baseWaste_DF <- baseWaste_DF[!(baseWaste_DF$site %in% c("Portage WWTF","Cedarbur
 
 
 baseWaste_DF <- baseWaste_DF[baseWaste_DF$n > 10,]
+K=3
+baseWaste_DF <- baseWaste_DF%>%
+  group_by(site)%>%
+    arrange(site, date)%>%
+    #create K day mean of the same column to use later
+    mutate(pastKavg.wwlog10 = rollmean(sars_cov2_adj_load_log10,
+                                       K, align = "right",
+                                       fill=NA))%>%
+  ungroup()
 
 #add quantile data to merge with the regression results
 Quantiles_DF <- makeQuantileColumns(baseWaste_DF,
-                                    3:8/10, c(14, 30, 60, 90),
+                                    5:9/10, c(14, 30, 60, 90),
                                     "sars_cov2_adj_load_log10")
 
 Quantiles_DF <- Quantiles_DF[,c("site", "date", "window", "quant", "ntile", "pastKavg.wwlog10")]
 Quantiles_DF <- tidyr::pivot_wider(Quantiles_DF, 
                                    names_from = c(window, quant), 
-                                  values_from = c(ntile, pastKavg.wwlog10))
+                                  values_from = c(ntile))
+```
 
-#Get 5 day rolling regression of data
+
+```{r wastewater flags}
+#Get 5 day rolling regression of data 
 CDCMethod <- buildRegressionEstimateTable(baseWaste_DF,
                                           PSigTest=FALSE)
 
@@ -42,13 +57,12 @@ CDCMethod <- CDCMethod[,c("date","site", "modeled_percentchange", "lmreg_sig")]
 
 library(dplyr)
 
-FULL_reg_DF <- full_join(Quantiles_DF, CDCMethod,
+FULL_reg_DF <- left_join(CDCMethod, Quantiles_DF,
                                 by = c("site", "date"))%>%
-  tidyr::pivot_longer(cols = 'ntile_14_0.3':'pastKavg.wwlog10_90_0.8',
-                      names_to = c("column_Name","window", "quant"),
-                      values_to = "value",
-                      names_sep = "_")%>%
-  tidyr::pivot_wider(names_from = column_Name,values_from = value)
+  tidyr::pivot_longer(cols = '14_0.5':'90_0.9',
+                      names_to = c("window", "quant"),
+                      values_to = "ntile",
+                      names_sep = "_")#
 
 #create flags described in @return
 FULL_reg_DF <- classifyQuantileFlagRegression(FULL_reg_DF)
@@ -59,10 +73,11 @@ Full_wasteFlags <- FULL_reg_DF[,c("site", "date",
                                   "cdc_flag",
                                   "flag_ntile",
                                   "flag_ntile_Pval")]
+
 ```
 
 
-```{r}
+```{r create case flags}
 data(Case_data, package = "DSIWastewater")
 
 Case_DF <- Case_data
@@ -76,10 +91,11 @@ CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF,
     SplitOn = "site", DaysRegressed = 7)
 
 case_flags_names <- c("case_flag", 
-                                 "case_flag_plus_comm.threshold",
-                                 "slope_switch_flag")
+                      "case_flag_plus_comm.threshold",
+                      "slope_switch_flag")
 
-CaseRegressionOutput$Method <- ifelse(CaseRegressionOutput$Method == "FirstConfirmed.Per100K",
+CaseRegressionOutput$Method <- ifelse(CaseRegressionOutput$Method ==   
+                                      "FirstConfirmed.Per100K",
                                       "Cases", "7DayCases")
 
 
@@ -87,28 +103,35 @@ library(dplyr)
 #Classify slope to create 3 flags described in @return  
 CaseFlags <- classifyCaseRegression(CaseRegressionOutput)%>%
   select(Method, site, date,all_of(case_flags_names))%>%
-  tidyr:::pivot_wider(names_from = "Method", values_from = case_flags_names)
+  tidyr:::pivot_wider(names_from = "Method", values_from = all_of(case_flags_names))
 ```
 
-```{r}
+```{r merge flag DF}
 Full_wasteFlags <- Full_wasteFlags%>%
-  rename(cdc.flag = cdc_flag, flag.ntile = flag_ntile, flag.ntile.Pval = flag_ntile_Pval)%>%
+  rename(cdc.flag = cdc_flag, 
+         flag.ntile = flag_ntile, 
+         flag.ntile.Pval = flag_ntile_Pval)%>%
   tidyr::pivot_wider(names_from = c(window, quant), 
                      values_from = c(cdc.flag, flag.ntile, flag.ntile.Pval))
 
-Flag_DF <- left_join(CaseFlags, Full_wasteFlags, 
+Flag_DF <- full_join(CaseFlags, Full_wasteFlags, 
                      by = c("site", "date"))
 
 date_Flag_DF <- DF_date_vector(Flag_DF, "date", 
-               names(Flag_DF)[3:80])
+               names(Flag_DF)[3:68])
+
+write.csv(date_Flag_DF, "DHSFlagingMethodOutput.csv")
 ```
 
-```{r}
+
+```{r create flag distance}
 #"case_flag_Cases"                         "case_flag_7DayCases"                    
 #"case_flag_plus_comm.threshold_Cases"     "case_flag_plus_comm.threshold_7DayCases"
 #"slope_switch_flag_Cases"                 "slope_switch_flag_7DayCases"
+dep_flags <- names(Flag_DF)[9:68]
 edgeThresh <- 7
-DateDistDF <- date_distance_calc(date_Flag_DF, "case_flag_Cases", 
+CaseFlag <- "slope_switch_flag_Cases"
+DateDistDF <- date_distance_calc(date_Flag_DF, CaseFlag, 
                                  dep_flags, edge = edgeThresh)%>%
   select(site, date, dep_flags)%>%
   tidyr::pivot_longer(cols = dep_flags,
@@ -117,18 +140,27 @@ DateDistDF <- date_distance_calc(date_Flag_DF, "case_flag_Cases",
                       names_sep = "_")%>%
   mutate(window = as.numeric(window), quant = as.numeric(quant))
 
-DistSummary <- DateDistDF%>%
-  group_by(window, quant, FlagType)%>%
-  summarise(MeanErrorSquard = mean(FlagError^2, na.rm = TRUE),
-            Var = var(FlagError, na.rm = TRUE),
-            n = sum(!is.na(FlagError)),
-            Missed = mean(FlagError == edgeThresh, na.rm = TRUE))
 
-plot_ly(DistSummary, x = ~window, y = ~quant, z = ~MeanErrorSquard, color = ~FlagType)%>% add_markers()
-plot_ly(DistSummary, x = ~window, y = ~quant, z = ~Var, color = ~FlagType)%>% add_markers()
-plot_ly(DistSummary, x = ~window, y = ~quant, z = ~Missed, color = ~FlagType)%>% add_markers()
-plot_ly(DistSummary, x = ~window, y = ~quant, z = ~n, color = ~FlagType)%>% add_markers()
+```
 
+<Above has been done before by peter. the next section is where we hope to show value>
+```{r get flag counts}
+CaseNumberFlags <- sum(Flag_DF[[CaseFlag]], na.rm = TRUE)
+
+Flag_DF%>%
+  group_by(site)%>%
+  summarise(across(c(dep_flags, !!sym(CaseFlag)), ~sum(.x, na.rm=TRUE)))%>%
+  mutate(across(c(dep_flags), ~(.x-!!sym(CaseFlag))))%>%
+  ungroup()%>%
+  summarise(across(c(dep_flags), ~sum(abs(.x), na.rm=TRUE)))%>%
+  tidyr::pivot_longer(cols = dep_flags,
+                      names_to = c("FlagType","window", "quant"),
+                      values_to = "TotalFlagCountDiff",
+                      names_sep = "_")%>%
+  arrange(TotalFlagCountDiff)
+```
+
+```{r}
 DateDistDF%>%
   ggplot()+
   stat_count(aes(x = FlagError, fill = FlagType,
@@ -138,44 +170,111 @@ DateDistDF%>%
 
 DistSummary%>%
   arrange(MeanErrorSquard)
+
+
+A <- DistSummary%>%
+  ggplot(aes(x = n, y = MeanErrorSquard, color = window, size = quant))+
+  geom_point()+
+  geom_vline(xintercept = CaseNumberFlags)+
+  scale_colour_gradient(low = "#550000", high = "#FF0000")
+
+ggplotly(A)
 ```
 
 
 
-```{r}
-#"case_flag_Cases"                         "case_flag_7DayCases"                    
-#"case_flag_plus_comm.threshold_Cases"     "case_flag_plus_comm.threshold_7DayCases"
-#"slope_switch_flag_Cases"                 "slope_switch_flag_7DayCases"
-edgeThresh <- 21
-DateDistDF <- date_distance_calc(date_Flag_DF, "case_flag_7DayCases", 
-                                 dep_flags, edge = edgeThresh)%>%
-  select(site, date, dep_flags)%>%
-  tidyr::pivot_longer(cols = dep_flags,
-                      names_to = c("FlagType","window", "quant"),
-                      values_to = "FlagError",
-                      names_sep = "_")%>%
-  mutate(window = as.numeric(window), quant = as.numeric(quant))
-
+```{r plotly plots, eval = FALSE}
 DistSummary <- DateDistDF%>%
   group_by(window, quant, FlagType)%>%
-  summarise(MeanErrorSquard = mean(FlagError^2, na.rm = TRUE),
+  summarise(Mean = mean(FlagError, na.rm = TRUE),
+            MeanErrorSquard = mean(FlagError^2, na.rm = TRUE),
             Var = var(FlagError, na.rm = TRUE),
             n = sum(!is.na(FlagError)),
             Missed = mean(FlagError == edgeThresh, na.rm = TRUE))
 
-plot_ly(DistSummary, x = ~window, y = ~quant, z = ~MeanErrorSquard, color = ~FlagType)%>% add_markers()
-plot_ly(DistSummary, x = ~window, y = ~quant, z = ~Var, color = ~FlagType)%>% add_markers()
-plot_ly(DistSummary, x = ~window, y = ~quant, z = ~Missed, color = ~FlagType)%>% add_markers()
-plot_ly(DistSummary, x = ~window, y = ~quant, z = ~n, color = ~FlagType)%>% add_markers()
+Plot_DF_List <- split(DistSummary, DistSummary$FlagType)
 
-DateDistDF%>%
-  ggplot()+
-  stat_count(aes(x = FlagError, fill = FlagType,
-                     y = ..prop..),
-                 position = "dodge")+
-  facet_grid(window~quant)
+plot_ly(showlegend = TRUE, opacity = .8)%>% 
+  add_trace(x = Plot_DF_List[[1]]$window, y = Plot_DF_List[[1]]$quant,
+            z = Plot_DF_List[[1]]$Mean, name = "cdc.flag",  type="mesh3d")%>% 
+  add_trace(x = Plot_DF_List[[2]]$window, y = Plot_DF_List[[2]]$quant,
+            z = Plot_DF_List[[2]]$Mean, name = "flag.ntile", type="mesh3d")%>% 
+  add_trace(x = Plot_DF_List[[3]]$window, y = Plot_DF_List[[3]]$quant,
+            z = Plot_DF_List[[3]]$Mean, name = "flag.ntile.Pval", type="mesh3d")%>%
+  layout(scene= list(xaxis = list(title = 'window'),
+         yaxis = list(title = 'quant'),
+         zaxis = list(title = 'Mean')))
 
-DistSummary%>%
-  arrange(MeanErrorSquard)
+plot_ly(showlegend = TRUE, opacity = .8)%>% 
+  add_trace(x = Plot_DF_List[[1]]$window, y = Plot_DF_List[[1]]$quant,
+            z = Plot_DF_List[[1]]$MeanErrorSquard,
+            name = "cdc.flag",  type="mesh3d")%>% 
+  add_trace(x = Plot_DF_List[[2]]$window, y = Plot_DF_List[[2]]$quant,
+            z = Plot_DF_List[[2]]$MeanErrorSquard,
+            name = "flag.ntile", type="mesh3d")%>% 
+  add_trace(x = Plot_DF_List[[3]]$window, y = Plot_DF_List[[3]]$quant,
+            z = Plot_DF_List[[3]]$MeanErrorSquard,
+            name = "flag.ntile.Pval", type="mesh3d")%>%
+  layout(scene= list(xaxis = list(title = 'window'),
+         yaxis = list(title = 'quant'),
+         zaxis = list(title = 'MeanErrorSquard')))
+
+plot_ly(showlegend = TRUE, opacity = .8)%>% 
+  add_trace(x = Plot_DF_List[[1]]$window, y = Plot_DF_List[[1]]$quant,
+            z = Plot_DF_List[[1]]$Var, name = "cdc.flag",  type="mesh3d")%>% 
+  add_trace(x = Plot_DF_List[[2]]$window, y = Plot_DF_List[[2]]$quant,
+            z = Plot_DF_List[[2]]$Var, name = "flag.ntile", type="mesh3d")%>% 
+  add_trace(x = Plot_DF_List[[3]]$window, y = Plot_DF_List[[3]]$quant,
+            z = Plot_DF_List[[3]]$Var, name = "flag.ntile.Pval", type="mesh3d")%>%
+  layout(scene= list(xaxis = list(title = 'window'),
+         yaxis = list(title = 'quant'),
+         zaxis = list(title = 'Var')))
+
+plot_ly(showlegend = TRUE, opacity = .8)%>% 
+  add_trace(x = Plot_DF_List[[1]]$window, y = Plot_DF_List[[1]]$quant,
+            z = Plot_DF_List[[1]]$Missed, name = "cdc.flag",  type="mesh3d")%>% 
+  add_trace(x = Plot_DF_List[[2]]$window, y = Plot_DF_List[[2]]$quant,
+            z = Plot_DF_List[[2]]$Missed, name = "flag.ntile",
+            type="mesh3d")%>% 
+  add_trace(x = Plot_DF_List[[3]]$window, y = Plot_DF_List[[3]]$quant,
+            z = Plot_DF_List[[3]]$Missed,
+            name = "flag.ntile.Pval", type="mesh3d")%>%
+  layout(scene= list(xaxis = list(title = 'window'),
+         yaxis = list(title = 'quant'),
+         zaxis = list(title = 'Missed')))
+
+plot_ly(showlegend = TRUE, opacity = .8)%>% 
+  add_trace(x = Plot_DF_List[[1]]$window, y = Plot_DF_List[[1]]$quant,
+            z = Plot_DF_List[[1]]$n, name = "cdc.flag",  type="mesh3d")%>% 
+  add_trace(x = Plot_DF_List[[2]]$window, y = Plot_DF_List[[2]]$quant,
+            z = Plot_DF_List[[2]]$n, name = "flag.ntile", type="mesh3d")%>% 
+  add_trace(x = Plot_DF_List[[3]]$window, y = Plot_DF_List[[3]]$quant,
+            z = Plot_DF_List[[3]]$n, name = "flag.ntile.Pval", type="mesh3d")%>%
+  layout(scene= list(xaxis = list(title = 'window'),
+         yaxis = list(title = 'quant'),
+         zaxis = list(title = 'n')))
+```
+
+
+
+
+
+```{r peter LM, eval = FALSE}
+#peters method to select outliers
+SitePop <- baseWaste_DF[,c("site","population_served")]%>%
+  group_by(site)%>%
+  summarise(mean_pop_served = mean(population_served, na.rm = TRUE))
+
+flag_Model_DF = DateDistDF %>%
+  left_join(SitePop)%>%
+  mutate(abs_difference = abs(FlagError),
+         inverse_difference = 1/(FlagError+0.01)*100) %>%
+  # Filter out differences >30
+  filter(abs_difference <=30)
+
+testmodel = lm(inverse_difference ~ quant + window + date + mean_pop_served, 
+               data = flag_Model_DF[which(!is.na(flag_Model_DF$inverse_difference)),])
+
+summary(testmodel)
 ```
 
