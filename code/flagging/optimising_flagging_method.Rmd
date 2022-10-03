@@ -1,19 +1,30 @@
 ---
-title: "test server"
-author: "Marlin"
+title: "Flag analysis"
+author: 
+- Marlin Lee, Abe Megahed, Kyllan Wunder
+- "University of Wisconsin Data Science Institute - August, 2022"
 date: "2022-09-23"
-output: html_document
+output: pdf_document
 editor_options: 
   chunk_output_type: inline
 ---
 
+```{r set up markdown settings, include = FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE
+)
+```
 
 
-```{r create wastewater data}
+```{r Load Librarys, echo = FALSE}
 library(plotly)
 library(zoo)
 library(ggplot2)
 library(DSIWastewater)
+```
+
+```{r create wastewater data, eval = FALSE, echo = FALSE}
 #load WasteWater_data into the environment
 data(WasteWater_data, package = "DSIWastewater")
 
@@ -47,7 +58,7 @@ Quantiles_DF <- tidyr::pivot_wider(Quantiles_DF,
 ```
 
 
-```{r wastewater flags}
+```{r wastewater flags, eval = FALSE, echo = FALSE}
 #Get 5 day rolling regression of data 
 CDCMethod <- buildRegressionEstimateTable(baseWaste_DF,
                                           PSigTest=FALSE)
@@ -77,7 +88,7 @@ Full_wasteFlags <- FULL_reg_DF[,c("site", "date",
 ```
 
 
-```{r create case flags}
+```{r create case flags, eval = FALSE, echo = FALSE}
 data(Case_data, package = "DSIWastewater")
 
 Case_DF <- Case_data
@@ -106,7 +117,7 @@ CaseFlags <- classifyCaseRegression(CaseRegressionOutput)%>%
   tidyr:::pivot_wider(names_from = "Method", values_from = all_of(case_flags_names))
 ```
 
-```{r merge flag DF}
+```{r merge flag DF, eval = FALSE, echo = FALSE}
 Full_wasteFlags <- Full_wasteFlags%>%
   rename(cdc.flag = cdc_flag, 
          flag.ntile = flag_ntile, 
@@ -116,11 +127,21 @@ Full_wasteFlags <- Full_wasteFlags%>%
 
 Flag_DF <- full_join(CaseFlags, Full_wasteFlags, 
                      by = c("site", "date"))
+```
+
+```{r}
+#load WasteWater_data into the environment
+data(WasteWater_data, package = "DSIWastewater")
+baseWaste_DF <-  buildWasteAnalysisDF(WasteWater_data)
+data(Case_data, package = "DSIWastewater")
+Case_DF <- Case_data
+
+Flag_DF <- read.csv("Temp/DHSFlagingMethodOutput.csv")%>%
+            mutate(date = as.Date(date))%>%
+  select(-X)
 
 date_Flag_DF <- DF_date_vector(Flag_DF, "date", 
                names(Flag_DF)[3:68])
-
-write.csv(date_Flag_DF, "DHSFlagingMethodOutput.csv")
 ```
 
 
@@ -161,29 +182,6 @@ Flag_DF%>%
 ```
 
 ```{r}
-DateDistDF%>%
-  ggplot()+
-  stat_count(aes(x = FlagError, fill = FlagType,
-                     y = ..prop..),
-                 position = "dodge")+
-  facet_grid(window~quant)
-
-DistSummary%>%
-  arrange(MeanErrorSquard)
-
-
-A <- DistSummary%>%
-  ggplot(aes(x = n, y = MeanErrorSquard, color = window, size = quant))+
-  geom_point()+
-  geom_vline(xintercept = CaseNumberFlags)+
-  scale_colour_gradient(low = "#550000", high = "#FF0000")
-
-ggplotly(A)
-```
-
-
-
-```{r plotly plots, eval = FALSE}
 DistSummary <- DateDistDF%>%
   group_by(window, quant, FlagType)%>%
   summarise(Mean = mean(FlagError, na.rm = TRUE),
@@ -191,6 +189,37 @@ DistSummary <- DateDistDF%>%
             Var = var(FlagError, na.rm = TRUE),
             n = sum(!is.na(FlagError)),
             Missed = mean(FlagError == edgeThresh, na.rm = TRUE))
+
+QuantDistSummary <- DistSummary%>%
+  filter(FlagType != "cdc.flag")
+
+A <- QuantDistSummary%>%
+  ggplot(aes(x = n, y = MeanErrorSquard, color = window,
+             size = factor(quant), shape = FlagType))+
+  geom_point()+
+  geom_abline(slope = 0.0038959, intercept = 2.3082686)+
+  geom_vline(xintercept = CaseNumberFlags)+
+  scale_colour_gradient(low = "#000055", high = "#0000FF")+
+  geom_vline(xintercept = nrow(baseWaste_DF)*CaseNumberFlags/nrow(Case_DF),
+             linetype = 3)
+A
+#ggplotly(A)
+
+summary(lm(MeanErrorSquard ~ n, data = QuantDistSummary))
+summary(lm(MeanErrorSquard ~ n, data = QuantDistSummary[QuantDistSummary$window > 14,]))
+summary(lm(MeanErrorSquard ~ n, data = QuantDistSummary[QuantDistSummary$window > 30,]))
+```
+
+```{r, include = FALSE}
+DateDistDF%>%
+  ggplot()+
+  stat_count(aes(x = FlagError, fill = FlagType,
+                     y = ..prop..),
+                 position = "dodge")+
+  facet_grid(window~quant)
+```
+
+```{r plotly plots, eval = FALSE, echo = FALSE}
 
 Plot_DF_List <- split(DistSummary, DistSummary$FlagType)
 
@@ -259,7 +288,7 @@ plot_ly(showlegend = TRUE, opacity = .8)%>%
 
 
 
-```{r peter LM, eval = FALSE}
+```{r peter LM, eval = FALSE, echo = FALSE}
 #peters method to select outliers
 SitePop <- baseWaste_DF[,c("site","population_served")]%>%
   group_by(site)%>%
