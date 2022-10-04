@@ -112,6 +112,10 @@ Quantile_Viz_Plot
 
 The wastewater method uses a two-step system to identify potential warning signs in the data. The core method uses a five-measurement rolling regression to calculate an estimated percent change over time. Then if it is estimated to be over 100% increase, it is logged as a CDC flag. Then if the measurement is in the 80th percentile of the last 90 days, it is logged as a flag. 
 
+## Graph explanation 
+The graph shows a distinct linear relationship between the variance and the number of flags produced (denoted on the graph by the diagonal regression line). This relationship makes it possible to balance the number of flags against the allowable variance or to determine the expected variance for a particular number of flags.  We calculate the squared distance each wastewater flag is from the nearest case flag to find the optimal combination. On investigation, it becomes clear the major issue with current options is the number of flags reported. As quantile size increases, the data fits this trend more, and with a smaller quantile size, the mean squared error (MSE) is much more varied. 
+
+
 \pagebreak
 
 ```{r, fig.cap = "Values above the black line have a slope greater than 5 and are flagged.", PlotHeight = 17}

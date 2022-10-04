@@ -1,20 +1,49 @@
 ---
-title: "Flag analysis"
+header-includes:
+- \usepackage{wrapfig}
+title: "Covid-19 Wastewater Flagging Method Optimization"
 author: 
 - Marlin Lee, Abe Megahed, Kyllan Wunder
-- "University of Wisconsin Data Science Institute - August, 2022"
-date: "2022-09-23"
-output: pdf_document
-editor_options: 
-  chunk_output_type: inline
+- "University of Wisconsin Data Science Institute - October 2022"
+output:
+  pdf_document:
+    keep_tex: true  
 ---
 
 ```{r set up markdown settings, include = FALSE}
 knitr::opts_chunk$set(
 	message = FALSE,
-	warning = FALSE
+	warning = FALSE,
+	echo = FALSE,
+	fig.align = 'Right',
+	Plot.size = .6,
+	PlotHeight = 15
+	#out.width= "65%"
 )
+
+defOut <- knitr::knit_hooks$get("plot")  # save the default plot hook
+
+knitr::knit_hooks$set(plot = function(x, options) {  # set new plot hook ...
+  x <- defOut(x, options)  # first apply the default hook
+  # create the new opening string for the wrapfigure environment ...
+  wf <- sprintf("\\noindent\\begin{wrapfigure}[%g]{%s}{%g\\textwidth}", 
+                options$PlotHeight, "R", options$Plot.size)
+  x  <- gsub("\\begin{figure}", wf, x, fixed = T)  # and replace the default one with it.
+  x  <- gsub("{figure}", "{wrapfigure}", x, fixed = T)  # also replace the environment ending
+  return(x)
+})
 ```
+
+
+
+## Introduction: 
+In this analysis, we perform a comparative analysis of various wastewater flagging techniques with the goals of (1) making the wastewater flags match the case analysis flags and (2) reducing false positives in the reported wastewater flags.  As the adoption of at-home tests increases and case reporting decreases, wastewater becomes a more important metric for determining true case numbers. Accurate flagging methods are critical for policymakers to make better-informed decisions based on predicted changes  in cases. 
+
+
+
+
+
+
 
 
 ```{r Load Librarys, echo = FALSE}
@@ -22,6 +51,7 @@ library(plotly)
 library(zoo)
 library(ggplot2)
 library(DSIWastewater)
+
 ```
 
 ```{r create wastewater data, eval = FALSE, echo = FALSE}
@@ -164,11 +194,10 @@ DateDistDF <- date_distance_calc(date_Flag_DF, CaseFlag,
 
 ```
 
-<Above has been done before by peter. the next section is where we hope to show value>
 ```{r get flag counts}
 CaseNumberFlags <- sum(Flag_DF[[CaseFlag]], na.rm = TRUE)
 
-Flag_DF%>%
+Temp <- Flag_DF%>%
   group_by(site)%>%
   summarise(across(c(dep_flags, !!sym(CaseFlag)), ~sum(.x, na.rm=TRUE)))%>%
   mutate(across(c(dep_flags), ~(.x-!!sym(CaseFlag))))%>%
@@ -181,7 +210,7 @@ Flag_DF%>%
   arrange(TotalFlagCountDiff)
 ```
 
-```{r}
+```{r fig.cap = "The angled line is a linear regression line based on the 60 and 90-day intervals. The vertical lines represent the total number of case flags (1578) and the proportion of wastewater samples to wastewater flags if they had the same ratio as cases to case flags (389)", PlotHeight = 14}
 DistSummary <- DateDistDF%>%
   group_by(window, quant, FlagType)%>%
   summarise(Mean = mean(FlagError, na.rm = TRUE),
@@ -203,12 +232,39 @@ A <- QuantDistSummary%>%
   geom_vline(xintercept = nrow(baseWaste_DF)*CaseNumberFlags/nrow(Case_DF),
              linetype = 3)
 A
-#ggplotly(A)
-
-summary(lm(MeanErrorSquard ~ n, data = QuantDistSummary))
-summary(lm(MeanErrorSquard ~ n, data = QuantDistSummary[QuantDistSummary$window > 14,]))
-summary(lm(MeanErrorSquard ~ n, data = QuantDistSummary[QuantDistSummary$window > 30,]))
 ```
+
+## Flagging Methods
+
+The DHS has created flagging methods based on wastewater measurements and aims to supplement existing case flagging metrics. The wastewater method uses a 5-day regression to see if the predicted change is above 100%. If so, it checks if the last 3-day average is larger than the K day Q quantile (where K and Q are customizable parameters). Then if both are true, it is labeled as a flag.ntile. If the Linear regression has a p-value below .3, it is labeled as a flag.ntile.Pval. We explored five quantile values (.5, .6, .7, .8,..9) and four window values (14, 30, 60, 90 days) for a total of 40 ways to flag\
+models. 
+
+## Graph explanation 
+The graph shows a distinct linear relationship between the variance and the number of flags produced (denoted on the graph by the diagonal regression line). This relationship makes it possible to balance the number of flags against the allowable variance or to determine the expected variance for a particular number of flags.  We calculate the squared distance each wastewater flag is from the nearest case flag to find the optimal combination. On investigation, it becomes clear the major issue with current options is the number of flags reported. As quantile size increases, the data fits this trend more, and with a smaller quantile size, the mean squared error (MSE) is much more varied.
+
+## Matching wastewater flags to case flags
+The case flag method has 1578 flags, so the chosen wastewater method should have an equal amount.  None of the methods create that many flags; most produce multiple times less due to the lower frequency of wastewater sampling. This means we could expect proportionally fewer flags; this is shown by a dashed line where you might expect the number of flags if it was proportional.
+
+```{r lm model, fig.align = 'right'}
+library(modelsummary)
+Full_Model <- lm(MeanErrorSquard ~ n, data = QuantDistSummary)
+reduced_Model <- lm(MeanErrorSquard ~ n, data = QuantDistSummary[QuantDistSummary$window > 30,])
+
+modelsummary(list("Full Model" = Full_Model, "Scaled Down Model" = reduced_Model),
+             statistic  = "P-val = {p.value}",
+             gof_omit = "AIC|BIC|F|Lik|R2 Adj.",
+             output = "kableExtra",
+             fmt = 4)%>%
+      kableExtra::kable_styling(position = "float_right")
+```
+
+## Linear Model (LM)  explanation
+We created two linear models to explain the relationship between the number of points and the error. First, we used the whole data set and found minimal relation. Second, we excluded the 14 and 30 day windows and got a very successful linear model shown in the previous plot.
+
+## Conclusion
+We found no one best model because there is an inherent tradeoff between MSE and the number of flags created. However, a great candidate is the 90 day window 90% percentile flags which are around the correct number of adjusted flags and have the lowest MSE score. 
+
+
 
 ```{r, include = FALSE}
 DateDistDF%>%
