@@ -1,0 +1,154 @@
+---
+title: "HFGDiffCorr"
+author: "Marlin"
+date: "2022-10-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r cars}
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+data("HFGWaste_data", package = "DSIWastewater")
+```
+
+
+
+```{r}
+trend_dF <- HFGWaste_data%>%
+  group_by(site)%>%
+  group_split()%>%
+  lapply(loessSmoothMod, InVar = "N1", OutVar = "N1Loess")%>%
+  lapply(loessSmoothMod, InVar = "N2", OutVar = "N2Loess")%>%
+  lapply(loessSmoothMod, InVar = "PMMOV", OutVar = "PMMOVLoess")%>%
+  lapply(loessSmoothMod, InVar = "HF183", OutVar = "HF183Loess")%>%
+  lapply(loessSmoothMod, InVar = "CrP", OutVar = "CrPLoess")%>%
+  bind_rows()
+
+SumVariance <- trend_dF%>%
+  summarise(N1 = var(N1 - N1Loess, na.rm = TRUE),
+            N2 = var(N2 - N2Loess, na.rm = TRUE),
+            PMMoV = var(PMMOV - PMMOVLoess, na.rm = TRUE),
+            HF183 = var(HF183 - HF183Loess, na.rm = TRUE),
+            Crp = var(CrP - CrPLoess, na.rm = TRUE))%>%
+  mutate(log = FALSE)
+
+SumVariance%>%
+  pivot_longer(N1:Crp)%>%
+  ggplot()+
+  geom_col(aes(x = name, y = value))
+```
+
+```{r}
+trend_dF%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y = N1, color = "N1"))+
+  geom_line(aes(y = N1Loess, color = "smooth N1"))+
+  facet_wrap(~site)
+
+trend_dF%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y = N2, color = "N1"))+
+  geom_line(aes(y = N2Loess, color = "smooth N1"))+
+  facet_wrap(~site)
+
+
+trend_dF%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y = PMMOV, color = "PMMoV"))+
+  geom_line(aes(y = PMMOVLoess, color = "smooth PMMoV"))+
+  facet_wrap(~site)
+
+trend_dF%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y = HF183, color = "HF183"))+
+  geom_line(aes(y = HF183Loess, color = "smooth HF183"))+
+  facet_wrap(~site)
+
+trend_dF%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y = CrP, color = "CrP"))+
+  geom_line(aes(y = CrPLoess, color = "smooth CrP"))+
+  facet_wrap(~site)
+```
+
+
+
+```{r}
+log_trend_dF <- HFGWaste_data%>%
+  mutate(log_N1 = log(N1),
+         log_N2 = log(N2),
+         log_PMMOV = log(PMMOV),
+         log_HF183 = log(HF183),
+         log_CrP = log(CrP))%>%
+  group_by(site)%>%
+  group_split()%>%
+  lapply(loessSmoothMod, InVar = "log_N1", OutVar = "log_N1Loess")%>%
+  lapply(loessSmoothMod, InVar = "log_N2", OutVar = "log_N2Loess")%>%
+  lapply(loessSmoothMod, InVar = "log_PMMOV", OutVar = "log_PMMOVLoess")%>%
+  lapply(loessSmoothMod, InVar = "log_HF183", OutVar = "log_HF183Loess")%>%
+  lapply(loessSmoothMod, InVar = "log_CrP", OutVar = "log_CrPLoess")%>%
+  bind_rows()
+
+logVariance <- log_trend_dF%>%
+  summarise(N1 = var(log_N1 - log_N1Loess, na.rm = TRUE),
+            N2 = var(log_N2 - log_N2Loess, na.rm = TRUE),
+            PMMoV = var(log_PMMOV - log_PMMOVLoess, na.rm = TRUE),
+            HF183 = var(log_HF183 - log_HF183Loess, na.rm = TRUE),
+            Crp = var(log_CrP - log_CrPLoess, na.rm = TRUE))%>%
+  mutate(log = TRUE)
+
+logVariance%>%
+  pivot_longer(N1:Crp)%>%
+  ggplot()+
+  geom_col(aes(x = name, y = value))
+```
+
+```{r}
+log_trend_dF%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y = log_N1, color = "log_N1"))+
+  geom_line(aes(y = log_N1Loess, color = "smooth log_N1"))+
+  facet_wrap(~site)
+
+log_trend_dF%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y = log_N2, color = "log_N2"))+
+  geom_line(aes(y = log_N2Loess, color = "smooth log_N2"))+
+  facet_wrap(~site)
+
+
+log_trend_dF%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y = log_PMMOV, color = "log_PMMoV"))+
+  geom_line(aes(y = log_PMMOVLoess, color = "smooth log_PMMoV"))+
+  facet_wrap(~site)
+
+log_trend_dF%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y = log_HF183, color = "log_HF183"))+
+  geom_line(aes(y = log_HF183Loess, color = "smooth log_HF183"))+
+  facet_wrap(~site)
+
+log_trend_dF%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y = log_CrP, color = "log_CrP"))+
+  geom_line(aes(y = log_CrPLoess, color = "smooth log_CrP"))+
+  facet_wrap(~site)
+```
+
+
+
+
+```{r}
+sub_var <- bind_rows(SumVariance, logVariance)
+sub_var
+```
+
