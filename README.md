@@ -74,8 +74,6 @@ devtools::install_github(
 )
 ```
 
-To get a AUTHTOKEN you need to go to https://github.com/settings/tokens and create one with at least [repo level access](./docs/github/repo-level-access.md).
-
 When running this command, you will be prompted to select which packages you want updated/installed.  We strongly suggest you select '1: ALL' so that you don't need to install any dependencies later.  To install the dependencies later, you can run the following R command:
 
 ```
