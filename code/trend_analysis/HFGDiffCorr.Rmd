@@ -17,6 +17,7 @@ library(dplyr)
 library(ggplot2)
 library(tidyr)
 data("HFGWaste_data", package = "DSIWastewater")
+
 ```
 
 
@@ -32,18 +33,45 @@ trend_dF <- HFGWaste_data%>%
   lapply(loessSmoothMod, InVar = "CrP", OutVar = "CrPLoess")%>%
   bind_rows()
 
-SumVariance <- trend_dF%>%
-  summarise(N1 = var(N1 - N1Loess, na.rm = TRUE),
-            N2 = var(N2 - N2Loess, na.rm = TRUE),
-            PMMoV = var(PMMOV - PMMOVLoess, na.rm = TRUE),
-            HF183 = var(HF183 - HF183Loess, na.rm = TRUE),
-            Crp = var(CrP - CrPLoess, na.rm = TRUE))%>%
+trend_diff_df = trend_dF%>%
+  mutate(N1 = N1 - N1Loess,
+         N2 = N2 - N2Loess,
+         PMMoV = PMMOV - PMMOVLoess,
+         HF183 = HF183 - HF183Loess,
+        Crp = CrP - CrPLoess)%>%
+  select(date, site, N1, N2, PMMoV, HF183, Crp)
+
+SumVariance <- trend_diff_df%>%
+  summarise(N1 = var(N1 ,na.rm = TRUE),
+            N2 = var(N2 ,na.rm = TRUE),
+            PMMoV = var(PMMoV ,na.rm = TRUE),
+            HF183 = var(HF183 ,na.rm = TRUE),
+            Crp = var(Crp ,na.rm = TRUE))%>%
   mutate(log = FALSE)
 
 SumVariance%>%
   pivot_longer(N1:Crp)%>%
   ggplot()+
   geom_col(aes(x = name, y = value))
+
+
+library(ggcorrplot)
+trend_dF%>%
+  mutate(N1 = N1 - N1Loess,
+         N2 = N2 - N2Loess,
+         PMMoV = PMMOV - PMMOVLoess,
+         HF183 = HF183 - HF183Loess,
+        Crp = CrP - CrPLoess)%>%
+  select(N1, N2, PMMoV, HF183, Crp)%>%
+  cor(use = "complete.obs")%>%
+  ggcorrplot()
+
+
+trend_diff_df%>%
+  pivot_longer(N1:Crp)%>%
+  ggplot(aes(x = date, y = value, color = name))+
+  geom_point()+
+  facet_wrap(~site)
 ```
 
 ```{r}
@@ -78,7 +106,11 @@ trend_dF%>%
   geom_line(aes(y = CrPLoess, color = "smooth CrP"))+
   facet_wrap(~site)
 ```
+```{r fig.height = 15, fig.width= 15}
 
+library(GGally)
+ggpairs(trend_diff_df, aes(colour = site, alpha = 0.4))
+```
 
 
 ```{r}
@@ -97,18 +129,42 @@ log_trend_dF <- HFGWaste_data%>%
   lapply(loessSmoothMod, InVar = "log_CrP", OutVar = "log_CrPLoess")%>%
   bind_rows()
 
-logVariance <- log_trend_dF%>%
-  summarise(N1 = var(log_N1 - log_N1Loess, na.rm = TRUE),
-            N2 = var(log_N2 - log_N2Loess, na.rm = TRUE),
-            PMMoV = var(log_PMMOV - log_PMMOVLoess, na.rm = TRUE),
-            HF183 = var(log_HF183 - log_HF183Loess, na.rm = TRUE),
-            Crp = var(log_CrP - log_CrPLoess, na.rm = TRUE))%>%
+log_trend_Diff_dF <- log_trend_dF%>%
+  mutate(log_N1 = log_N1 - log_N1Loess,
+         log_N2 = log_N2 - log_N2Loess,
+         log_PMMoV = log_PMMOV - log_PMMOVLoess,
+         log_HF183 = log_HF183 - log_HF183Loess,
+         log_Crp = log_CrP - log_CrPLoess)%>%
+         select(date, site, log_N1, log_N2, log_PMMoV, log_HF183, log_Crp)
+
+logVariance <- log_trend_Diff_dF%>%
+  summarise(N1 = var(log_N1, na.rm = TRUE),
+            N2 = var(log_N2, na.rm = TRUE),
+            PMMoV = var(log_PMMoV, na.rm = TRUE),
+            HF183 = var(log_HF183, na.rm = TRUE),
+            Crp = var(log_Crp, na.rm = TRUE))%>%
   mutate(log = TRUE)
 
 logVariance%>%
   pivot_longer(N1:Crp)%>%
   ggplot()+
   geom_col(aes(x = name, y = value))
+
+log_trend_Diff_dF%>%
+  select(log_N1, log_N2, log_PMMoV, log_HF183, log_Crp)%>%
+  cor(use = "complete.obs")%>%
+  ggcorrplot()
+
+log_trend_Diff_dF%>%
+  pivot_longer(log_N1:log_Crp)%>%
+  ggplot(aes(x = date, y = value, color = name))+
+  geom_point()+
+  facet_wrap(~site)
+```
+
+```{r fig.height = 15, fig.width= 15}
+library(GGally)
+ggpairs(log_trend_Diff_dF, aes(colour = site, alpha = 0.4))
 ```
 
 ```{r}
