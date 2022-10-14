@@ -1,0 +1,72 @@
+---
+title: "pmmov_first_look"
+author: "Kyllan Wunder"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(anytime)
+library(naniar)
+```
+
+
+```{r}
+data("HFGWaste_data", package = "DSIWastewater")
+hfgwaste <- HFGWaste_data
+
+data("HFGCase_data", package = "DSIWastewater")
+hfgcase <- HFGCase_data
+
+
+ggplot(hfgwaste, aes(x=date,y=PMMOV)) +
+  geom_point() + 
+  scale_y_log10() +
+  facet_wrap(~site)
+```
+
+
+```{r}
+hfgwasteavg <- aggregate(hfgwaste[,5:12], list(hfgwaste$site,hfgwaste$date), mean)
+
+ggplot(hfgwasteavg, aes(x=Group.2,y=PMMOV)) +
+  geom_point() + 
+  scale_y_log10() +
+  facet_wrap(~Group.1)
+
+#	Madison	269,196
+#Kenosha	99,286
+
+#Oshkosh	66,607
+#Wausau	39,575
+#	Sun Prairie	36,189
+#River Falls	16,618
+
+#Hudson	15,149
+#Platteville	11,764
+#	Merrill	9,337
+#	Plymouth	8,913
+```
+```{r}
+table(hfgcase$ReportedCases)
+```
+
+```{r}
+reportedcases <- hfgcase[,c(1:3)]
+reportedcases <- reportedcases %>% replace_with_na(replace = list(ReportedCases = -999))
+reportedcases <- na.omit(reportedcases)
+
+hfgwasteavg <- hfgwasteavg %>% mutate(date=Group.2)
+fullhfg <- merge(x=reportedcases, y=hfgwasteavg, by="date", all = TRUE)
+
+fullhfg <- fullhfg %>% filter(site == "Madison")
+
+ggplot(fullhfg, aes(date,log(N1)/ReportedCases)) +
+  geom_point() +
+  scale_y_log10()
+```
+
