@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ```
 
 
@@ -20,10 +20,30 @@ data("HFGWaste_data", package = "DSIWastewater")
 
 ```
 
+```{r}
 
+#crazy agressive method
+hfg_outlier_detection <- function(small_vec){
+  upbound_vec <- quantile(small_vec, probs = .7, na.rm = TRUE)
+  retVec = ifelse(small_vec > upbound_vec,
+                  NA, small_vec)
+  retVec = ifelse(retVec == 0, NA, retVec)
+  return(retVec)
+}
+hfg_waste_filt_df <- HFGWaste_data%>%
+  select(site, date, Filter, Well, N1, N2, PMMOV, BCoV, HF183, CrP)%>%
+  group_by(date,site)%>%
+  mutate(across(N1:CrP, hfg_outlier_detection))
+
+
+#HFGWaste_data%>%
+#select(site, date, Filter, Well, N1, N2, PMMOV, BCoV, HF183, CrP)%>%
+#  filter(site == "Platteville",
+#         date == as.Date("2021-03-01"))
+```
 
 ```{r}
-trend_dF <- HFGWaste_data%>%
+trend_df <- hfg_waste_filt_df%>%
   group_by(site)%>%
   group_split()%>%
   lapply(loessSmoothMod, InVar = "N1", OutVar = "N1Loess")%>%
@@ -33,7 +53,7 @@ trend_dF <- HFGWaste_data%>%
   lapply(loessSmoothMod, InVar = "CrP", OutVar = "CrPLoess")%>%
   bind_rows()
 
-trend_diff_df = trend_dF%>%
+trend_diff_df = trend_df%>%
   mutate(N1 = N1 - N1Loess,
          N2 = N2 - N2Loess,
          PMMoV = PMMOV - PMMOVLoess,
@@ -56,12 +76,7 @@ SumVariance%>%
 
 
 library(ggcorrplot)
-trend_dF%>%
-  mutate(N1 = N1 - N1Loess,
-         N2 = N2 - N2Loess,
-         PMMoV = PMMOV - PMMOVLoess,
-         HF183 = HF183 - HF183Loess,
-        Crp = CrP - CrPLoess)%>%
+trend_diff_df%>%
   select(N1, N2, PMMoV, HF183, Crp)%>%
   cor(use = "complete.obs")%>%
   ggcorrplot()
@@ -73,39 +88,6 @@ trend_diff_df%>%
   geom_point()+
   facet_wrap(~site)
 ```
-
-```{r}
-trend_dF%>%
-  ggplot(aes(x = date))+
-  geom_point(aes(y = N1, color = "N1"))+
-  geom_line(aes(y = N1Loess, color = "smooth N1"))+
-  facet_wrap(~site)
-
-trend_dF%>%
-  ggplot(aes(x = date))+
-  geom_point(aes(y = N2, color = "N1"))+
-  geom_line(aes(y = N2Loess, color = "smooth N1"))+
-  facet_wrap(~site)
-
-
-trend_dF%>%
-  ggplot(aes(x = date))+
-  geom_point(aes(y = PMMOV, color = "PMMoV"))+
-  geom_line(aes(y = PMMOVLoess, color = "smooth PMMoV"))+
-  facet_wrap(~site)
-
-trend_dF%>%
-  ggplot(aes(x = date))+
-  geom_point(aes(y = HF183, color = "HF183"))+
-  geom_line(aes(y = HF183Loess, color = "smooth HF183"))+
-  facet_wrap(~site)
-
-trend_dF%>%
-  ggplot(aes(x = date))+
-  geom_point(aes(y = CrP, color = "CrP"))+
-  geom_line(aes(y = CrPLoess, color = "smooth CrP"))+
-  facet_wrap(~site)
-```
 ```{r fig.height = 15, fig.width= 15}
 
 library(GGally)
@@ -114,7 +96,7 @@ ggpairs(trend_diff_df, aes(colour = site, alpha = 0.4))
 
 
 ```{r}
-log_trend_dF <- HFGWaste_data%>%
+log_trend_df <- hfg_waste_filt_df%>%
   mutate(log_N1 = log(N1),
          log_N2 = log(N2),
          log_PMMOV = log(PMMOV),
@@ -129,7 +111,7 @@ log_trend_dF <- HFGWaste_data%>%
   lapply(loessSmoothMod, InVar = "log_CrP", OutVar = "log_CrPLoess")%>%
   bind_rows()
 
-log_trend_Diff_dF <- log_trend_dF%>%
+log_trend_Diff_df <- log_trend_df%>%
   mutate(log_N1 = log_N1 - log_N1Loess,
          log_N2 = log_N2 - log_N2Loess,
          log_PMMoV = log_PMMOV - log_PMMOVLoess,
@@ -137,7 +119,7 @@ log_trend_Diff_dF <- log_trend_dF%>%
          log_Crp = log_CrP - log_CrPLoess)%>%
          select(date, site, log_N1, log_N2, log_PMMoV, log_HF183, log_Crp)
 
-logVariance <- log_trend_Diff_dF%>%
+logVariance <- log_trend_Diff_df%>%
   summarise(N1 = var(log_N1, na.rm = TRUE),
             N2 = var(log_N2, na.rm = TRUE),
             PMMoV = var(log_PMMoV, na.rm = TRUE),
@@ -150,12 +132,12 @@ logVariance%>%
   ggplot()+
   geom_col(aes(x = name, y = value))
 
-log_trend_Diff_dF%>%
+log_trend_Diff_df%>%
   select(log_N1, log_N2, log_PMMoV, log_HF183, log_Crp)%>%
   cor(use = "complete.obs")%>%
   ggcorrplot()
 
-log_trend_Diff_dF%>%
+log_trend_Diff_df%>%
   pivot_longer(log_N1:log_Crp)%>%
   ggplot(aes(x = date, y = value, color = name))+
   geom_point()+
@@ -164,44 +146,8 @@ log_trend_Diff_dF%>%
 
 ```{r fig.height = 15, fig.width= 15}
 library(GGally)
-ggpairs(log_trend_Diff_dF, aes(colour = site, alpha = 0.4))
+ggpairs(log_trend_Diff_df, aes(colour = site, alpha = 0.4))
 ```
-
-```{r}
-log_trend_dF%>%
-  ggplot(aes(x = date))+
-  geom_point(aes(y = log_N1, color = "log_N1"))+
-  geom_line(aes(y = log_N1Loess, color = "smooth log_N1"))+
-  facet_wrap(~site)
-
-log_trend_dF%>%
-  ggplot(aes(x = date))+
-  geom_point(aes(y = log_N2, color = "log_N2"))+
-  geom_line(aes(y = log_N2Loess, color = "smooth log_N2"))+
-  facet_wrap(~site)
-
-
-log_trend_dF%>%
-  ggplot(aes(x = date))+
-  geom_point(aes(y = log_PMMOV, color = "log_PMMoV"))+
-  geom_line(aes(y = log_PMMOVLoess, color = "smooth log_PMMoV"))+
-  facet_wrap(~site)
-
-log_trend_dF%>%
-  ggplot(aes(x = date))+
-  geom_point(aes(y = log_HF183, color = "log_HF183"))+
-  geom_line(aes(y = log_HF183Loess, color = "smooth log_HF183"))+
-  facet_wrap(~site)
-
-log_trend_dF%>%
-  ggplot(aes(x = date))+
-  geom_point(aes(y = log_CrP, color = "log_CrP"))+
-  geom_line(aes(y = log_CrPLoess, color = "smooth log_CrP"))+
-  facet_wrap(~site)
-```
-
-
-
 
 ```{r}
 sub_var <- bind_rows(SumVariance, logVariance)

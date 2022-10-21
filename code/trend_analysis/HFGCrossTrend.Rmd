@@ -1,0 +1,107 @@
+---
+title: "HFGCrossTrend"
+author: "Marlin"
+date: "2022-10-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+
+
+```{r cars}
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+data("HFGWaste_data", package = "DSIWastewater")
+
+```
+
+```{r}
+
+#crazy agressive method
+hfg_outlier_detection <- function(small_vec){
+  upbound_vec <- quantile(small_vec, probs = .7, na.rm = TRUE)
+  retVec = ifelse(small_vec > upbound_vec,
+                  NA, small_vec)
+  retVec = ifelse(retVec == 0, NA, retVec)
+  return(retVec)
+}
+
+hfg_waste_filt_df <- HFGWaste_data%>%
+  select(site, date, Filter, Well, N1, N2, PMMOV, BCoV, HF183, CrP)%>%
+  group_by(date,site)%>%
+  mutate(across(N1:CrP, hfg_outlier_detection))
+```
+
+```{r}
+trend_df <- hfg_waste_filt_df%>%
+  group_by(site)%>%
+  group_split()%>%
+  lapply(loessSmoothMod, InVar = "N1", OutVar = "N1_Trend")%>%
+  lapply(loessSmoothMod, InVar = "N2", OutVar = "N2_Trend")%>%
+  lapply(loessSmoothMod, InVar = "PMMOV", OutVar = "PMMOV_Trend")%>%
+  lapply(loessSmoothMod, InVar = "HF183", OutVar = "HF183_Trend")%>%
+  lapply(loessSmoothMod, InVar = "CrP", OutVar = "CrP_Trend")%>%
+  bind_rows()%>%
+  mutate(
+    N1_Diff = N1_Trend - N1,
+    N2_Diff = N2_Trend - N2,
+    PMMOV_Diff = PMMOV_Trend - PMMOV,
+    HF183_Diff = HF183_Trend - HF183,
+    CrP_Diff = CrP_Trend - CrP)%>%
+  select(date, site, N1_Trend:CrP_Diff)
+
+library(ggcorrplot)
+trend_df%>%
+  select(N1_Trend:CrP_Diff)%>%
+  cor(use = "complete.obs")%>%
+  ggcorrplot()
+```
+
+```{r fig.height = 15, fig.width= 15}
+
+library(GGally)
+trend_df%>%
+  ggpairs(aes(colour = site, alpha = 0.4))
+```
+
+
+```{r}
+log_trend_df <- hfg_waste_filt_df%>%
+  mutate(log_N1 = log(N1),
+         log_N2 = log(N2),
+         log_PMMOV = log(PMMOV),
+         log_HF183 = log(HF183),
+         log_CrP = log(CrP))%>%
+  group_by(site)%>%
+  group_split()%>%
+  lapply(loessSmoothMod, InVar = "log_N1", OutVar = "log_N1_Trend")%>%
+  lapply(loessSmoothMod, InVar = "log_N2", OutVar = "log_N2_Trend")%>%
+  lapply(loessSmoothMod, InVar = "log_PMMOV", OutVar = "log_PMMOV_Trend")%>%
+  lapply(loessSmoothMod, InVar = "log_HF183", OutVar = "log_HF183_Trend")%>%
+  lapply(loessSmoothMod, InVar = "log_CrP", OutVar = "log_CrP_Trend")%>%
+  bind_rows()%>%
+  mutate(
+    N1_Diff = log_N1_Trend - log_N1,
+    N2_Diff = log_N2_Trend - log_N2,
+    PMMOV_Diff = log_PMMOV_Trend - log_PMMOV,
+    HF183_Diff = log_HF183_Trend - log_HF183,
+    CrP_Diff = log_CrP_Trend - log_CrP)%>%
+  select(site, date, log_N1_Trend:CrP_Diff)
+
+log_trend_df%>%
+  select(log_N1_Trend:CrP_Diff)%>%
+  cor(use = "complete.obs")%>%
+  ggcorrplot()
+
+```
+
+```{r fig.height = 15, fig.width= 15}
+library(GGally)
+log_trend_df%>%
+  ggpairs(aes(colour = site, alpha = 0.4))
+```
