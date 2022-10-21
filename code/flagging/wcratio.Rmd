@@ -1,0 +1,104 @@
+---
+title: "wc_ratio"
+author: "Kyllan Wunder"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(anytime)
+```
+
+
+```{r get data}
+data(Case_data, package = "DSIWastewater")
+cases <- Case_data
+cases$date <- anydate(cases$date)
+
+data(WasteWater_data, package = "DSIWastewater")
+waste <- WasteWater_data
+waste <- waste %>% rename(date = sample_collect_date, Site = wwtp_name)
+waste$date <- anydate(waste$date)
+
+cases_madison <- cases %>% filter(Site == "Madison")
+waste_madison <- waste %>% filter(grepl('Madison', Site)) %>% select(1,7,10,12,14) 
+waste_madison$Site <- paste0("Madison")
+
+waste_madison <- waste_madison %>% group_by(date)  %>% summarise(n1_sars_cov2_conc = sum(n1_sars_cov2_conc), n2_sars_cov2_conc = sum(n2_sars_cov2_conc), ppmov_conc = sum(ppmov_conc))
+
+```
+
+
+
+
+```{r madison}
+
+madison_data = merge(x=cases_madison, y=waste_madison, by="date", all = TRUE)
+madison_data <- na.omit(madison_data)
+
+ ggplot(madison_data, aes(date,log(n1_sars_cov2_conc)/log(FirstConfirmed))) +
+   geom_point() +
+   scale_y_log10()
+
+ggplot(madison_data, aes(date,log(n1_sars_cov2_conc)/FirstConfirmed)) +
+  geom_point() +
+  scale_y_log10()
+
+ ggplot(madison_data, aes(date,log(n1_sars_cov2_conc/FirstConfirmed))) +
+   geom_point() +
+   scale_y_log10()
+
+#try with smoothing
+
+```
+
+```{r}
+madison_data <- madison_data %>% rename(site = Site)
+```
+
+```{r remove outliers}
+#
+rmoutliersmadison <- computeJumps(madison_data)
+rmoutliersmadison <- rankJumps(rmoutliersmadison)
+rmoutliersmadison <- computeRankQuantiles(rmoutliersmadison)
+rmoutliersmadison <- flagOutliers(rmoutliersmadison,9)
+#rmoutliersmadison <- rmoutliersmadison[!(rmoutliersmadison$FlaggedOutlier=="TRUE"),]
+
+# ggplot(rmoutliersmadison, aes(date,log(n1_sars_cov2_conc)/FirstConfirmed)) +
+#   geom_point() +
+#   scale_y_log10()
+
+flagged <- rmoutliersmadison[(rmoutliersmadison$FlaggedOutlier=="TRUE"),]
+ ggplot(rmoutliersmadison, aes(x=date)) +
+   geom_point(aes(y=log(n1_sars_cov2_conc)/FirstConfirmed, color=rmoutliersmadison$FlaggedOutlier)) +
+   scale_y_log10()
+```
+
+
+```{r}
+
+waste  <- waste %>% select(1,7,10,12,14) 
+```
+
+```{r all}
+waste <- waste %>% group_by(date)  %>% summarise(n1_sars_cov2_conc = sum(n1_sars_cov2_conc), n2_sars_cov2_conc = sum(n2_sars_cov2_conc), ppmov_conc = sum(ppmov_conc))
+
+cases <- cases %>% group_by(date)  %>% summarise(FirstConfirmed = sum(FirstConfirmed))
+
+wisc_data = merge(x=cases, y=waste, by="date", all = TRUE)
+wisc_data <- na.omit(wisc_data)
+
+
+ggplot(wisc_data, aes(date,log(n1_sars_cov2_conc/FirstConfirmed))) +
+  geom_point() + 
+  scale_y_log10()
+
+
+
+
+```
+

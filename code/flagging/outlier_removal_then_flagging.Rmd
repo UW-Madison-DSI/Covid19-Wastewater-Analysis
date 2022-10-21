@@ -1,0 +1,321 @@
+---
+title: "Outlier Removal Flagging Analysis"
+author: "Kyllan Wunder"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DSIWastewater)
+library(plotly)
+library(zoo)
+library(ggplot2)
+library(dplyr)
+```
+
+
+
+```{r}
+
+data(Case_data, package = "DSIWastewater")
+
+#restrict Case data to only Madison data
+Case_DF <- Case_data[Case_data$Site == "Madison",]
+
+
+#restrict Case data to dates after 2021-02-01
+Case_DF <- Case_DF[Case_DF$date  >= as.Date("2020-9-10"),]
+
+#get the case flags
+Case_DF <- buildCaseAnalysisDF(Case_DF)
+
+Case_DF <- Case_DF[,c(1:2, 5, 7)]
+
+data(WasteWater_data, package = "DSIWastewater")
+
+#restrict Waste data to only Madison data
+baseWaste_DF <- WasteWater_data[(WasteWater_data$wwtp_name == "Madison MSD WWTF"),]
+
+#get DF into format for buildRegressionEstimateTable
+baseWaste_DF <-  buildWasteAnalysisDF(baseWaste_DF)
+baseWaste_DF$site <- "Madison"
+#Select columns needed in analysis
+temp <- baseWaste_DF
+LIMSDF <- temp[,c(1:2,8)]
+
+LIMSDF$sars_cov2_adj_load <- 10**LIMSDF$sars_cov2_adj_load_log10
+
+#joining the two data frames together
+FullDF <- full_join(Case_DF, LIMSDF, by = c("date","site"))
+
+FullDF <- FullDF[,c(1:4,6)]
+```
+
+
+
+```{r}
+
+source("OutlierDetectionFuncs.R")
+baseWaste_DF$sars_cov2_adj_load <- 10**baseWaste_DF$sars_cov2_adj_load_log10
+ErrorMarkedDF <- baseWaste_DF%>%#
+    mutate(FlagedOutliers = IdentifyOutliers(sars_cov2_adj_load, Action = "Flag"),
+           #Manual flagging that method misses due to boundary effect with binning
+           NoOutlierVar = ifelse(FlagedOutliers, NA, sars_cov2_adj_load))
+
+
+```
+
+
+
+```{r}
+
+PackageOutliers <- computeJumps(baseWaste_DF)
+PackageOutliers <- rankJumps(PackageOutliers)
+PackageOutliers <- computeRankQuantiles(PackageOutliers)
+PackageOutliers <- flagOutliers(PackageOutliers, 9)
+
+PackageOutliers <- PackageOutliers %>% mutate(sars_cov2_adj_load = 10**sars_cov2_adj_load_log10, NoOutlierVar = ifelse(FlaggedOutlier, NA, sars_cov2_adj_load))
+```
+
+
+```{r Compare outliers}
+OutLierPlotDFEMDF <- ErrorMarkedDF%>%#
+  mutate(outlier_sars_cov2_adj_load = ifelse(FlagedOutliers, sars_cov2_adj_load,NA))%>%
+  mutate(sars_cov2_adj_load = NoOutlierVar)%>%
+  arrange(date)%>%
+  mutate(MAWasteWOOutlier = rollmean(sars_cov2_adj_load, 7, align = "right",
+                            na.rm = TRUE,fill=NA))
+
+
+OutLierPlotDFPO <- PackageOutliers%>%#
+  mutate(outlier_sars_cov2_adj_load = ifelse(FlaggedOutlier, sars_cov2_adj_load,NA))%>%
+  mutate(sars_cov2_adj_load = NoOutlierVar)%>%
+  arrange(date)%>%
+  mutate(MAWasteWOOutlier = rollmean(sars_cov2_adj_load, 7, align = "right",
+                            na.rm = TRUE,fill=NA))
+
+#Drop Var create Var filter 
+UpdatedDF <- ErrorMarkedDF%>%
+  select(-sars_cov2_adj_load)%>%
+  rename(sars_cov2_adj_load = NoOutlierVar)%>%
+  arrange(date)%>%
+  mutate(MAWaste = rollmean(sars_cov2_adj_load, 7, align = "right",
+                            na.rm = TRUE,fill=NA))
+
+UpdatedDF <- PackageOutliers%>%
+  select(-sars_cov2_adj_load)%>%
+  rename(sars_cov2_adj_load = NoOutlierVar)%>%
+  arrange(date)%>%
+  mutate(MAWaste = rollmean(sars_cov2_adj_load, 7, align = "right",
+                            na.rm = TRUE,fill=NA))
+
+
+
+OutLierPlotDFPO <- OutLierPlotDFPO %>% filter(!(is.na(sars_cov2_adj_load)&is.na(outlier_sars_cov2_adj_load)))
+
+flaggedPO <- subset(OutLierPlotDFPO,OutLierPlotDFPO$FlaggedOutlier == TRUE)
+
+flaggedEMDF <- subset(OutLierPlotDFEMDF,OutLierPlotDFEMDF$FlagedOutliers == TRUE)
+
+flaggedPO <- flaggedPO %>% select(date,outlier_sars_cov2_adj_load)
+flaggedEMDF <- flaggedEMDF %>% select(date, outlier_sars_cov2_adj_load)
+
+
+bothFlags <- merge(x=flaggedPO,y=flaggedEMDF, by="date")
+
+OutLierPlotObject <- OutLierPlotDFEMDF%>%
+  filter(!(is.na(sars_cov2_adj_load)&is.na(outlier_sars_cov2_adj_load)))%>%
+  ggplot(aes(x=date))+#Data depends on time 
+  geom_point(aes(y=sars_cov2_adj_load,
+                color="sars_cov2_adj_loadEMDF"),
+             size = 1)+#compares Var to FirstConfirmed.Per100K
+  geom_point(aes(y = outlier_sars_cov2_adj_load,
+                 color= "outlier_sars_cov2_adj_loadEMDF"))+
+  geom_point(data=OutLierPlotDFPO, aes(y = OutLierPlotDFPO$outlier_sars_cov2_adj_load,
+                 color= "outlier_sars_cov2_adj_loadPO"))+
+  geom_point(data=bothFlags, aes(y=outlier_sars_cov2_adj_load.x, color= "Both"))+
+  scale_y_log10()
+
+
+OutLierPlotObject
+
+
+```
+
+
+
+
+
+```{r }
+baseWaste_DF <- ErrorMarkedDF[!(ErrorMarkedDF$FlagedOutliers == TRUE),]
+baseWaste_DF <- baseWaste_DF[baseWaste_DF$n > 10,]
+K=3
+baseWaste_DF <- baseWaste_DF%>%
+  group_by(site)%>%
+    arrange(site, date)%>%
+    #create K day mean of the same column to use later
+    mutate(pastKavg.wwlog10 = rollmean(sars_cov2_adj_load_log10,
+                                       K, align = "right",
+                                       fill=NA))%>%
+  ungroup()
+
+#add quantile data to merge with the regression results
+Quantiles_DF <- makeQuantileColumns(baseWaste_DF,
+                                    5:9/10, c(14, 30, 60, 90),
+                                    "sars_cov2_adj_load_log10")
+
+Quantiles_DF <- Quantiles_DF[,c("site", "date", "window", "quant", "ntile", "pastKavg.wwlog10")]
+Quantiles_DF <- tidyr::pivot_wider(Quantiles_DF, 
+                                   names_from = c(window, quant), 
+                                  values_from = c(ntile))
+```
+
+
+```{r wastewater flags}
+#Get 5 day rolling regression of data 
+CDCMethod <- buildRegressionEstimateTable(baseWaste_DF,
+                                          PSigTest=FALSE)
+
+CDCMethod <- CDCMethod[,c("date","site", "modeled_percentchange", "lmreg_sig")]
+#merge the regression DF and the quantile DF to get info for 
+
+
+FULL_reg_DF <- left_join(CDCMethod, Quantiles_DF,
+                                by = c("site", "date"))%>%
+  tidyr::pivot_longer(cols = '14_0.5':'90_0.9',
+                      names_to = c("window", "quant"),
+                      values_to = "ntile",
+                      names_sep = "_")#
+
+#create flags described in @return
+FULL_reg_DF <- classifyQuantileFlagRegression(FULL_reg_DF)
+
+#return only flags and type columns 
+Full_wasteFlags <- FULL_reg_DF[,c("site", "date",
+                                  "window", "quant",
+                                  "cdc_flag",
+                                  "flag_ntile",
+                                  "flag_ntile_pval")]
+
+```
+
+
+```{r create case flags}
+data(Case_data, package = "DSIWastewater")
+
+Case_DF <- Case_data
+
+#get the case flags
+Case_DF <- buildCaseAnalysisDF(Case_DF)
+
+
+CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF, 
+    RunOn = c("FirstConfirmed.Per100K", "pastwk.avg.casesperday.Per100K"),
+    SplitOn = "site", DaysRegressed = 7)
+
+case_flags_names <- c("case_flag", 
+                      "case_flag_plus_comm.threshold",
+                      "slope_switch_flag")
+
+CaseRegressionOutput$Method <- ifelse(CaseRegressionOutput$Method ==   
+                                      "FirstConfirmed.Per100K",
+                                      "Cases", "7DayCases")
+
+
+library(dplyr)
+#Classify slope to create 3 flags described in @return  
+CaseFlags <- classifyCaseRegression(CaseRegressionOutput)%>%
+  select(Method, site, date,all_of(case_flags_names))%>%
+  tidyr:::pivot_wider(names_from = "Method", values_from = all_of(case_flags_names))
+```
+
+```{r merge flag DF}
+Full_wasteFlags <- Full_wasteFlags%>%
+  rename(cdc.flag = cdc_flag, 
+         flag.ntile = flag_ntile, 
+         flag.ntile.Pval = flag_ntile_pval)%>%
+  tidyr::pivot_wider(names_from = c(window, quant), 
+                     values_from = c(cdc.flag, flag.ntile, flag.ntile.Pval))
+
+Flag_DF <- full_join(CaseFlags, Full_wasteFlags, 
+                     by = c("site", "date"))
+```
+
+```{r}
+#load WasteWater_data into the environment
+data(WasteWater_data, package = "DSIWastewater")
+baseWaste_DF <-  buildWasteAnalysisDF(WasteWater_data)
+data(Case_data, package = "DSIWastewater")
+Case_DF <- Case_data
+
+Flag_DF <- read.csv("Temp/DHSFlagingMethodOutput.csv")%>%
+            mutate(date = as.Date(date))%>%
+  select(-X)
+
+date_Flag_DF <- DF_date_vector(Flag_DF, "date", 
+               names(Flag_DF)[3:68])
+```
+
+
+
+
+```{r create flag distance}
+#"case_flag_Cases"                         "case_flag_7DayCases"                    
+#"case_flag_plus_comm.threshold_Cases"     "case_flag_plus_comm.threshold_7DayCases"
+#"slope_switch_flag_Cases"                 "slope_switch_flag_7DayCases"
+dep_flags <- names(Flag_DF)[9:68]
+edgeThresh <- 7
+CaseFlag <- "slope_switch_flag_Cases"
+DateDistDF <- date_distance_calc(date_Flag_DF, CaseFlag, 
+                                 dep_flags, edge = edgeThresh)%>%
+  select(site, date, dep_flags)%>%
+  tidyr::pivot_longer(cols = dep_flags,
+                      names_to = c("FlagType","window", "quant"),
+                      values_to = "FlagError",
+                      names_sep = "_")%>%
+  mutate(window = as.numeric(window), quant = as.numeric(quant))
+
+
+```
+
+```{r get flag counts}
+CaseNumberFlags <- sum(Flag_DF[[CaseFlag]], na.rm = TRUE)
+
+Temp <- Flag_DF%>%
+  group_by(site)%>%
+  summarise(across(c(dep_flags, !!sym(CaseFlag)), ~sum(.x, na.rm=TRUE)))%>%
+  mutate(across(c(dep_flags), ~(.x-!!sym(CaseFlag))))%>%
+  ungroup()%>%
+  summarise(across(c(dep_flags), ~sum(abs(.x), na.rm=TRUE)))%>%
+  tidyr::pivot_longer(cols = dep_flags,
+                      names_to = c("FlagType","window", "quant"),
+                      values_to = "TotalFlagCountDiff",
+                      names_sep = "_")%>%
+  arrange(TotalFlagCountDiff)
+```
+
+```{r fig.cap = "The angled line is a linear regression line based on the 60 and 90-day intervals. The vertical lines represent the total number of case flags (1578) and the proportion of wastewater samples to wastewater flags if they had the same ratio as cases to case flags (389)", PlotHeight = 14}
+DistSummary <- DateDistDF%>%
+  group_by(window, quant, FlagType)%>%
+  summarise(Mean = mean(FlagError, na.rm = TRUE),
+            MeanErrorSquard = mean(FlagError^2, na.rm = TRUE),
+            Var = var(FlagError, na.rm = TRUE),
+            n = sum(!is.na(FlagError)),
+            Missed = mean(FlagError == edgeThresh, na.rm = TRUE))
+
+QuantDistSummary <- DistSummary%>%
+  filter(FlagType != "cdc.flag")
+
+A <- QuantDistSummary%>%
+  ggplot(aes(x = n, y = MeanErrorSquard, color = window,
+             size = factor(quant), shape = FlagType))+
+  geom_point()+
+  geom_abline(slope = 0.0038959, intercept = 2.3082686)+
+  geom_vline(xintercept = CaseNumberFlags)+
+  scale_colour_gradient(low = "#000055", high = "#0000FF")+
+  geom_vline(xintercept = nrow(baseWaste_DF)*CaseNumberFlags/nrow(Case_DF),
+             linetype = 3)
+A
+```
+
