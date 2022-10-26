@@ -8,6 +8,8 @@ author:
 output:
   pdf_document:
     keep_tex: true  
+editor_options: 
+  chunk_output_type: inline
 ---
 
 ```{r set up markdown settings, include = FALSE}
@@ -210,7 +212,7 @@ Temp <- Flag_DF%>%
   arrange(TotalFlagCountDiff)
 ```
 
-```{r fig.cap = "The angled line is a linear regression line based on the 60 and 90-day intervals. The vertical lines represent the total number of case flags (1578) and the proportion of wastewater samples to wastewater flags if they had the same ratio as cases to case flags (389)", PlotHeight = 14}
+```{r fig.cap = "The angled line is a linear regression line based on the 60 and 90-day intervals. The vertical lines represent the total number of case flags (1578) and the proportion of wastewater samples to wastewater flags if they had the same ratio as cases to case flags (389)", PlotHeight = 14m, warning=FALSE}
 DistSummary <- DateDistDF%>%
   group_by(window, quant, FlagType)%>%
   summarise(Mean = mean(FlagError, na.rm = TRUE),
@@ -232,7 +234,7 @@ A <- QuantDistSummary%>%
   geom_vline(xintercept = nrow(baseWaste_DF)*CaseNumberFlags/nrow(Case_DF),
              linetype = 3)+
   xlab("number of flags")
-ggplotly(A)
+A
 ```
 
 ## Flagging Methods
