@@ -230,8 +230,9 @@ A <- QuantDistSummary%>%
   geom_vline(xintercept = CaseNumberFlags)+
   scale_colour_gradient(low = "#000055", high = "#0000FF")+
   geom_vline(xintercept = nrow(baseWaste_DF)*CaseNumberFlags/nrow(Case_DF),
-             linetype = 3)
-A
+             linetype = 3)+
+  xlab("number of flags")
+ggplotly(A)
 ```
 
 ## Flagging Methods
