@@ -48,11 +48,17 @@ trend_df <- hfg_waste_filt_df%>%
   lapply(loessSmoothMod, InVar = "CrP", OutVar = "CrP_Trend")%>%
   bind_rows()%>%
   mutate(
+    N1_Detrend = N1_Trend - lag(N1_Trend),
+    N2_Detrend = N2_Trend - lag(N2_Trend),
+    PMMOV_Detrend = PMMOV_Trend - lag(PMMOV_Trend),
+    HF183_Detrend = HF183_Trend - lag(HF183_Trend),
+    CrP_Detrend = CrP_Trend - lag(CrP_Trend),
     N1_Diff = N1_Trend - N1,
     N2_Diff = N2_Trend - N2,
     PMMOV_Diff = PMMOV_Trend - PMMOV,
     HF183_Diff = HF183_Trend - HF183,
-    CrP_Diff = CrP_Trend - CrP)%>%
+    CrP_Diff = CrP_Trend - CrP
+    )%>%
   select(date, site, N1_Trend:CrP_Diff)
 
 library(ggcorrplot)
@@ -86,6 +92,11 @@ log_trend_df <- hfg_waste_filt_df%>%
   lapply(loessSmoothMod, InVar = "log_CrP", OutVar = "log_CrP_Trend")%>%
   bind_rows()%>%
   mutate(
+    N1_Detrend = log_N1_Trend - lag(log_N1_Trend),
+    N2_Detrend = log_N2_Trend - lag(log_N2_Trend),
+    PMMOV_Detrend = log_PMMOV_Trend - lag(log_PMMOV_Trend),
+    HF183_Detrend = log_HF183_Trend - lag(log_HF183_Trend),
+    CrP_Detrend = log_CrP_Trend - lag(log_CrP_Trend),
     N1_Diff = log_N1_Trend - log_N1,
     N2_Diff = log_N2_Trend - log_N2,
     PMMOV_Diff = log_PMMOV_Trend - log_PMMOV,

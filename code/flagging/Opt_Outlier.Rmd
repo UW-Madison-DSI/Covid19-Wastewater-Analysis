@@ -39,13 +39,6 @@ knitr::knit_hooks$set(plot = function(x, options) {  # set new plot hook ...
 ## Introduction: 
 In this analysis, we perform a comparative analysis of various wastewater flagging techniques with the goals of (1) making the wastewater flags match the case analysis flags and (2) reducing false positives in the reported wastewater flags.  As the adoption of at-home tests increases and case reporting decreases, wastewater becomes a more important metric for determining true case numbers. Accurate flagging methods are critical for policymakers to make better-informed decisions based on predicted changes  in cases. 
 
-
-
-
-
-
-
-
 ```{r Load Librarys, echo = FALSE}
 library(plotly)
 library(zoo)
@@ -138,7 +131,7 @@ Full_wasteFlags <- FULL_reg_DF[,c("site", "date",
 ```{r}
 data(Case_data, package = "DSIWastewater")
 Case_DF <- Case_data
-CaseFlags <- read.csv("../Temp/DHSFlagingMethodOutput.csv")%>%
+CaseFlags <- read.csv("Temp/DHSFlagingMethodOutput.csv")%>%
             mutate(date = as.Date(date))%>%
   select(-X)%>%
   select(site:slope_switch_flag_7DayCases)
@@ -167,7 +160,7 @@ date_Flag_DF <- DF_date_vector(Flag_DF, "date",
 #"slope_switch_flag_Cases"                 "slope_switch_flag_7DayCases"
 dep_flags <- names(Flag_DF)[9:68]
 edgeThresh <- 7
-CaseFlag <- "slope_switch_flag_Cases"
+CaseFlag <- "slope_switch_flag_7DayCases"
 DateDistDF <- date_distance_calc(date_Flag_DF, CaseFlag, 
                                  dep_flags, edge = edgeThresh)%>%
   select(site, date, dep_flags)%>%
@@ -176,8 +169,6 @@ DateDistDF <- date_distance_calc(date_Flag_DF, CaseFlag,
                       values_to = "FlagError",
                       names_sep = "_")%>%
   mutate(window = as.numeric(window), quant = as.numeric(quant))
-
-
 ```
 
 ```{r get flag counts}
@@ -212,12 +203,11 @@ A <- QuantDistSummary%>%
   ggplot(aes(x = n, y = MeanErrorSquard, color = window,
              size = factor(quant), shape = FlagType))+
   geom_point()+
-  geom_abline(slope = 0.0038959, intercept = 2.3082686)+
+  geom_abline(slope = 0.0121, intercept = 16)+
   geom_vline(xintercept = CaseNumberFlags)+
-  scale_colour_gradient(low = "#000055", high = "#0000FF")+
   geom_vline(xintercept = nrow(baseWaste_DF)*CaseNumberFlags/nrow(Case_DF),
              linetype = 3)+
-  ylim(0, 11)
+  scale_colour_gradient(low = "#000055", high = "#0000FF")
 A
 ```
 
