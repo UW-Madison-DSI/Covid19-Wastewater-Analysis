@@ -14,14 +14,10 @@ knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 Paper:
 using HFD to get a good understanding of the relationships between the Covid-19
 measurements and the other covariates. we did this by breaking the signal down into
-three components. (1) the trend of the data. this is created using a loess smoothing.
-(2) the first difference of the trend. (3) the detrended data. this captures the noise
-processes. furthermore there is two view of the data. We look at the normal data
-and the log of data. The log of the data better captures the shape of Wastewater.
-at the bottom of the document contain plots showing a comprehensive view of the
-problem. The main goal of this document is to show the main takeaways of those plots
-in an easier way to see. The main takeaways are, 1) the covariates don't strongly
-relate to the covid signal. 2) Crp and HF183 are strongly related. 3)
+two components. (1) the trend of the data. This is created using a loess smoothing.
+ (2) the detrended data. This captures the noise processes. furthermore there is
+ two views of the data. We look at the normal data and the log of data. The log of the data better captures the shape of Wastewater and its noise. at the bottom of the document contain plots showing a comprehensive view of the problem. The main goal of this document is to show the main takeaways of those plots in an easier way to see. The main takeaways are, 1) the covariates don't relate to the covid signal any more than the population does. 2) Crp and HF183 do relate strongly on the unlogged data. 3) Crp and HF183 are strongly related.
+
 
 ```{r cars}
 library(DSIWastewater)
@@ -126,6 +122,38 @@ log_trend_df%>%
 trend_df%>% 
   correlate()%>% 
   focus(N1_Trend, N2_Trend, N1_Diff, N2_Diff)
+```
+looking at the relationship between HF183 and CrP you see a distinctly strong relationship in both the trend and the noise. We don't have enough understanding of the underlying process to know if this is expected.
+```{r}
+a <- cor(log_trend_df$log_HF183_Trend, log_trend_df$log_CrP_Trend,
+    use = "complete.obs")
+b <- cor(log_trend_df$CrP_Diff, log_trend_df$HF183_Diff,
+    use = "complete.obs")
+
+c <- cor(trend_df$HF183_Trend, trend_df$CrP_Trend,
+    use = "complete.obs")
+d <- cor(trend_df$CrP_Diff, trend_df$HF183_Diff,
+    use = "complete.obs")
+corMat <- matrix(c(a,b,c,d), nrow = 2)
+colnames(corMat) <- c("log", "base")
+rownames(corMat) <- c("trend corr", "detrend corr")
+corMat
+```
+For a baseline we showed the relationship between N1 and N2 that show an extremely strong correlation clearly due to them measuring the same thing.
+```{r}
+a <- cor(log_trend_df$log_N1_Trend, log_trend_df$log_N2_Trend,
+    use = "complete.obs")
+b <- cor(log_trend_df$N1_Diff, log_trend_df$N2_Diff,
+    use = "complete.obs")
+
+c <- cor(trend_df$N1_Trend, trend_df$N2_Trend,
+    use = "complete.obs")
+d <- cor(trend_df$N1_Diff, trend_df$N2_Diff,
+    use = "complete.obs")
+corMat <- matrix(c(a,b,c,d), nrow = 2)
+colnames(corMat) <- c("log", "base")
+rownames(corMat) <- c("trend corr", "detrend corr")
+corMat
 ```
 
 
