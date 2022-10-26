@@ -8,7 +8,7 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 ```
 
 Paper:
@@ -111,8 +111,9 @@ components. The baseline these covariates are meant to control for is population
 Let's first look at that. We can see in the original data it has a low correlation
 but in the log data it has a .3 correlation which is meaningful. This is larger
 then most of the covariates correlation which suggests that at least when working
-with the log of the data covariates other than population are not necessary. None
-of the detrended data correlates meaningful supporting the view that they are mostly
+with the log of the data covariates other than population are not necessary. With
+the original data the HF183 and CrP have correlation of .3 which might be worth
+understanding. None of the detrended data correlates meaningful supporting the view that they are mostly
 caused by noise.
 
 
