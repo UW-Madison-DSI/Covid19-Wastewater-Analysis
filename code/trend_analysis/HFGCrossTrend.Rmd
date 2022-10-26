@@ -3,13 +3,25 @@ title: "HFGCrossTrend"
 author: "Marlin"
 date: "2022-10-21"
 output: html_document
+editor_options: 
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ```
 
-
+Paper:
+using HFD to get a good understanding of the relationships between the Covid-19
+measurements and the other covariates. we did this by breaking the signal down into
+three components. (1) the trend of the data. this is created using a loess smoothing.
+(2) the first difference of the trend. (3) the detrended data. this captures the noise
+processes. furthermore there is two view of the data. We look at the normal data
+and the log of data. The log of the data better captures the shape of Wastewater.
+at the bottom of the document contain plots showing a comprehensive view of the
+problem. The main goal of this document is to show the main takeaways of those plots
+in an easier way to see. The main takeaways are, 1) the covariates don't strongly
+relate to the covid signal. 2) Crp and HF183 are strongly related. 3)
 
 ```{r cars}
 library(DSIWastewater)
@@ -31,10 +43,16 @@ hfg_outlier_detection <- function(small_vec){
   return(retVec)
 }
 
+Pop_DF <- data.frame(
+  site = c("Hudson","Kenosha","Platteville","Madison","Merrill","Plymouth","River Falls","Sun Prairie","Wausau","Oshkosh","Wausau"),
+  pop = c(19680,122000,14000,380000,10000,9000,16000,34926,42000,67000,42000)
+)
+
 hfg_waste_filt_df <- HFGWaste_data%>%
   select(site, date, Filter, Well, N1, N2, PMMOV, BCoV, HF183, CrP)%>%
   group_by(date,site)%>%
-  mutate(across(N1:CrP, hfg_outlier_detection))
+  mutate(across(N1:CrP, hfg_outlier_detection))%>%
+  left_join(Pop_DF)
 ```
 
 ```{r}
@@ -48,32 +66,15 @@ trend_df <- hfg_waste_filt_df%>%
   lapply(loessSmoothMod, InVar = "CrP", OutVar = "CrP_Trend")%>%
   bind_rows()%>%
   mutate(
-    N1_Detrend = N1_Trend - lag(N1_Trend),
-    N2_Detrend = N2_Trend - lag(N2_Trend),
-    PMMOV_Detrend = PMMOV_Trend - lag(PMMOV_Trend),
-    HF183_Detrend = HF183_Trend - lag(HF183_Trend),
-    CrP_Detrend = CrP_Trend - lag(CrP_Trend),
     N1_Diff = N1_Trend - N1,
     N2_Diff = N2_Trend - N2,
     PMMOV_Diff = PMMOV_Trend - PMMOV,
     HF183_Diff = HF183_Trend - HF183,
     CrP_Diff = CrP_Trend - CrP
     )%>%
-  select(date, site, N1_Trend:CrP_Diff)
-
-library(ggcorrplot)
-trend_df%>%
-  select(N1_Trend:CrP_Diff)%>%
-  cor(use = "complete.obs")%>%
-  ggcorrplot()
+  select(date, site, pop, N1_Trend:CrP_Diff)
 ```
 
-```{r fig.height = 15, fig.width= 15}
-
-library(GGally)
-trend_df%>%
-  ggpairs(aes(colour = site, alpha = 0.4))
-```
 
 
 ```{r}
@@ -92,27 +93,40 @@ log_trend_df <- hfg_waste_filt_df%>%
   lapply(loessSmoothMod, InVar = "log_CrP", OutVar = "log_CrP_Trend")%>%
   bind_rows()%>%
   mutate(
-    N1_Detrend = log_N1_Trend - lag(log_N1_Trend),
-    N2_Detrend = log_N2_Trend - lag(log_N2_Trend),
-    PMMOV_Detrend = log_PMMOV_Trend - lag(log_PMMOV_Trend),
-    HF183_Detrend = log_HF183_Trend - lag(log_HF183_Trend),
-    CrP_Detrend = log_CrP_Trend - lag(log_CrP_Trend),
     N1_Diff = log_N1_Trend - log_N1,
     N2_Diff = log_N2_Trend - log_N2,
     PMMOV_Diff = log_PMMOV_Trend - log_PMMOV,
     HF183_Diff = log_HF183_Trend - log_HF183,
     CrP_Diff = log_CrP_Trend - log_CrP)%>%
-  select(site, date, log_N1_Trend:CrP_Diff)
+  select(site, date, pop, log_N1_Trend:CrP_Diff)
+```
+```{r}
+trend_df
+  
+  
 
-log_trend_df%>%
-  select(log_N1_Trend:CrP_Diff)%>%
-  cor(use = "complete.obs")%>%
-  ggcorrplot()
-
+log_trend_df
 ```
 
+
 ```{r fig.height = 15, fig.width= 15}
+library(ggcorrplot)
 library(GGally)
+
+trend_df%>%
+  mutate(date = as.numeric(date))%>%
+  select(date, pop:CrP_Diff)%>%
+  cor(use = "complete.obs")%>%
+  ggcorrplot()
+trend_df%>%
+  ggpairs(aes(colour = site, alpha = 0.4))
+
+
+log_trend_df%>%
+  select(date, pop, log_N1_Trend:CrP_Diff)%>%
+  mutate(date = as.numeric(date))%>%
+  cor(use = "complete.obs")%>%
+  ggcorrplot()
 log_trend_df%>%
   ggpairs(aes(colour = site, alpha = 0.4))
 ```
