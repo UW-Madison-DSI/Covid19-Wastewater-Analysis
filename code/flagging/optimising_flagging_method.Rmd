@@ -54,7 +54,7 @@ library(DSIWastewater)
 
 ```
 
-```{r create wastewater data, eval = FALSE, echo = FALSE}
+```{r create wastewater data, eval = TRUE, echo = FALSE}
 #load WasteWater_data into the environment
 data(WasteWater_data, package = "DSIWastewater")
 
@@ -88,7 +88,7 @@ Quantiles_DF <- tidyr::pivot_wider(Quantiles_DF,
 ```
 
 
-```{r wastewater flags, eval = FALSE, echo = FALSE}
+```{r wastewater flags, eval = TRUE, echo = FALSE}
 #Get 5 day rolling regression of data 
 CDCMethod <- buildRegressionEstimateTable(baseWaste_DF,
                                           PSigTest=FALSE)
@@ -118,7 +118,7 @@ Full_wasteFlags <- FULL_reg_DF[,c("site", "date",
 ```
 
 
-```{r create case flags, eval = FALSE, echo = FALSE}
+```{r create case flags, eval = TRUE, echo = FALSE}
 data(Case_data, package = "DSIWastewater")
 
 Case_DF <- Case_data
@@ -147,7 +147,7 @@ CaseFlags <- classifyCaseRegression(CaseRegressionOutput)%>%
   tidyr:::pivot_wider(names_from = "Method", values_from = all_of(case_flags_names))
 ```
 
-```{r merge flag DF, eval = FALSE, echo = FALSE}
+```{r merge flag DF, eval = TRUE, echo = FALSE}
 Full_wasteFlags <- Full_wasteFlags%>%
   rename(cdc.flag = cdc_flag, 
          flag.ntile = flag_ntile, 
@@ -161,14 +161,14 @@ Flag_DF <- full_join(CaseFlags, Full_wasteFlags,
 
 ```{r}
 #load WasteWater_data into the environment
-data(WasteWater_data, package = "DSIWastewater")
-baseWaste_DF <-  buildWasteAnalysisDF(WasteWater_data)
-data(Case_data, package = "DSIWastewater")
-Case_DF <- Case_data
+#data(WasteWater_data, package = "DSIWastewater")
+#baseWaste_DF <-  buildWasteAnalysisDF(WasteWater_data)
+#data(Case_data, package = "DSIWastewater")
+#Case_DF <- Case_data
 
-Flag_DF <- read.csv("Temp/DHSFlagingMethodOutput.csv")%>%
-            mutate(date = as.Date(date))%>%
-  select(-X)
+#Flag_DF <- read.csv("Temp/DHSFlagingMethodOutput.csv")%>%
+#           mutate(date = as.Date(date))%>%
+#  select(-X)
 
 date_Flag_DF <- DF_date_vector(Flag_DF, "date", 
                names(Flag_DF)[3:68])
@@ -180,7 +180,7 @@ date_Flag_DF <- DF_date_vector(Flag_DF, "date",
 #"case_flag_plus_comm.threshold_Cases"     "case_flag_plus_comm.threshold_7DayCases"
 #"slope_switch_flag_Cases"                 "slope_switch_flag_7DayCases"
 dep_flags <- names(Flag_DF)[9:68]
-edgeThresh <- 7
+edgeThresh <- 21
 CaseFlag <- "slope_switch_flag_Cases"
 DateDistDF <- date_distance_calc(date_Flag_DF, CaseFlag, 
                                  dep_flags, edge = edgeThresh)%>%
@@ -226,12 +226,11 @@ A <- QuantDistSummary%>%
   ggplot(aes(x = n, y = MeanErrorSquard, color = window,
              size = factor(quant), shape = FlagType))+
   geom_point()+
-  geom_abline(slope = 0.0038959, intercept = 2.3082686)+
+  geom_abline(slope = 0.0041, intercept = 6.6873)+
   geom_vline(xintercept = CaseNumberFlags)+
   scale_colour_gradient(low = "#000055", high = "#0000FF")+
   geom_vline(xintercept = nrow(baseWaste_DF)*CaseNumberFlags/nrow(Case_DF),
-             linetype = 3)+
-  ylim(0, 11)
+             linetype = 3)
 A
 ```
 
@@ -276,7 +275,7 @@ DateDistDF%>%
   facet_grid(window~quant)
 ```
 
-```{r plotly plots, eval = FALSE, echo = FALSE}
+```{r plotly plots, eval = TRUE, echo = FALSE}
 
 Plot_DF_List <- split(DistSummary, DistSummary$FlagType)
 
@@ -345,7 +344,7 @@ plot_ly(showlegend = TRUE, opacity = .8)%>%
 
 
 
-```{r peter LM, eval = FALSE, echo = FALSE}
+```{r peter LM, eval = TRUE, echo = FALSE}
 #peters method to select outliers
 SitePop <- baseWaste_DF[,c("site","population_served")]%>%
   group_by(site)%>%

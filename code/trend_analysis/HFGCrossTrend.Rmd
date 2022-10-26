@@ -36,10 +36,15 @@ data("HFGWaste_data", package = "DSIWastewater")
 
 #crazy agressive method
 hfg_outlier_detection <- function(small_vec){
-  upbound_vec <- quantile(small_vec, probs = .7, na.rm = TRUE)
-  retVec = ifelse(small_vec > upbound_vec,
+  sortedVec <- sort(log(small_vec))
+  lower_quant <- sortedVec[4]
+  upper_quant <- sortedVec[6]
+  range <- upper_quant - lower_quant
+  retVec = ifelse(log(small_vec) > upper_quant + 1.5 * range,
                   NA, small_vec)
-  retVec = ifelse(retVec == 0, NA, retVec)
+  retVec = ifelse(log(small_vec) < lower_quant - 1.5 * range,
+                  NA, small_vec)
+  retVec = ifelse(is.infinite(retVec), NA, retVec)
   return(retVec)
 }
 
@@ -100,12 +105,26 @@ log_trend_df <- hfg_waste_filt_df%>%
     CrP_Diff = log_CrP_Trend - log_CrP)%>%
   select(site, date, pop, log_N1_Trend:CrP_Diff)
 ```
-```{r}
-trend_df
-  
-  
 
-log_trend_df
+The table below shows the correlation between the Covid-19 signals and the covariate
+components. The baseline these covariates are meant to control for is population so
+Let's first look at that. We can see in the original data it has a low correlation
+but in the log data it has a .3 correlation which is meaningful. This is larger
+then most of the covariates correlation which suggests that at least when working
+with the log of the data covariates other than population are not necessary. None
+of the detrended data correlates meaningful supporting the view that they are mostly
+caused by noise.
+
+
+```{r}
+library(corrr)
+log_trend_df%>%
+  correlate()%>%
+  focus(log_N1_Trend, log_N2_Trend, N1_Diff, N2_Diff)
+
+trend_df%>% 
+  correlate()%>% 
+  focus(N1_Trend, N2_Trend, N1_Diff, N2_Diff)
 ```
 
 
