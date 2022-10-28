@@ -20,8 +20,7 @@ knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 using HFD to get a good understanding of the relationships between the Covid-19
 measurements and the other covariates. we did this by breaking the signal down into
 two components. (1) the trend of the data. This is created using a loess smoothing.
- (2) the detrended data. This captures the noise processes. furthermore there is
- two views of the data. We look at the normal data and the log of data. The log of the data better captures the shape of Wastewater and its noise. at the bottom of the document contain plots showing a comprehensive view of the problem. The main goal of this document is to show the main takeaways of those plots in an easier way to see. The main takeaways are, 1) the covariates don't relate to the covid signal any more than the population does. 2) Crp and HF183 do relate strongly on the unlogged data. 3) Crp and HF183 are strongly related.
+ (2) the detrended data. We do this on the log of the data because the noise appears to be log normal meaning a more clear trend. The main goal of this document is to show the main takeaways of those plots in an easier way to see. The main takeaways are, 1) the covariates don't relate to the covid signal any more than the population does. 2) The detrended data seems to be largely independent
 
 
 ```{r cars}
@@ -107,15 +106,9 @@ log_trend_df <- hfg_waste_filt_df%>%
   select(site, date, pop, Trend_N1:Diff_CrP)
 ```
 
-The table below shows the correlation between the Covid-19 signals and the covariate
+The heatmap below shows the correlation between the Covid-19 signals and the covariate
 components. The baseline these covariates are meant to control for is population so
-Let's first look at that. We can see in the original data it has a low correlation
-but in the log data it has a .3 correlation which is meaningful. This is larger
-then most of the covariates correlation which suggests that at least when working
-with the log of the data covariates other than population are not necessary. With
-the original data the HF183 and CrP have correlation of .3 which might be worth
-understanding. None of the detrended data correlates meaningful supporting the view that they are mostly
-caused by noise.
+it acts as the baseline. We see the data it has a .25 correlation which is mildly meaningful. This is around the correlation the other covariants have. None of the detrended data correlates meaningful supporting the view that they are mostly caused by noise.
 
 
 ```{r}
@@ -131,7 +124,8 @@ logPlot <- log_trend_df%>%
   ggplot(aes(name, term)) +
   geom_tile(aes(fill = value)) + 
   geom_text(aes(label = round(value, 3))) +
-  scale_fill_gradient(low = "white", high = "red") 
+  scale_fill_gradient(low = "white", high = "red")+
+  scale_x_discrete(position = "top") 
 
 basePlot <- trend_df%>% 
   correlate()%>% 
@@ -144,11 +138,15 @@ basePlot <- trend_df%>%
   ggplot(aes(name, term)) +
   geom_tile(aes(fill = value)) + 
   geom_text(aes(label = round(value, 3))) +
-  scale_fill_gradient(low = "white", high = "red") 
+  scale_fill_gradient(low = "white", high = "red")+
+  scale_x_discrete(position = "top")
 
 #basePlot
 logPlot
 ```
+
+
+
 looking at the relationship between HF183 and CrP you see a distinctly strong relationship in both the trend and the noise. We don't have enough understanding of the underlying process to know if this is expected.
 ```{r}
 a <- cor(log_trend_df$Trend_HF183, log_trend_df$Trend_CrP,
