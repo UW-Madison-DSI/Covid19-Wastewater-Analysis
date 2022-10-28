@@ -234,6 +234,7 @@ A <- QuantDistSummary%>%
   geom_vline(xintercept = nrow(baseWaste_DF)*CaseNumberFlags/nrow(Case_DF),
              linetype = 3)+
   xlab("number of flags")
+supresswarning(A)
 A
 ```
 

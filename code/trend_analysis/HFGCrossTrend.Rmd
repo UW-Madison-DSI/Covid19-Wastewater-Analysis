@@ -1,17 +1,22 @@
 ---
-title: "HFGCrossTrend"
-author: "Marlin"
-date: "2022-10-21"
+title: "Covid-19 Wastewater Flagging Method Optimization Using a Minimum Flagging         Difference of 10%"
+author: "Marlin Lee, Kyllan Wunder, Abe Megahed"
+date: "University of Wisconsin Data Science Institute - October 2022"
 output: html_document
 editor_options: 
   chunk_output_type: inline
 ---
 
+```{css, echo=FALSE}
+h1, h4 {
+  text-align: center;
+}
+```
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 ```
 
-Paper:
 using HFD to get a good understanding of the relationships between the Covid-19
 measurements and the other covariates. we did this by breaking the signal down into
 two components. (1) the trend of the data. This is created using a loess smoothing.
@@ -60,20 +65,20 @@ hfg_waste_filt_df <- HFGWaste_data%>%
 trend_df <- hfg_waste_filt_df%>%
   group_by(site)%>%
   group_split()%>%
-  lapply(loessSmoothMod, InVar = "N1", OutVar = "N1_Trend")%>%
-  lapply(loessSmoothMod, InVar = "N2", OutVar = "N2_Trend")%>%
-  lapply(loessSmoothMod, InVar = "PMMOV", OutVar = "PMMOV_Trend")%>%
-  lapply(loessSmoothMod, InVar = "HF183", OutVar = "HF183_Trend")%>%
-  lapply(loessSmoothMod, InVar = "CrP", OutVar = "CrP_Trend")%>%
+  lapply(loessSmoothMod, InVar = "N1", OutVar = "Trend_N1")%>%
+  lapply(loessSmoothMod, InVar = "N2", OutVar = "Trend_N2")%>%
+  lapply(loessSmoothMod, InVar = "PMMOV", OutVar = "Trend_PMMOV")%>%
+  lapply(loessSmoothMod, InVar = "HF183", OutVar = "Trend_HF183")%>%
+  lapply(loessSmoothMod, InVar = "CrP", OutVar = "Trend_CrP")%>%
   bind_rows()%>%
   mutate(
-    N1_Diff = N1_Trend - N1,
-    N2_Diff = N2_Trend - N2,
-    PMMOV_Diff = PMMOV_Trend - PMMOV,
-    HF183_Diff = HF183_Trend - HF183,
-    CrP_Diff = CrP_Trend - CrP
+    Diff_N1 = Trend_N1 - N1,
+    Diff_N2 = Trend_N2 - N2,
+    Diff_PMMOV = Trend_PMMOV - PMMOV,
+    Diff_HF183 = Trend_HF183 - HF183,
+    Diff_CrP = Trend_CrP - CrP
     )%>%
-  select(date, site, pop, N1_Trend:CrP_Diff)
+  select(date, site, pop, Trend_N1:Diff_CrP)
 ```
 
 
@@ -87,19 +92,19 @@ log_trend_df <- hfg_waste_filt_df%>%
          log_CrP = log(CrP))%>%
   group_by(site)%>%
   group_split()%>%
-  lapply(loessSmoothMod, InVar = "log_N1", OutVar = "log_N1_Trend")%>%
-  lapply(loessSmoothMod, InVar = "log_N2", OutVar = "log_N2_Trend")%>%
-  lapply(loessSmoothMod, InVar = "log_PMMOV", OutVar = "log_PMMOV_Trend")%>%
-  lapply(loessSmoothMod, InVar = "log_HF183", OutVar = "log_HF183_Trend")%>%
-  lapply(loessSmoothMod, InVar = "log_CrP", OutVar = "log_CrP_Trend")%>%
+  lapply(loessSmoothMod, InVar = "log_N1", OutVar = "Trend_N1")%>%
+  lapply(loessSmoothMod, InVar = "log_N2", OutVar = "Trend_N2")%>%
+  lapply(loessSmoothMod, InVar = "log_PMMOV", OutVar = "Trend_PMMOV")%>%
+  lapply(loessSmoothMod, InVar = "log_HF183", OutVar = "Trend_HF183")%>%
+  lapply(loessSmoothMod, InVar = "log_CrP", OutVar = "Trend_CrP")%>%
   bind_rows()%>%
   mutate(
-    N1_Diff = log_N1_Trend - log_N1,
-    N2_Diff = log_N2_Trend - log_N2,
-    PMMOV_Diff = log_PMMOV_Trend - log_PMMOV,
-    HF183_Diff = log_HF183_Trend - log_HF183,
-    CrP_Diff = log_CrP_Trend - log_CrP)%>%
-  select(site, date, pop, log_N1_Trend:CrP_Diff)
+    Diff_N1 = Trend_N1 - log_N1,
+    Diff_N2 = Trend_N2 - log_N2,
+    Diff_PMMOV = Trend_PMMOV - log_PMMOV,
+    Diff_HF183 = Trend_HF183 - log_HF183,
+    Diff_CrP = Trend_CrP - log_CrP)%>%
+  select(site, date, pop, Trend_N1:Diff_CrP)
 ```
 
 The table below shows the correlation between the Covid-19 signals and the covariate
@@ -115,24 +120,45 @@ caused by noise.
 
 ```{r}
 library(corrr)
-log_trend_df%>%
+logPlot <- log_trend_df%>%
   correlate()%>%
-  focus(log_N1_Trend, log_N2_Trend, N1_Diff, N2_Diff)
+  focus(Trend_N1, Trend_N2, Diff_N1, Diff_N2)%>%
+  pivot_longer(Trend_N1:Diff_N2)%>%
+  mutate(name = factor(name, levels=c('Trend_N1', 'Trend_N2', 'Diff_N1', 'Diff_N2')),
+         term = factor(term, levels=c('Diff_CrP', 'Diff_HF183', 'Diff_PMMOV',
+                                      'Trend_CrP', 'Trend_HF183', "Trend_PMMOV",
+                                      'pop')))%>%
+  ggplot(aes(name, term)) +
+  geom_tile(aes(fill = value)) + 
+  geom_text(aes(label = round(value, 3))) +
+  scale_fill_gradient(low = "white", high = "red") 
 
-trend_df%>% 
+basePlot <- trend_df%>% 
   correlate()%>% 
-  focus(N1_Trend, N2_Trend, N1_Diff, N2_Diff)
+  focus(Trend_N1, Trend_N2, Diff_N1, Diff_N2)%>%
+  pivot_longer(Trend_N1:Diff_N2)%>%
+    mutate(name = factor(name, levels=c('Trend_N1', 'Trend_N2', 'Diff_N1', 'Diff_N2')),
+         term = factor(term, levels=c('Diff_CrP', 'Diff_HF183', 'Diff_PMMOV',
+                                      'Trend_CrP', 'Trend_HF183', "Trend_PMMOV",
+                                      'pop')))%>%
+  ggplot(aes(name, term)) +
+  geom_tile(aes(fill = value)) + 
+  geom_text(aes(label = round(value, 3))) +
+  scale_fill_gradient(low = "white", high = "red") 
+
+#basePlot
+logPlot
 ```
 looking at the relationship between HF183 and CrP you see a distinctly strong relationship in both the trend and the noise. We don't have enough understanding of the underlying process to know if this is expected.
 ```{r}
-a <- cor(log_trend_df$log_HF183_Trend, log_trend_df$log_CrP_Trend,
+a <- cor(log_trend_df$Trend_HF183, log_trend_df$Trend_CrP,
     use = "complete.obs")
-b <- cor(log_trend_df$CrP_Diff, log_trend_df$HF183_Diff,
+b <- cor(log_trend_df$Diff_CrP, log_trend_df$Diff_HF183,
     use = "complete.obs")
 
-c <- cor(trend_df$HF183_Trend, trend_df$CrP_Trend,
+c <- cor(trend_df$Trend_HF183, trend_df$Trend_CrP,
     use = "complete.obs")
-d <- cor(trend_df$CrP_Diff, trend_df$HF183_Diff,
+d <- cor(trend_df$Diff_CrP, trend_df$Diff_HF183,
     use = "complete.obs")
 corMat <- matrix(c(a,b,c,d), nrow = 2)
 colnames(corMat) <- c("log", "base")
@@ -141,14 +167,14 @@ corMat
 ```
 For a baseline we showed the relationship between N1 and N2 that show an extremely strong correlation clearly due to them measuring the same thing.
 ```{r}
-a <- cor(log_trend_df$log_N1_Trend, log_trend_df$log_N2_Trend,
+a <- cor(log_trend_df$Trend_N1, log_trend_df$Trend_N2,
     use = "complete.obs")
-b <- cor(log_trend_df$N1_Diff, log_trend_df$N2_Diff,
+b <- cor(log_trend_df$Diff_N1, log_trend_df$Diff_N2,
     use = "complete.obs")
 
-c <- cor(trend_df$N1_Trend, trend_df$N2_Trend,
+c <- cor(trend_df$Trend_N1, trend_df$Trend_N2,
     use = "complete.obs")
-d <- cor(trend_df$N1_Diff, trend_df$N2_Diff,
+d <- cor(trend_df$Diff_N1, trend_df$Diff_N2,
     use = "complete.obs")
 corMat <- matrix(c(a,b,c,d), nrow = 2)
 colnames(corMat) <- c("log", "base")
@@ -157,7 +183,7 @@ corMat
 ```
 
 
-```{r fig.height = 15, fig.width= 15}
+```{r fig.height = 15, fig.width= 15 ,eval=FALSE}
 library(ggcorrplot)
 library(GGally)
 
