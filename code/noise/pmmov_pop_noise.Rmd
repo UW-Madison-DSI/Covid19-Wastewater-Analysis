@@ -1,0 +1,55 @@
+---
+title: "noisevspopulation"
+author: "Kyllan Wunder"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(anytime)
+library(noise)
+library(tidyr)
+library(zoo)
+```
+
+
+```{r}
+data(WasteWater_data, package = "DSIWastewater")
+
+
+noisedata <- WasteWater_data
+noisedata <- noisedata %>% drop_na(wwtp_name)
+noisedata <- noisedata %>% drop_na(ppmov_conc)
+
+#sqrt(sum((mean-ppmov)^2)/n)
+noisedata <- noisedata %>% group_by(wwtp_name) %>% mutate(noise = sqrt(sum((mean(as.numeric(ppmov_conc),na.rm = TRUE) - as.numeric(ppmov_conc))^2)/n()))
+
+#largest noise value that skews graph
+noisedata <- noisedata %>% filter(wwtp_name != "Lake Geneva WWTP")
+
+ggplot(noisedata, aes(noisedata$population_served, noisedata$noise)) +
+  geom_point() 
+
+
+```
+
+```{r with rolling average}
+
+noisedata <- noisedata %>% group_by(wwtp_name) %>% mutate(rollaverage = rollmean(ppmov_conc,k=7,fill = NA))
+
+noisedata <- noisedata %>% drop_na(rollaverage)
+
+noisedata <- noisedata %>% group_by(wwtp_name) %>% mutate(rollnoise = sqrt(sum((as.numeric(rollaverage) - as.numeric(ppmov_conc))^2)/n()))
+
+ggplot(noisedata, aes(noisedata$population_served, noisedata$rollnoise)) +
+  geom_point() 
+
+
+#not much improvement using the rolling average over 7 points
+```
+
+
