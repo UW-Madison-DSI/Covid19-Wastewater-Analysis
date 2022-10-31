@@ -18,35 +18,54 @@ library(zoo)
 
 
 ```{r}
+MSE <- function(baseVal, meanVal){
+  ret <- mean((baseVal - meanVal)^2)
+  return(ret)
+}
+
+
 data(WasteWater_data, package = "DSIWastewater")
 
 
-noisedata <- WasteWater_data
-noisedata <- noisedata %>% drop_na(wwtp_name)
-noisedata <- noisedata %>% drop_na(ppmov_conc)
+noisedata <- WasteWater_data %>% 
+  drop_na(wwtp_name) %>% 
+  drop_na(n1_sars_cov2_conc)
 
 #sqrt(sum((mean-ppmov)^2)/n)
-noisedata <- noisedata %>% group_by(wwtp_name) %>% mutate(noise = sqrt(sum((mean(as.numeric(ppmov_conc),na.rm = TRUE) - as.numeric(ppmov_conc))^2)/n()))
+noisedata <- noisedata %>% 
+  group_by(wwtp_name) %>% 
+  mutate(noise = MSE(log(as.numeric(n1_sars_cov2_conc)), 
+                     mean(log(as.numeric(n1_sars_cov2_conc)),na.rm = TRUE)))
 
 #largest noise value that skews graph
 noisedata <- noisedata %>% filter(wwtp_name != "Lake Geneva WWTP")
 
-ggplot(noisedata, aes(noisedata$population_served, noisedata$noise)) +
-  geom_point() 
+ggplot(noisedata, aes(log(as.numeric(noisedata$population_served)), noisedata$noise)) +
+  geom_point()
 
 
 ```
 
 ```{r with rolling average}
 
-noisedata <- noisedata %>% group_by(wwtp_name) %>% mutate(rollaverage = rollmean(ppmov_conc,k=7,fill = NA))
+noisedata <- noisedata %>% 
+  group_by(wwtp_name) %>% 
+  mutate(rollaverage = rollmean(log(as.numeric(n1_sars_cov2_conc)), k=7, fill = NA))
 
-noisedata <- noisedata %>% drop_na(rollaverage)
+noisedata <- noisedata %>% 
+  drop_na(rollaverage)
 
-noisedata <- noisedata %>% group_by(wwtp_name) %>% mutate(rollnoise = sqrt(sum((as.numeric(rollaverage) - as.numeric(ppmov_conc))^2)/n()))
+noisedata <- noisedata %>% 
+  group_by(wwtp_name) %>% 
+  mutate(rollnoise = MSE(log(as.numeric(n1_sars_cov2_conc)), rollaverage))
 
-ggplot(noisedata, aes(noisedata$population_served, noisedata$rollnoise)) +
-  geom_point() 
+
+
+
+ggplot(noisedata) +
+  aes(as.numeric(noisedata$population_served), noisedata$rollnoise)+
+  geom_point()+
+  scale_x_log10()
 
 
 #not much improvement using the rolling average over 7 points
