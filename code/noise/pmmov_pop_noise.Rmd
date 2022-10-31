@@ -29,13 +29,13 @@ data(WasteWater_data, package = "DSIWastewater")
 
 noisedata <- WasteWater_data %>% 
   drop_na(wwtp_name) %>% 
-  drop_na(n1_sars_cov2_conc)
+  drop_na(ppmov_conc)
 
 #sqrt(sum((mean-ppmov)^2)/n)
 noisedata <- noisedata %>% 
   group_by(wwtp_name) %>% 
-  mutate(noise = MSE(log(as.numeric(n1_sars_cov2_conc)), 
-                     mean(log(as.numeric(n1_sars_cov2_conc)),na.rm = TRUE)))
+  mutate(noise = MSE(log(as.numeric(ppmov_conc)), 
+                     mean(log(as.numeric(ppmov_conc)),na.rm = TRUE)))
 
 #largest noise value that skews graph
 noisedata <- noisedata %>% filter(wwtp_name != "Lake Geneva WWTP")
@@ -50,17 +50,14 @@ ggplot(noisedata, aes(log(as.numeric(noisedata$population_served)), noisedata$no
 
 noisedata <- noisedata %>% 
   group_by(wwtp_name) %>% 
-  mutate(rollaverage = rollmean(log(as.numeric(n1_sars_cov2_conc)), k=7, fill = NA))
+  mutate(rollaverage = rollmean(log(as.numeric(ppmov_conc)), k=7, fill = NA))
 
 noisedata <- noisedata %>% 
   drop_na(rollaverage)
 
 noisedata <- noisedata %>% 
   group_by(wwtp_name) %>% 
-  mutate(rollnoise = MSE(log(as.numeric(n1_sars_cov2_conc)), rollaverage))
-
-
-
+  mutate(rollnoise = MSE(log(as.numeric(ppmov_conc)), rollaverage))
 
 ggplot(noisedata) +
   aes(as.numeric(noisedata$population_served), noisedata$rollnoise)+
