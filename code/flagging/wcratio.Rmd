@@ -40,17 +40,30 @@ waste_madison <- waste_madison %>% group_by(date)  %>% summarise(n1_sars_cov2_co
 madison_data = merge(x=cases_madison, y=waste_madison, by="date", all = TRUE)
 madison_data <- na.omit(madison_data)
 
- ggplot(madison_data, aes(date,log(n1_sars_cov2_conc)/log(FirstConfirmed))) +
-   geom_point() +
-   scale_y_log10()
+#ggplot(madison_data, aes(date,log(n1_sars_cov2_conc)/log(FirstConfirmed))) +
+#   geom_point() +
+#   scale_y_log10()
+
+day_2 <- lubridate::ymd('2020-09-02') #2020 start date
+day_3 <- lubridate::ymd('2021-09-08') #2021 start date
 
 ggplot(madison_data, aes(date,log(n1_sars_cov2_conc)/FirstConfirmed)) +
   geom_point() +
-  scale_y_log10()
+  scale_y_log10() +
+     annotate(geom = "vline",
+             x = c(day_2, day_3),
+  
+             linetype = c("dashed", "solid")) +
+    annotate(geom = "text",
+             label = c(as.character(day_2), as.character(day_2)),
+             x = c(day_2, day_3),
+             y = c(6e4, 6e4),
+             angle = 90, 
+             vjust = 1) 
 
- ggplot(madison_data, aes(date,log(n1_sars_cov2_conc/FirstConfirmed))) +
-   geom_point() +
-   scale_y_log10()
+# ggplot(madison_data, aes(date,log(n1_sars_cov2_conc/FirstConfirmed))) +
+#   geom_point() +
+#   scale_y_log10()
 
 #try with smoothing
 
@@ -93,12 +106,36 @@ wisc_data = merge(x=cases, y=waste, by="date", all = TRUE)
 wisc_data <- na.omit(wisc_data)
 
 
-ggplot(wisc_data, aes(date,log(n1_sars_cov2_conc/FirstConfirmed))) +
+ggplot(wisc_data, aes(date,log(n1_sars_cov2_conc)/FirstConfirmed)) +
   geom_point() + 
   scale_y_log10()
 
 
 
 
+```
+
+
+
+
+```{r}
+library(zoo)
+wisc_data <- wisc_data %>% mutate(rollingaverage = zoo::rollmean(n1_sars_cov2_conc, k = 7, fill = NA))
+
+ggplot(wisc_data, aes(date,log(rollingaverage/FirstConfirmed))) +
+  geom_point() + 
+  scale_y_log10()
+
+ggplot(wisc_data, aes(date,log(rollingaverage)/FirstConfirmed)) +
+  geom_point() + 
+  scale_y_log10()
+
+ggplot(wisc_data, aes(date,log(rollingaverage)/log(FirstConfirmed))) +
+  geom_point() + 
+  scale_y_log10()
+
+ggplot(wisc_data, aes(date,rollingaverage/FirstConfirmed)) +
+  geom_point() + 
+  scale_y_log10()
 ```
 
