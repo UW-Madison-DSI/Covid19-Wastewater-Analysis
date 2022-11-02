@@ -44,22 +44,32 @@ madison_data <- na.omit(madison_data)
 #   geom_point() +
 #   scale_y_log10()
 
-day_2 <- lubridate::ymd('2020-09-02') #2020 start date
-day_3 <- lubridate::ymd('2021-09-08') #2021 start date
+day_2 <- lubridate::ymd('2020-09-02') #F2020 start date
+day_3 <- lubridate::ymd('2021-09-08') #F2021 start date
+day_4 <- lubridate::ymd('2020-12-10') #F2020 end date
+day_5 <-lubridate::ymd('2021-12-15') #F2021 end date
 
-ggplot(madison_data, aes(date,log(n1_sars_cov2_conc)/FirstConfirmed)) +
+day_6 <- lubridate::ymd('2021-01-19') #S2021 start date
+day_7 <- lubridate::ymd('2022-01-25') #S2022 start date
+day_8 <- lubridate::ymd('2021-05-07') #S2021 end date
+day_9 <-lubridate::ymd('2022-05-13') #S2022 end date
+
+ggplot(madison_data, aes(date,FirstConfirmed)) +
   geom_point() +
   scale_y_log10() +
      annotate(geom = "vline",
-             x = c(day_2, day_3),
-  
-             linetype = c("dashed", "solid")) +
+             x = c(day_2, day_3, day_4, day_5,day_6,day_7,day_8,day_9),
+             xintercept = c(day_2, day_3, day_4, day_5,day_6,day_7,day_8,day_9),
+             linetype = c("solid", "solid", "solid", "solid","solid", "solid", "solid", "solid")) +
     annotate(geom = "text",
-             label = c(as.character(day_2), as.character(day_2)),
-             x = c(day_2, day_3),
-             y = c(6e4, 6e4),
+             label = c("F20 UW start", "F21 UW start","F20 UW end", "F21 UW end","S21 UW start", "S22 UW start", "S21 UW end", "S22 UW end"),
+             x = c(day_2, day_3, day_4, day_5,day_6,day_7,day_8,day_9),
+             y = c(1, 1,1,1,1, 1,1,1),
              angle = 90, 
              vjust = 1) 
+ggplot(madison_data, aes(date,n1_sars_cov2_conc)) +
+  geom_point() +
+  scale_y_log10() 
 
 # ggplot(madison_data, aes(date,log(n1_sars_cov2_conc/FirstConfirmed))) +
 #   geom_point() +
