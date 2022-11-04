@@ -14,6 +14,7 @@ library(anytime)
 library(noise)
 library(tidyr)
 library(zoo)
+library(lubridate)
 ```
 
 
@@ -41,7 +42,8 @@ noisedata <- noisedata %>%
 noisedata <- noisedata %>% filter(wwtp_name != "Lake Geneva WWTP")
 
 ggplot(noisedata, aes(log(as.numeric(noisedata$population_served)), noisedata$noise)) +
-  geom_point()
+  geom_point() +
+  ggtitle("log(pop) vs noise(calc using MSE) (removed outlier)")
 
 
 ```
@@ -50,9 +52,7 @@ ggplot(noisedata, aes(log(as.numeric(noisedata$population_served)), noisedata$no
 
 noisedata <- noisedata %>% 
   group_by(wwtp_name) %>% 
-  mutate(rollaverage = rollmean(log(as.numeric(ppmov_conc)), k=7, fill = NA))
-
-noisedata <- noisedata %>% 
+  mutate(rollaverage = rollmean(log(as.numeric(ppmov_conc)), k=7, fill = NA)) %>% 
   drop_na(rollaverage)
 
 noisedata <- noisedata %>% 
@@ -62,10 +62,62 @@ noisedata <- noisedata %>%
 ggplot(noisedata) +
   aes(as.numeric(noisedata$population_served), noisedata$rollnoise)+
   geom_point()+
-  scale_x_log10()
+  scale_x_log10() +
+  ggtitle("pop vs rolling average noise")
 
 
 #not much improvement using the rolling average over 7 points
 ```
 
+```{r}
+noisedatasample <- noisedata
+
+noisedatasample <- noisedatasample %>% group_by(wwtp_name, week = week(anydate(sample_collect_date))) %>% mutate(sampleFrequency = n()) %>% ungroup()
+
+
+noisedatasample <- noisedatasample %>% group_by(wwtp_name) %>% 
+  mutate(avgSampleFrequency = mean(sampleFrequency))
+
+```
+
+
+```{r}
+
+noisedatasample <- noisedatasample %>% 
+  group_by(wwtp_name) %>% 
+  mutate(noise = MSE(log(as.numeric(ppmov_conc)), 
+                     mean(log(as.numeric(ppmov_conc)),na.rm = TRUE)))
+
+#largest noise value that skews graph
+#noisedatasample <- noisedatasample %>% filter(wwtp_name != "Lake Geneva WWTP")
+
+ggplot(noisedatasample, aes(log(as.numeric(population_served)), noise)) +
+  geom_point(aes(color=avgSampleFrequency)) +
+  scale_colour_gradientn(colours=rainbow(5)) +
+  ggtitle("log(pop) vs noise(calc MSE) colored with average sample frequence")
+
+#Madison MSD WWTF has 12
+```
+
+```{r}
+ggplot(noisedatasample, aes((as.numeric(population_served)/avgSampleFrequency), noise)) +
+  geom_point(aes(color=avgSampleFrequency)) +
+  scale_colour_gradientn(colours=rainbow(5)) +
+  ggtitle("log(pop)/avgSampleFrequence vs noise(calc MSE) colored with average sample frequence")
+```
+
+
+```{r}
+noisedatasample %>% #filter(grepl("Madison", wwtp_name)) %>%
+ggplot(aes(week, avgSampleFrequency)) +
+  geom_point() +
+  facet_wrap(~wwtp_name) +
+  ggtitle("average sample frequencey by week by site ")
+
+
+noisedatasample %>% group_by(wwtp_name) %>%
+ggplot(aes(log(as.numeric(population_served)), avgSampleFrequency)) +
+  geom_point() +
+  ggtitle("log(pop) vs average sample frequency")
+```
 
