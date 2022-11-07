@@ -184,16 +184,19 @@ date_Flag_DF <- DF_date_vector(Flag_DF, "date",
 dep_flags <- names(Flag_DF)[9:68]
 edgeThresh <- 21
 CaseFlag <- "slope_switch_flag_Cases"
-DateDistDF <- date_distance_calc(date_Flag_DF, CaseFlag, 
-                                 dep_flags, edge = edgeThresh)%>%
+rawDateDistDF <- date_Flag_DF%>%
+  date_distance_calc(CaseFlag, dep_flags)%>%
   select(site, date, dep_flags)%>%
   tidyr::pivot_longer(cols = dep_flags,
                       names_to = c("FlagType","window", "quant"),
                       values_to = "FlagError",
                       names_sep = "_")%>%
   mutate(window = as.numeric(window), quant = as.numeric(quant))
+```
 
-
+```{r}
+DateDistDF <- rawDateDistDF%>%
+  date_distance_remove("FlagError", edgeThresh)
 ```
 
 ```{r get flag counts}
@@ -213,19 +216,20 @@ Temp <- Flag_DF%>%
 ```
 
 ```{r fig.cap = "The angled line is a linear regression line based on the 60 and 90-day intervals. The vertical lines represent the total number of case flags (1578) and the proportion of wastewater samples to wastewater flags if they had the same ratio as cases to case flags (389)", PlotHeight = 14m, warning=FALSE}
+
+
 DistSummary <- DateDistDF%>%
   group_by(window, quant, FlagType)%>%
   summarise(Mean = mean(FlagError, na.rm = TRUE),
             MeanErrorSquard = mean(FlagError^2, na.rm = TRUE),
             Var = var(FlagError, na.rm = TRUE),
-            n = sum(!is.na(FlagError)),
-            Missed = mean(FlagError == edgeThresh, na.rm = TRUE))
+            num_flags = sum(!is.na(FlagError)))
 
 QuantDistSummary <- DistSummary%>%
   filter(FlagType != "cdc.flag")
 
 A <- QuantDistSummary%>%
-  ggplot(aes(x = n, y = MeanErrorSquard, color = window,
+  ggplot(aes(x = num_flags, y = MeanErrorSquard, color = window,
              size = factor(quant), shape = FlagType))+
   geom_point()+
   geom_abline(slope = 0.0041, intercept = 6.6873)+
@@ -234,7 +238,7 @@ A <- QuantDistSummary%>%
   geom_vline(xintercept = nrow(baseWaste_DF)*CaseNumberFlags/nrow(Case_DF),
              linetype = 3)+
   xlab("number of flags")
-supresswarning(A)
+#supresswarning(A)
 A
 ```
 
@@ -251,8 +255,11 @@ The case flag method has 1578 flags, so the chosen wastewater method should have
 
 ```{r lm model, fig.align = 'right'}
 library(modelsummary)
-Full_Model <- lm(MeanErrorSquard ~ n, data = QuantDistSummary)
-reduced_Model <- lm(MeanErrorSquard ~ n, data = QuantDistSummary[QuantDistSummary$window > 30,])
+mod_formula <- MeanErrorSquard ~ num_flags
+Full_Model <- lm(mod_formula, data = QuantDistSummary)
+reduced_Model <- lm(mod_formula, 
+                    data = QuantDistSummary[QuantDistSummary$window > 30,])
+
 
 modelsummary(list("Full Model" = Full_Model, "Scaled Down Model" = reduced_Model),
              statistic  = "P-val = {p.value}",
@@ -260,6 +267,10 @@ modelsummary(list("Full Model" = Full_Model, "Scaled Down Model" = reduced_Model
              output = "kableExtra",
              fmt = 4)%>%
       kableExtra::kable_styling(position = "float_right")
+
+summary(Full_Model)
+summary(reduced_Model)
+
 ```
 
 ## Linear Model (LM)  explanation
@@ -267,6 +278,53 @@ We created two linear models to explain the relationship between the number of p
 
 ## Conclusion
 We found no one best model because there is an inherent tradeoff between MSE and the number of flags created. However, a great candidate is the 90 day window 90% percentile flags which are around the correct number of adjusted flags and have the lowest MSE score. 
+
+
+```{r missed percent}
+library(lubridate)
+city_data <- baseWaste_DF%>%
+  group_by(site, week(date))%>%
+  summarise(n = n(), pop = mean(population_served))%>%
+  group_by(site)%>%
+  summarise(sampleRate = round(mean(n)), pop = mean(pop))%>%
+  mutate(pop = ntile(pop, 3))
+
+#flaging method
+DistSummarySite <- rawDateDistDF%>%
+  left_join(city_data)%>%
+  filter(window > 30)%>%
+  group_by(window, quant, FlagType, sampleRate, pop)%>%
+  summarise(Mean = mean(FlagError, na.rm = TRUE),
+            Var = var(FlagError, na.rm = TRUE),
+            num_flags = sum(!is.na(FlagError)),
+            missed_percent = mean(abs(FlagError)>edgeThresh, na.rm = TRUE),
+            MeanErrorSquard = mean(
+                          ifelse(abs(FlagError)>edgeThresh,
+                            NA,FlagError)^2, na.rm = TRUE))%>%
+  filter(num_flags != 0)
+
+QuantDistSummarySite <- DistSummarySite%>%
+  filter(FlagType != "cdc.flag")
+
+
+QuantDistSummarySite%>%
+  lm(MeanErrorSquard/num_flags ~ window + quant + FlagType + sampleRate + pop,  data = .)%>%
+  summary()
+
+QuantDistSummarySite%>%
+  lm(missed_percent ~ window + quant + FlagType + sampleRate + pop, data = .)%>%
+  summary()
+
+QuantDistSummarySite%>%
+  filter(missed_percent != 0)%>%
+  ggplot(aes(x = missed_percent, y = MeanErrorSquard/num_flags))+
+  geom_point()
+
+
+QuantDistSummarySite%>%
+  ggplot(aes(x = sampleRate, y = missed_percent))+
+  geom_point()
+```
 
 
 

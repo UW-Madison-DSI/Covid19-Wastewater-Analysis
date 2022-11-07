@@ -147,8 +147,6 @@ basePlot <- trend_df%>%
 logPlot
 ```
 
-
-
 looking at the relationship between HF183 and CrP you see a distinctly strong relationship in both the trend and the noise. We don't have enough understanding of the underlying process to know if this is expected.
 ```{r}
 a <- cor(log_trend_df$Trend_HF183, log_trend_df$Trend_CrP,
