@@ -123,7 +123,7 @@ QuantDistSummarySite%>%
 
 A <- QuantDistSummarySite%>%
   #filter(missed_percent != 0)%>%
-  ggplot(aes(x = missed_percent, y = MeanErrorSquard, shape = factor(sampleRate)))+
+  ggplot(aes(x = missed_percent, y = MeanErrorSquard, shape = factor(sampleRate), color = pop))+
   geom_point()#+
   #scale_x_log10()
 ggplotly(A)
