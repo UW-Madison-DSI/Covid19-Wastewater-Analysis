@@ -159,19 +159,28 @@ Full_wasteFlags <- Full_wasteFlags%>%
 
 Flag_DF <- full_join(CaseFlags, Full_wasteFlags, 
                      by = c("site", "date"))
+save_Dataset(Flag_DF)
 ```
 
-```{r}
-#load WasteWater_data into the environment
-#data(WasteWater_data, package = "DSIWastewater")
-#baseWaste_DF <-  buildWasteAnalysisDF(WasteWater_data)
-#data(Case_data, package = "DSIWastewater")
-#Case_DF <- Case_data
+```{r cache option}
+save_Dataset <- function(DF){
+  write.csv(Flag_DF, "Temp/DHSFlagingMethodOutput.csv")
+}
 
-#Flag_DF <- read.csv("Temp/DHSFlagingMethodOutput.csv")%>%
-#           mutate(date = as.Date(date))%>%
-#  select(-X)
+load_Dataset <- function(){
+  #load WasteWater_data into the environment
+  data(WasteWater_data, package = "DSIWastewater")
+  baseWaste_DF <-  buildWasteAnalysisDF(WasteWater_data)
+  data(Case_data, package = "DSIWastewater")
+  Case_DF <- Case_data
 
+  Flag_DF <- read.csv("Temp/DHSFlagingMethodOutput.csv")%>%
+            mutate(date = as.Date(date))%>%
+   select(-X)
+  return(Flag_DF)
+  
+}
+Flag_DF <- load_Dataset()
 date_Flag_DF <- DF_date_vector(Flag_DF, "date", 
                names(Flag_DF)[3:68])
 ```
@@ -186,7 +195,7 @@ edgeThresh <- 21
 CaseFlag <- "slope_switch_flag_Cases"
 rawDateDistDF <- date_Flag_DF%>%
   date_distance_calc(CaseFlag, dep_flags)%>%
-  select(site, date, dep_flags)%>%
+  select(site, date, all_of(dep_flags))%>%
   tidyr::pivot_longer(cols = dep_flags,
                       names_to = c("FlagType","window", "quant"),
                       values_to = "FlagError",
@@ -244,7 +253,7 @@ A
 
 ## Flagging Methods
 
-The DHS has created flagging methods based on wastewater measurements and aims to supplement existing case flagging metrics. The wastewater method uses a 5-day regression to see if the predicted change is above 100%. If so, it checks if the last 3-day average is larger than the K day Q quantile (where K and Q are customizable parameters). Then if both are true, it is labeled as a flag.ntile. If the Linear regression has a p-value below .3, it is labeled as a flag.ntile.Pval. We explored five quantile values (.5, .6, .7, .8,..9) and four window values (14, 30, 60, 90 days) for a total of 40 ways to flag\
+The DHS has created flagging methods based on wastewater measurements and aims to supplement existing case flagging metrics. The wastewater method uses a 5-day regression to see if the predicted change is above 10%. If so, it checks if the last 3-day average is larger than the K day Q quantile (where K and Q are customizable parameters). Then if both are true, it is labeled as a flag.ntile. If the Linear regression has a p-value below .3, it is labeled as a flag.ntile.Pval. We explored five quantile values (.5, .6, .7, .8,..9) and four window values (14, 30, 60, 90 days) for a total of 40 ways to flag\
 models. 
 
 ## Graph explanation 
@@ -278,150 +287,3 @@ We created two linear models to explain the relationship between the number of p
 
 ## Conclusion
 We found no one best model because there is an inherent tradeoff between MSE and the number of flags created. However, a great candidate is the 90 day window 90% percentile flags which are around the correct number of adjusted flags and have the lowest MSE score. 
-
-
-```{r missed percent}
-library(lubridate)
-city_data <- baseWaste_DF%>%
-  group_by(site, week(date))%>%
-  summarise(n = n(), pop = mean(population_served))%>%
-  group_by(site)%>%
-  summarise(sampleRate = round(mean(n)), pop = mean(pop))%>%
-  mutate(pop = ntile(pop, 3))
-
-#flaging method
-DistSummarySite <- rawDateDistDF%>%
-  left_join(city_data)%>%
-  filter(window > 30)%>%
-  group_by(window, quant, FlagType, sampleRate, pop)%>%
-  summarise(Mean = mean(FlagError, na.rm = TRUE),
-            Var = var(FlagError, na.rm = TRUE),
-            num_flags = sum(!is.na(FlagError)),
-            missed_percent = mean(abs(FlagError)>edgeThresh, na.rm = TRUE),
-            MeanErrorSquard = mean(
-                          ifelse(abs(FlagError)>edgeThresh,
-                            NA,FlagError)^2, na.rm = TRUE))%>%
-  filter(num_flags != 0)
-
-QuantDistSummarySite <- DistSummarySite%>%
-  filter(FlagType != "cdc.flag")
-
-
-QuantDistSummarySite%>%
-  lm(MeanErrorSquard/num_flags ~ window + quant + FlagType + sampleRate + pop,  data = .)%>%
-  summary()
-
-QuantDistSummarySite%>%
-  lm(missed_percent ~ window + quant + FlagType + sampleRate + pop, data = .)%>%
-  summary()
-
-QuantDistSummarySite%>%
-  filter(missed_percent != 0)%>%
-  ggplot(aes(x = missed_percent, y = MeanErrorSquard/num_flags))+
-  geom_point()
-
-
-QuantDistSummarySite%>%
-  ggplot(aes(x = sampleRate, y = missed_percent))+
-  geom_point()
-```
-
-
-
-```{r, include = FALSE}
-DateDistDF%>%
-  ggplot()+
-  stat_count(aes(x = FlagError, fill = FlagType,
-                     y = ..prop..),
-                 position = "dodge")+
-  facet_grid(window~quant)
-```
-
-```{r plotly plots, eval = TRUE, echo = FALSE}
-
-Plot_DF_List <- split(DistSummary, DistSummary$FlagType)
-
-plot_ly(showlegend = TRUE, opacity = .8)%>% 
-  add_trace(x = Plot_DF_List[[1]]$window, y = Plot_DF_List[[1]]$quant,
-            z = Plot_DF_List[[1]]$Mean, name = "cdc.flag",  type="mesh3d")%>% 
-  add_trace(x = Plot_DF_List[[2]]$window, y = Plot_DF_List[[2]]$quant,
-            z = Plot_DF_List[[2]]$Mean, name = "flag.ntile", type="mesh3d")%>% 
-  add_trace(x = Plot_DF_List[[3]]$window, y = Plot_DF_List[[3]]$quant,
-            z = Plot_DF_List[[3]]$Mean, name = "flag.ntile.Pval", type="mesh3d")%>%
-  layout(scene= list(xaxis = list(title = 'window'),
-         yaxis = list(title = 'quant'),
-         zaxis = list(title = 'Mean')))
-
-plot_ly(showlegend = TRUE, opacity = .8)%>% 
-  add_trace(x = Plot_DF_List[[1]]$window, y = Plot_DF_List[[1]]$quant,
-            z = Plot_DF_List[[1]]$MeanErrorSquard,
-            name = "cdc.flag",  type="mesh3d")%>% 
-  add_trace(x = Plot_DF_List[[2]]$window, y = Plot_DF_List[[2]]$quant,
-            z = Plot_DF_List[[2]]$MeanErrorSquard,
-            name = "flag.ntile", type="mesh3d")%>% 
-  add_trace(x = Plot_DF_List[[3]]$window, y = Plot_DF_List[[3]]$quant,
-            z = Plot_DF_List[[3]]$MeanErrorSquard,
-            name = "flag.ntile.Pval", type="mesh3d")%>%
-  layout(scene= list(xaxis = list(title = 'window'),
-         yaxis = list(title = 'quant'),
-         zaxis = list(title = 'MeanErrorSquard')))
-
-plot_ly(showlegend = TRUE, opacity = .8)%>% 
-  add_trace(x = Plot_DF_List[[1]]$window, y = Plot_DF_List[[1]]$quant,
-            z = Plot_DF_List[[1]]$Var, name = "cdc.flag",  type="mesh3d")%>% 
-  add_trace(x = Plot_DF_List[[2]]$window, y = Plot_DF_List[[2]]$quant,
-            z = Plot_DF_List[[2]]$Var, name = "flag.ntile", type="mesh3d")%>% 
-  add_trace(x = Plot_DF_List[[3]]$window, y = Plot_DF_List[[3]]$quant,
-            z = Plot_DF_List[[3]]$Var, name = "flag.ntile.Pval", type="mesh3d")%>%
-  layout(scene= list(xaxis = list(title = 'window'),
-         yaxis = list(title = 'quant'),
-         zaxis = list(title = 'Var')))
-
-plot_ly(showlegend = TRUE, opacity = .8)%>% 
-  add_trace(x = Plot_DF_List[[1]]$window, y = Plot_DF_List[[1]]$quant,
-            z = Plot_DF_List[[1]]$Missed, name = "cdc.flag",  type="mesh3d")%>% 
-  add_trace(x = Plot_DF_List[[2]]$window, y = Plot_DF_List[[2]]$quant,
-            z = Plot_DF_List[[2]]$Missed, name = "flag.ntile",
-            type="mesh3d")%>% 
-  add_trace(x = Plot_DF_List[[3]]$window, y = Plot_DF_List[[3]]$quant,
-            z = Plot_DF_List[[3]]$Missed,
-            name = "flag.ntile.Pval", type="mesh3d")%>%
-  layout(scene= list(xaxis = list(title = 'window'),
-         yaxis = list(title = 'quant'),
-         zaxis = list(title = 'Missed')))
-
-plot_ly(showlegend = TRUE, opacity = .8)%>% 
-  add_trace(x = Plot_DF_List[[1]]$window, y = Plot_DF_List[[1]]$quant,
-            z = Plot_DF_List[[1]]$n, name = "cdc.flag",  type="mesh3d")%>% 
-  add_trace(x = Plot_DF_List[[2]]$window, y = Plot_DF_List[[2]]$quant,
-            z = Plot_DF_List[[2]]$n, name = "flag.ntile", type="mesh3d")%>% 
-  add_trace(x = Plot_DF_List[[3]]$window, y = Plot_DF_List[[3]]$quant,
-            z = Plot_DF_List[[3]]$n, name = "flag.ntile.Pval", type="mesh3d")%>%
-  layout(scene= list(xaxis = list(title = 'window'),
-         yaxis = list(title = 'quant'),
-         zaxis = list(title = 'n')))
-```
-
-
-
-
-
-```{r peter LM, eval = TRUE, echo = FALSE}
-#peters method to select outliers
-SitePop <- baseWaste_DF[,c("site","population_served")]%>%
-  group_by(site)%>%
-  summarise(mean_pop_served = mean(population_served, na.rm = TRUE))
-
-flag_Model_DF = DateDistDF %>%
-  left_join(SitePop)%>%
-  mutate(abs_difference = abs(FlagError),
-         inverse_difference = 1/(FlagError+0.01)*100) %>%
-  # Filter out differences >30
-  filter(abs_difference <=30)
-
-testmodel = lm(inverse_difference ~ quant + window + date + mean_pop_served, 
-               data = flag_Model_DF[which(!is.na(flag_Model_DF$inverse_difference)),])
-
-summary(testmodel)
-```
-

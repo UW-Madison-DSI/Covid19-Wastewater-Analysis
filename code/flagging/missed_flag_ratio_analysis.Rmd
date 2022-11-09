@@ -1,0 +1,138 @@
+---
+title: "missed_flag_ratio_analysis"
+author: "Marlin"
+date: "2022-11-09"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r set up markdown settings, include = FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE
+)
+```
+
+
+```{r}
+library(DSIWastewater)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+load_Dataset <- function(){
+  #load WasteWater_data into the environment
+  data(WasteWater_data, package = "DSIWastewater")
+  baseWaste_DF <-  buildWasteAnalysisDF(WasteWater_data)
+  data(Case_data, package = "DSIWastewater")
+  Case_DF <- Case_data
+
+  Flag_DF <- read.csv("Temp/DHSFlagingMethodOutput.csv")%>%
+            mutate(date = as.Date(date))%>%
+   select(-X)
+  return(Flag_DF)
+  
+}
+Flag_DF <- load_Dataset()
+date_Flag_DF <- DF_date_vector(Flag_DF, "date", 
+               names(Flag_DF)[3:68])
+baseWaste_DF <-  buildWasteAnalysisDF(WasteWater_data)
+baseWaste_DF$site <- ifelse(baseWaste_DF$site == "Madison MSD WWTF",
+                            "Madison", baseWaste_DF$site)
+```
+
+
+```{r create flag distance}
+#"case_flag_Cases"                         "case_flag_7DayCases"                    
+#"case_flag_plus_comm.threshold_Cases"     "case_flag_plus_comm.threshold_7DayCases"
+#"slope_switch_flag_Cases"                 "slope_switch_flag_7DayCases"
+dep_flags <- names(Flag_DF)[9:68]
+edgeThresh <- 21
+CaseFlag <- "slope_switch_flag_Cases"
+rawDateDistDF <- date_Flag_DF%>%
+  date_distance_calc(CaseFlag, dep_flags)%>%
+  select(site, date, all_of(dep_flags))%>%
+  tidyr::pivot_longer(cols = dep_flags,
+                      names_to = c("FlagType","window", "quant"),
+                      values_to = "FlagError",
+                      names_sep = "_")%>%
+  mutate(window = as.numeric(window), quant = as.numeric(quant))
+
+library(lubridate)
+city_data <- baseWaste_DF%>%
+  group_by(site, week(date), year(date))%>%
+  summarise(n = n(), pop = mean(population_served))%>%
+  group_by(site)%>%
+  summarise(sampleRate = round(mean(n)), pop = mean(pop))%>%
+  mutate(pop = ntile(pop, 3))
+```
+
+```{r missed percent high level}
+
+#flaging method
+DistSummaryMainSite <- rawDateDistDF%>%
+  #filter(window > 30)%>%
+  group_by(window, quant, FlagType)%>%
+  summarise(Mean = mean(FlagError, na.rm = TRUE),
+            Var = var(FlagError, na.rm = TRUE),
+            num_flags = sum(!is.na(FlagError)),
+            missed_percent = mean(abs(FlagError)>edgeThresh, na.rm = TRUE),
+            MeanErrorSquard = mean(
+                          ifelse(abs(FlagError)>edgeThresh,
+                            NA,FlagError)^2, na.rm = TRUE))%>%
+  filter(num_flags != 0)
+
+DistSummaryMainSite <- DistSummaryMainSite%>%
+  filter(FlagType != "cdc.flag")
+
+DistSummaryMainSite%>%
+  lm(missed_percent~MeanErrorSquard + window + quant + FlagType,data = .)%>%
+  summary()
+
+
+A <- DistSummaryMainSite%>%
+  #filter(missed_percent != 0)%>%
+  ggplot(aes(x = missed_percent, y = MeanErrorSquard, 
+             color = window, size = factor(quant), shape = FlagType))+
+  geom_point()
+ggplotly(A)
+```
+
+```{r missed percent covariates}
+#flaging method
+DistSummarySite <- rawDateDistDF%>%
+  left_join(city_data)%>%
+  #filter(window > 30)%>%
+  group_by(window, quant, FlagType, sampleRate, pop)%>%
+  summarise(Mean = mean(FlagError, na.rm = TRUE),
+            Var = var(FlagError, na.rm = TRUE),
+            num_flags = sum(!is.na(FlagError)),
+            missed_percent = mean(abs(FlagError)>edgeThresh, na.rm = TRUE),
+            MeanErrorSquard = mean(
+                          ifelse(abs(FlagError)>edgeThresh,
+                            NA,FlagError)^2, na.rm = TRUE))%>%
+  filter(num_flags != 0)
+
+QuantDistSummarySite <- DistSummarySite%>%
+  filter(FlagType != "cdc.flag")
+
+QuantDistSummarySite%>%
+  lm(missed_percent ~ window + quant + FlagType + sampleRate + pop, data = .)%>%
+  summary()
+
+A <- QuantDistSummarySite%>%
+  #filter(missed_percent != 0)%>%
+  ggplot(aes(x = missed_percent, y = MeanErrorSquard, shape = factor(sampleRate)))+
+  geom_point()#+
+  #scale_x_log10()
+ggplotly(A)
+
+A <- QuantDistSummarySite%>%
+  ggplot(aes(x = as.factor(sampleRate), y = missed_percent))+
+  geom_violin()+
+  geom_point()#+
+  #scale_y_log10()
+ggplotly(A)
+
+```
