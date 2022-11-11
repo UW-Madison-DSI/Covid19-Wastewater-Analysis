@@ -178,6 +178,16 @@ QuantDistSummarySite%>%
 
 ```
 
+```{r pop vs freq}
+rawDateDistDF%>%
+  left_join(city_data)%>%
+  group_by(pop, sampleRate)%>%
+  summarise(n = n())%>%
+  ggplot(aes(x = pop, y = sampleRate))+
+  geom_tile(aes(fill = n))+
+  geom_text(aes(label = n))
+```
+
 
 ```{r modeling approch}
 
