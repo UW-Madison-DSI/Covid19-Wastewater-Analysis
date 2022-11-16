@@ -65,6 +65,9 @@ city_data <- baseWaste_DF%>%
   group_by(site)%>%
   summarise(sampleRate = round(mean(n)), pop = mean(pop))%>%
   mutate(pop = ntile(pop, 3))
+
+
+
 ```
 
 ```{r missed percent high level}
@@ -76,7 +79,7 @@ DistSummaryMainSite <- rawDateDistDF%>%
   summarise(Mean = mean(FlagError, na.rm = TRUE),
             Var = var(FlagError, na.rm = TRUE),
             num_flags = sum(!is.na(FlagError)),
-            missed_percent = mean(abs(FlagError) > edgeThresh, na.rm = TRUE),
+            missed_percent = 100*mean(abs(FlagError) > edgeThresh, na.rm = TRUE),
             MeanErrorSquard = mean(
                           ifelse(abs(FlagError) > edgeThresh,
                             NA,FlagError)^2, na.rm = TRUE))%>%
@@ -92,7 +95,7 @@ DistSummaryMainSite%>%
 
 DistSummaryMainSite%>%
   #filter(missed_percent != 0)%>%
-  ggplot(aes(x = missed_percent, y = MeanErrorSquard, 
+  ggplot(aes(x = MeanErrorSquard, y = missed_percent, 
              color = factor(window), size = factor(quant), shape = FlagType))+
   scale_colour_discrete(type = c("#111155", "#222288", "#3333AA", "#4444FF"))+
   geom_point()
@@ -113,7 +116,7 @@ DistSummarySite <- rawDateDistDF%>%
   summarise(Mean = mean(FlagError, na.rm = TRUE),
             Var = var(FlagError, na.rm = TRUE),
             num_flags = sum(!is.na(FlagError)),
-            missed_percent = mean(abs(FlagError)>edgeThresh, na.rm = TRUE),
+            missed_percent = 100*mean(abs(FlagError)>edgeThresh, na.rm = TRUE),
             MeanErrorSquard = mean(
                           ifelse(abs(FlagError)>edgeThresh,
                             NA,FlagError)^2, na.rm = TRUE))%>%
@@ -124,7 +127,7 @@ QuantDistSummarySite <- DistSummarySite%>%
 
 QuantDistSummarySite%>%
   #filter(missed_percent != 0)%>%
-  ggplot(aes(x = missed_percent, y = MeanErrorSquard, color = factor(pop)))+
+  ggplot(aes(x = MeanErrorSquard, y = missed_percent, color = factor(pop)))+
   geom_point(size = 2)+
   geom_smooth(se = FALSE, method = "lm")
   #scale_x_log10()
@@ -149,7 +152,7 @@ DistSummarySite <- rawDateDistDF%>%
   summarise(Mean = mean(FlagError, na.rm = TRUE),
             Var = var(FlagError, na.rm = TRUE),
             num_flags = sum(!is.na(FlagError)),
-            missed_percent = mean(abs(FlagError)>edgeThresh, na.rm = TRUE),
+            missed_percent = 100 * mean(abs(FlagError)>edgeThresh, na.rm = TRUE),
             MeanErrorSquard = mean(
                           ifelse(abs(FlagError)>edgeThresh,
                             NA,FlagError)^2, na.rm = TRUE))%>%
@@ -160,7 +163,7 @@ QuantDistSummarySite <- DistSummarySite%>%
 
 QuantDistSummarySite%>%
   #filter(missed_percent != 0)%>%
-  ggplot(aes(x = missed_percent, y = MeanErrorSquard, color = factor(sampleRate)))+
+  ggplot(aes(x = MeanErrorSquard, y = missed_percent, color = factor(sampleRate)))+
   geom_point(size = 2)+
   geom_smooth(se = FALSE, method = "lm")#+
   #scale_x_log10()
@@ -175,7 +178,6 @@ QuantDistSummarySite%>%
 QuantDistSummarySite%>%
   ungroup()%>%
   summarise(mean(missed_percent==0))
-
 ```
 
 ```{r pop vs freq}
@@ -198,7 +200,7 @@ model_df <- rawDateDistDF%>%
   summarise(Mean = mean(FlagError, na.rm = TRUE),
             Var = var(FlagError, na.rm = TRUE),
             num_flags = sum(!is.na(FlagError)),
-            missed_percent = mean(abs(FlagError)>edgeThresh, na.rm = TRUE),
+            missed_percent = 100*mean(abs(FlagError)>edgeThresh, na.rm = TRUE),
             MeanErrorSquard = mean(
                           ifelse(abs(FlagError)>edgeThresh,
                             NA,FlagError)^2, na.rm = TRUE))%>%
@@ -213,12 +215,4 @@ model_df%>%
   lm(missed_percent ~ FlagType + window + quant + sampleRate + pop + MeanErrorSquard, 
      weight = 1/(Var+1), data = .)%>%
   summary()
-
-
-model_df%>%
-  ggplot(aes(x = Mean))+
-  geom_histogram()
-model_df%>%
-  ungroup()%>%
-  summarise(m = mean(Mean))
 ```

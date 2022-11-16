@@ -68,6 +68,27 @@ baseWaste_DF <- baseWaste_DF[!(baseWaste_DF$site %in% c("Portage WWTF","Cedarbur
 
 
 baseWaste_DF <- baseWaste_DF[baseWaste_DF$n > 10,]
+
+mess_up <- function(DF, dow1,dow2){
+  ret_DF <- baseWaste_DF%>%
+  filter(site == "Madison",
+         wday(date) %in% c(dow1, dow1))%>%
+  mutate(site = paste0(dow1,dow2))
+}
+
+library(lubridate)
+baseWaste_DF <- baseWaste_DF%>%
+  mess_up(2,3)%>%
+  bind_rows(mess_up(baseWaste_DF,2,4))%>%
+  bind_rows(mess_up(baseWaste_DF,2,5))%>%
+  bind_rows(mess_up(baseWaste_DF,2,6))%>%
+  bind_rows(mess_up(baseWaste_DF,3,4))%>%
+  bind_rows(mess_up(baseWaste_DF,3,5))%>%
+  bind_rows(mess_up(baseWaste_DF,3,6))%>%
+  bind_rows(mess_up(baseWaste_DF,4,5))%>%
+  bind_rows(mess_up(baseWaste_DF,4,6))%>%
+  bind_rows(mess_up(baseWaste_DF,5,6))
+
 K=3
 baseWaste_DF <- baseWaste_DF%>%
   group_by(site)%>%
@@ -126,7 +147,8 @@ data(Case_data, package = "DSIWastewater")
 Case_DF <- Case_data
 
 #get the case flags
-Case_DF <- buildCaseAnalysisDF(Case_DF)
+Case_DF <- buildCaseAnalysisDF(Case_DF)%>%
+  filter(site == "Madison")
 
 
 CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF, 
@@ -157,8 +179,11 @@ Full_wasteFlags <- Full_wasteFlags%>%
   tidyr::pivot_wider(names_from = c(window, quant), 
                      values_from = c(cdc.flag, flag.ntile, flag.ntile.Pval))
 
-Flag_DF <- full_join(CaseFlags, Full_wasteFlags, 
+Flag_DF <- full_join(Full_wasteFlags, CaseFlags, 
                      by = c("site", "date"))
+
+Flag_DF2 <- Flag_DF
+
 save_Dataset(Flag_DF)
 ```
 
