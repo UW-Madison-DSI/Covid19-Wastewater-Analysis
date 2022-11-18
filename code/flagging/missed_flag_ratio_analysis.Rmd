@@ -60,13 +60,19 @@ rawDateDistDF <- date_Flag_DF%>%
 
 library(lubridate)
 city_data <- baseWaste_DF%>%
-  group_by(site, week(date), year(date))%>%
-  summarise(n = n(), pop = mean(population_served))%>%
   group_by(site)%>%
-  summarise(sampleRate = round(mean(n)), pop = mean(pop))%>%
+  summarise(pop = mean(population_served))%>%
+  group_by(site)%>%
+  summarise(pop = mean(pop))%>%
   mutate(pop = ntile(pop, 3))
 
-
+baseWaste_DF%>%
+  left_join(city_data)%>%
+  group_by(site, week(date), year(date))%>%
+  summarise(freq = n(), pop = mean(population_served))%>%
+  group_by(site)%>%
+  summarise(freq = round(mean(freq),1),pop = mean(pop))%>%
+  arrange(pop)
 
 ```
 
@@ -119,18 +125,20 @@ DistSummarySite <- rawDateDistDF%>%
             missed_percent = 100*mean(abs(FlagError)>edgeThresh, na.rm = TRUE),
             MeanErrorSquard = mean(
                           ifelse(abs(FlagError)>edgeThresh,
-                            NA,FlagError)^2, na.rm = TRUE))%>%
+                            NA,FlagError)^2, na.rm = TRUE),
+            n = n())%>%
   filter(num_flags != 0)
 
 QuantDistSummarySite <- DistSummarySite%>%
   filter(FlagType != "cdc.flag")
 
-QuantDistSummarySite%>%
+a <- QuantDistSummarySite%>%
   #filter(missed_percent != 0)%>%
-  ggplot(aes(x = MeanErrorSquard, y = missed_percent, color = factor(pop)))+
+  ggplot(aes(x = MeanErrorSquard, y = missed_percent, color = factor(pop), info = n))+
   geom_point(size = 2)+
   geom_smooth(se = FALSE, method = "lm")
   #scale_x_log10()
+ggplotly(a)
 
 QuantDistSummarySite%>%
   ggplot(aes(x = as.factor(pop), y = missed_percent))+
@@ -147,6 +155,8 @@ QuantDistSummarySite%>%
 #flaging method
 DistSummarySite <- rawDateDistDF%>%
   left_join(city_data)%>%
+  group_by(site, week(date), year(date), window, quant, FlagType)%>%
+  mutate(sampleRate = n())%>%
   #filter(window > 30)%>%
   group_by(window, quant, FlagType, sampleRate)%>%
   summarise(Mean = mean(FlagError, na.rm = TRUE),
@@ -155,19 +165,20 @@ DistSummarySite <- rawDateDistDF%>%
             missed_percent = 100 * mean(abs(FlagError)>edgeThresh, na.rm = TRUE),
             MeanErrorSquard = mean(
                           ifelse(abs(FlagError)>edgeThresh,
-                            NA,FlagError)^2, na.rm = TRUE))%>%
+                            NA,FlagError)^2, na.rm = TRUE),
+            n = n())%>%
   filter(num_flags != 0)
 
 QuantDistSummarySite <- DistSummarySite%>%
   filter(FlagType != "cdc.flag")
 
-QuantDistSummarySite%>%
+a <- QuantDistSummarySite%>%
   #filter(missed_percent != 0)%>%
-  ggplot(aes(x = MeanErrorSquard, y = missed_percent, color = factor(sampleRate)))+
+  ggplot(aes(x = MeanErrorSquard, y = missed_percent, color = factor(sampleRate), info = n))+
   geom_point(size = 2)+
   geom_smooth(se = FALSE, method = "lm")#+
   #scale_x_log10()
-
+ggplotly(a)
 
 QuantDistSummarySite%>%
   ggplot(aes(x = as.factor(sampleRate), y = missed_percent))+

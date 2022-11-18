@@ -69,26 +69,6 @@ baseWaste_DF <- baseWaste_DF[!(baseWaste_DF$site %in% c("Portage WWTF","Cedarbur
 
 baseWaste_DF <- baseWaste_DF[baseWaste_DF$n > 10,]
 
-mess_up <- function(DF, dow1,dow2){
-  ret_DF <- baseWaste_DF%>%
-  filter(site == "Madison",
-         wday(date) %in% c(dow1, dow1))%>%
-  mutate(site = paste0(dow1,dow2))
-}
-
-library(lubridate)
-baseWaste_DF <- baseWaste_DF%>%
-  mess_up(2,3)%>%
-  bind_rows(mess_up(baseWaste_DF,2,4))%>%
-  bind_rows(mess_up(baseWaste_DF,2,5))%>%
-  bind_rows(mess_up(baseWaste_DF,2,6))%>%
-  bind_rows(mess_up(baseWaste_DF,3,4))%>%
-  bind_rows(mess_up(baseWaste_DF,3,5))%>%
-  bind_rows(mess_up(baseWaste_DF,3,6))%>%
-  bind_rows(mess_up(baseWaste_DF,4,5))%>%
-  bind_rows(mess_up(baseWaste_DF,4,6))%>%
-  bind_rows(mess_up(baseWaste_DF,5,6))
-
 K=3
 baseWaste_DF <- baseWaste_DF%>%
   group_by(site)%>%
