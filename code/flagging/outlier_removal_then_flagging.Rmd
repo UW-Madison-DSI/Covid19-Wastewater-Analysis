@@ -196,7 +196,7 @@ Full_wasteFlags <- FULL_reg_DF[,c("site", "date",
                                   "window", "quant",
                                   "cdc_flag",
                                   "flag_ntile",
-                                  "flag_ntile_pval")]
+                                  "flag_ntile_Pval")]
 
 ```
 

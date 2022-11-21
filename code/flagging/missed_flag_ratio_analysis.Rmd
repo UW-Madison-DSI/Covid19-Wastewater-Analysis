@@ -43,6 +43,7 @@ baseWaste_DF$site <- ifelse(baseWaste_DF$site == "Madison MSD WWTF",
 
 
 ```{r create flag distance}
+library(lubridate)
 #"case_flag_Cases"                         "case_flag_7DayCases"                    
 #"case_flag_plus_comm.threshold_Cases"     "case_flag_plus_comm.threshold_7DayCases"
 #"slope_switch_flag_Cases"                 "slope_switch_flag_7DayCases"
@@ -51,12 +52,15 @@ edgeThresh <- 21
 CaseFlag <- "slope_switch_flag_Cases"
 rawDateDistDF <- date_Flag_DF%>%
   date_distance_calc(CaseFlag, dep_flags)%>%
-  select(site, date, all_of(dep_flags))%>%
+  select(all_of(c(dep_flags, "site", "date")))%>%
   tidyr::pivot_longer(cols = dep_flags,
                       names_to = c("FlagType","window", "quant"),
-                      values_to = "FlagError",
+                      values_to = "flag_error",
                       names_sep = "_")%>%
-  mutate(window = as.numeric(window), quant = as.numeric(quant))
+  mutate(window = as.numeric(window), quant = as.numeric(quant))%>%
+  group_by(site, week(date), year(date), window, quant, FlagType)%>%
+  mutate(sample_rate = n())%>%
+  ungroup()
 
 library(lubridate)
 city_data <- baseWaste_DF%>%
@@ -78,30 +82,35 @@ baseWaste_DF%>%
 
 ```{r missed percent high level}
 
+sum_analysis <- function(DF){
+  ret_df <- DF%>%
+  #filter(window > 30)%>%
+  summarise(Mean = mean(flag_error, na.rm = TRUE),
+            Var = var(flag_error, na.rm = TRUE),
+            num_flags = sum(!is.na(flag_error)),
+            missed_percent = 100*mean(abs(flag_error) > edgeThresh, na.rm = TRUE),
+            MSE = mean(ifelse(abs(flag_error) > edgeThresh,
+                            NA,flag_error)^2, na.rm = TRUE))%>%
+  filter(num_flags != 0)
+  return(ret_df)
+}
+
 #flaging method
 DistSummaryMainSite <- rawDateDistDF%>%
-  #filter(window > 30)%>%
   group_by(window, quant, FlagType)%>%
-  summarise(Mean = mean(FlagError, na.rm = TRUE),
-            Var = var(FlagError, na.rm = TRUE),
-            num_flags = sum(!is.na(FlagError)),
-            missed_percent = 100*mean(abs(FlagError) > edgeThresh, na.rm = TRUE),
-            MeanErrorSquard = mean(
-                          ifelse(abs(FlagError) > edgeThresh,
-                            NA,FlagError)^2, na.rm = TRUE))%>%
-  filter(num_flags != 0)
+  sum_analysis()
 
 DistSummaryMainSite <- DistSummaryMainSite%>%
   filter(FlagType != "cdc.flag")
 
 DistSummaryMainSite%>%
-  lm(missed_percent~MeanErrorSquard + window + quant + FlagType,data = .)%>%
+  lm(missed_percent~MSE + window + quant + FlagType,data = .)%>%
   summary()
 
 
 DistSummaryMainSite%>%
   #filter(missed_percent != 0)%>%
-  ggplot(aes(x = MeanErrorSquard, y = missed_percent, 
+  ggplot(aes(x = MSE, y = missed_percent, 
              color = factor(window), size = factor(quant), shape = FlagType))+
   scale_colour_discrete(type = c("#111155", "#222288", "#3333AA", "#4444FF"))+
   geom_point()
@@ -109,8 +118,8 @@ DistSummaryMainSite%>%
 
 rawDateDistDF%>%
   ungroup()%>%
-  filter(!is.na(FlagError))%>%
-  summarise(mean(abs(FlagError)>edgeThresh, na.rm=TRUE))
+  filter(!is.na(flag_error))%>%
+  summarise(mean(abs(flag_error)>edgeThresh, na.rm=TRUE))
 ```
 
 ```{r missed percent pop}
@@ -119,22 +128,14 @@ DistSummarySite <- rawDateDistDF%>%
   left_join(city_data)%>%
   #filter(window > 30)%>%
   group_by(window, quant, FlagType, pop)%>%
-  summarise(Mean = mean(FlagError, na.rm = TRUE),
-            Var = var(FlagError, na.rm = TRUE),
-            num_flags = sum(!is.na(FlagError)),
-            missed_percent = 100*mean(abs(FlagError)>edgeThresh, na.rm = TRUE),
-            MeanErrorSquard = mean(
-                          ifelse(abs(FlagError)>edgeThresh,
-                            NA,FlagError)^2, na.rm = TRUE),
-            n = n())%>%
-  filter(num_flags != 0)
+  sum_analysis()
 
 QuantDistSummarySite <- DistSummarySite%>%
   filter(FlagType != "cdc.flag")
 
 a <- QuantDistSummarySite%>%
   #filter(missed_percent != 0)%>%
-  ggplot(aes(x = MeanErrorSquard, y = missed_percent, color = factor(pop), info = n))+
+  ggplot(aes(x = MSE, y = missed_percent, color = factor(pop), info = num_flags))+
   geom_point(size = 2)+
   geom_smooth(se = FALSE, method = "lm")
   #scale_x_log10()
@@ -151,37 +152,29 @@ QuantDistSummarySite%>%
   summarise(mean(missed_percent==0))
 ```
 
-```{r sampleRate}
+```{r sample_rate}
 #flaging method
 DistSummarySite <- rawDateDistDF%>%
   left_join(city_data)%>%
-  group_by(site, week(date), year(date), window, quant, FlagType)%>%
-  mutate(sampleRate = n())%>%
   #filter(window > 30)%>%
-  group_by(window, quant, FlagType, sampleRate)%>%
-  summarise(Mean = mean(FlagError, na.rm = TRUE),
-            Var = var(FlagError, na.rm = TRUE),
-            num_flags = sum(!is.na(FlagError)),
-            missed_percent = 100 * mean(abs(FlagError)>edgeThresh, na.rm = TRUE),
-            MeanErrorSquard = mean(
-                          ifelse(abs(FlagError)>edgeThresh,
-                            NA,FlagError)^2, na.rm = TRUE),
-            n = n())%>%
-  filter(num_flags != 0)
+  group_by(window, quant, FlagType, sample_rate)%>%
+  sum_analysis()
 
 QuantDistSummarySite <- DistSummarySite%>%
   filter(FlagType != "cdc.flag")
 
 a <- QuantDistSummarySite%>%
   #filter(missed_percent != 0)%>%
-  ggplot(aes(x = MeanErrorSquard, y = missed_percent, color = factor(sampleRate), info = n))+
+  ggplot(aes(x = MSE, y = missed_percent, color = factor(sample_rate), 
+             info = num_flags))+
   geom_point(size = 2)+
-  geom_smooth(se = FALSE, method = "lm")#+
+  geom_smooth(data = filter(QuantDistSummarySite, missed_percent!=0), 
+              se = FALSE, method = "lm")#+
   #scale_x_log10()
 ggplotly(a)
 
 QuantDistSummarySite%>%
-  ggplot(aes(x = as.factor(sampleRate), y = missed_percent))+
+  ggplot(aes(x = as.factor(sample_rate), y = missed_percent))+
   geom_violin()+
   geom_point()#+
   #scale_y_log10()
@@ -194,11 +187,27 @@ QuantDistSummarySite%>%
 ```{r pop vs freq}
 rawDateDistDF%>%
   left_join(city_data)%>%
-  group_by(pop, sampleRate)%>%
-  summarise(n = n())%>%
-  ggplot(aes(x = pop, y = sampleRate))+
-  geom_tile(aes(fill = n))+
-  geom_text(aes(label = n))
+  group_by(pop, sample_rate)%>%
+  summarise(num_flags = sum(!is.na(flag_error)))%>%
+  ggplot(aes(x = pop, y = sample_rate))+
+  geom_tile(aes(fill = num_flags))+
+  geom_text(aes(label = num_flags))
+
+rawDateDistDF%>%
+  left_join(city_data)%>%
+  group_by(pop, sample_rate)%>%
+  summarise(num_flags = round(sum(!is.na(flag_error))/sample_rate))%>%
+  ggplot(aes(x = pop, y = sample_rate))+
+  geom_tile(aes(fill = num_flags))+
+  geom_text(aes(label = num_flags))
+
+a <- rawDateDistDF%>%
+  group_by(date)%>%
+  summarise(missed_avg = mean(flag_error, na.rm = TRUE),
+            n = n())%>%
+  ggplot(aes(x = date, y = missed_avg, info = n))+
+  geom_point()
+ggplotly(a)
 ```
 
 
@@ -207,23 +216,26 @@ rawDateDistDF%>%
 model_df <- rawDateDistDF%>%
   left_join(city_data)%>%
   #filter(window > 30)%>%
-  group_by(window, quant, FlagType, sampleRate, pop)%>%
-  summarise(Mean = mean(FlagError, na.rm = TRUE),
-            Var = var(FlagError, na.rm = TRUE),
-            num_flags = sum(!is.na(FlagError)),
-            missed_percent = 100*mean(abs(FlagError)>edgeThresh, na.rm = TRUE),
-            MeanErrorSquard = mean(
-                          ifelse(abs(FlagError)>edgeThresh,
-                            NA,FlagError)^2, na.rm = TRUE))%>%
-  filter(num_flags != 0)
+  group_by(window, quant, FlagType, sample_rate, pop)%>%
+  sum_analysis()
 
 model_df%>%
-  lm(missed_percent ~ FlagType + window + quant + sampleRate + pop + MeanErrorSquard, 
+  lm(missed_percent ~ FlagType + window + quant + sample_rate + pop + MSE, 
      weight = num_flags, data = .)%>%
   summary()
 
 model_df%>%
-  lm(missed_percent ~ FlagType + window + quant + sampleRate + pop + MeanErrorSquard, 
+  lm(missed_percent ~ FlagType + window + quant + sample_rate + pop + MSE, 
      weight = 1/(Var+1), data = .)%>%
   summary()
+```
+
+```{r}
+rawDateDistDF%>%
+    left_join(city_data)%>%
+  #filter(window > 30)%>%[]
+  group_by(sample_rate, pop)%>%
+  sum_analysis()%>%
+  ggplot(aes(x = num_flags, y = sample_rate))+
+  geom_point()
 ```

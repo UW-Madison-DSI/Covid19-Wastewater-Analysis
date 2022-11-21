@@ -375,3 +375,35 @@ if(is.null(output.format)){
 }
 ```
 
+
+```{r kalman filter}
+library(FKF)
+
+yt <- FullDF%>%
+  filter(site == "Madison")%>%
+  ungroup()%>%
+  mutate(N1 = log(sars_cov2_adj_load), case = log(FirstConfirmed.Per100K), true = NA)%>%
+  arrange(date)%>%
+  select(case, N1)%>%
+  data.matrix()%>%
+  t()
+
+a0 <- c(4, 1.34)
+
+P0 = diag(2)*1#starting variance
+dt = c(0,0)#update equation intercept
+ct = c(0,0)#messurement update intercept
+Tt = matrix(c(.3, 0, 
+              0, .7), nrow = 2)#update equation matrix
+Zt = diag(2)#measurement equation matrix
+HT = matrix(rep(10, 4), nrow = 2)
+HHt = HT %*% t(HT)
+GT = matrix(c(.1, 0, 
+              0, .263), nrow = 2)
+GGt = GT %*% t(GT)
+
+ret <- fkf(a0, P0, dt, ct, Tt, Zt, HHt, GGt, yt)
+
+plot(ret, type = "state")
+```
+
