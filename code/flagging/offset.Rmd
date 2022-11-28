@@ -1,0 +1,160 @@
+---
+title: "wc_ratio"
+author: "Kyllan Wunder"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(anytime)
+library(ggpubr)
+```
+
+
+```{r get data}
+data(Case_data, package = "DSIWastewater")
+cases <- Case_data
+cases$date <- anydate(cases$date)
+
+data(WasteWater_data, package = "DSIWastewater")
+waste <- WasteWater_data
+waste <- waste %>% rename(date = sample_collect_date, Site = wwtp_name)
+waste$date <- anydate(waste$date)
+
+cases_madison <- cases %>% filter(Site == "Madison")
+waste_madison <- waste %>% filter(grepl('Madison', Site)) %>% select(1,7,10,12,14) 
+waste_madison$Site <- paste0("Madison")
+
+waste_madison <- waste_madison %>% group_by(date)  %>% summarise(n1_sars_cov2_conc = sum(n1_sars_cov2_conc), n2_sars_cov2_conc = sum(n2_sars_cov2_conc), ppmov_conc = sum(ppmov_conc))
+
+```
+
+```{r}
+
+waste  <- waste %>% select(1,7,10,12,14) 
+```
+
+```{r all}
+waste <- waste %>% group_by(date)  %>% summarise(n1_sars_cov2_conc = sum(n1_sars_cov2_conc), n2_sars_cov2_conc = sum(n2_sars_cov2_conc), ppmov_conc = sum(ppmov_conc))
+
+cases <- cases %>% group_by(date)  %>% summarise(FirstConfirmed = sum(FirstConfirmed))
+
+wisc_data = merge(x=cases, y=waste, by="date", all = TRUE)
+wisc_data <- na.omit(wisc_data)
+
+```
+
+
+
+
+
+
+
+```{r offset}
+
+wisc_data <- wisc_data %>% mutate(waste_date = date) %>% rename(case_date = date)
+
+
+```
+
+```{r}
+MSE <- function(baseVal, meanVal){
+  ret <- mean((baseVal - meanVal)^2)
+  return(ret)
+}
+
+cases <- cases %>% mutate(rollingaverage = rollmean(cases$FirstConfirmed, k=7, fill = NA))
+
+offsetresults <- data.frame(matrix(ncol = 7, nrow = 0))
+  
+for(i in -30:30){
+  
+  wasteTemp <- waste %>% mutate(tempdate = as.Date(waste$date + i))
+  
+  #smooth case data
+  
+  temp <- merge(wasteTemp, cases, by.x = "tempdate" ,by.y = "date")  
+  temp <- na.omit(temp)
+  temp <- temp %>% mutate(proportionRolling = temp$n1_sars_cov2_conc/temp$rollingaverage,proportion = temp$n1_sars_cov2_conc/temp$FirstConfirmed, mse = MSE(temp$n1_sars_cov2_conc/temp$rollingaverage,mean(temp$n1_sars_cov2_conc/temp$rollingaverage)),)
+  temp <- na.omit(temp)
+  new <- c(i,mean(temp$proportion),mean(temp$proportionRolling),mean(temp$mse), cor(temp$n1_sars_cov2_conc,temp$rollingaverage,method = "pearson"), cor(temp$n1_sars_cov2_conc,temp$rollingaverage,method = "kendall"), cor(temp$n1_sars_cov2_conc,temp$rollingaverage,method = "spearman"))
+  
+  offsetresults[nrow(offsetresults) + 1, ] <- new  
+}
+offsetresults <- offsetresults %>% rename(wdateoffset=X1,wcratio=X2,wcratiorolling=X3,meanMSErolling=X4,corilationPearson=X5,corilationKendall=X6,corilationSpearman=X7)
+```
+
+
+```{r}
+
+ggplot(offsetresults, aes(x=wdateoffset, y=wcratio)) +
+  geom_point()
+
+ggplot(offsetresults, aes(x=wdateoffset, y=wcratiorolling)) +
+  geom_point()
+
+ggplot(offsetresults, aes(x=wdateoffset, y=meanMSErolling)) +
+  geom_point()
+
+ggplot(offsetresults, aes(x=wdateoffset, y=corilationPearson)) +
+  geom_point()
+
+ggplot(offsetresults, aes(x=wdateoffset, y=corilationKendall)) +
+  geom_point()
+ggplot(offsetresults, aes(x=wdateoffset, y=corilationSpearman)) +
+  geom_point()
+```
+
+```{r Madison}
+
+cases_madison <- cases_madison %>% mutate(rollingaverage = rollmean(cases_madison$FirstConfirmed, k=7, fill = NA))
+
+offsetresultsMadison <- data.frame(matrix(ncol = 7, nrow = 0))
+
+for(i in -30:30){
+  
+  wasteTempMadison <- waste_madison %>% mutate(tempdate = as.Date(waste_madison$date + i))
+  
+  #smooth case data
+  
+  temp2 <- merge(wasteTempMadison, cases_madison, by.x = "tempdate" ,by.y = "date")  
+  temp2 <- na.omit(temp2)
+  temp2 <- temp2 %>% mutate(proportionRolling = temp2$n1_sars_cov2_conc/temp2$rollingaverage,proportion = temp2$n1_sars_cov2_conc/temp2$FirstConfirmed, mse = MSE(temp2$n1_sars_cov2_conc/temp2$rollingaverage,mean(temp2$n1_sars_cov2_conc/temp2$rollingaverage)),)
+  temp2 <- na.omit(temp2)
+  new <- c(i,mean(temp2$proportion),mean(temp2$proportionRolling),mean(temp2$mse), cor(temp2$n1_sars_cov2_conc,temp2$rollingaverage,method = "pearson"), cor(temp2$n1_sars_cov2_conc,temp2$rollingaverage,method = "kendall"), cor(temp2$n1_sars_cov2_conc,temp2$rollingaverage,method = "spearman"))
+  
+  offsetresultsMadison[nrow(offsetresultsMadison) + 1, ] <- new  
+}
+
+offsetresultsMadison <- offsetresultsMadison %>% rename(wdateoffset=X1,wcratio=X2,wcratiorolling=X3,meanMSErolling=X4,corilationPearson=X5,corilationKendall=X6,corilationSpearman=X7)
+
+```
+
+
+
+```{r}
+ggplot(offsetresultsMadison, aes(x=wdateoffset, y=wcratio)) +
+  geom_point()
+
+ggplot(offsetresultsMadison, aes(x=wdateoffset, y=wcratiorolling)) +
+  geom_point()
+
+ggplot(offsetresultsMadison, aes(x=wdateoffset, y=meanMSErolling)) +
+  geom_point()
+
+ggplot(offsetresultsMadison, aes(x=wdateoffset, y=corilationPearson)) +
+  geom_point()
+
+ggplot(offsetresultsMadison, aes(x=wdateoffset, y=corilationKendall)) +
+  geom_point()
+ggplot(offsetresultsMadison, aes(x=wdateoffset, y=corilationSpearman)) +
+  geom_point()
+```
+
+
+
+

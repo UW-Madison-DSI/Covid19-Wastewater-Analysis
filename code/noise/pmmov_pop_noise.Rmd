@@ -91,7 +91,7 @@ noisedatasample <- noisedatasample %>%
 #largest noise value that skews graph
 #noisedatasample <- noisedatasample %>% filter(wwtp_name != "Lake Geneva WWTP")
 
-ggplot(noisedatasample, aes(log(as.numeric(population_served)), noise)) +
+ggplot(noisedatasample, aes(log(as.numeric(population_served)), noise)) + #/avgSampleFrequency
   geom_point(aes(color=avgSampleFrequency)) +
   scale_colour_gradientn(colours=rainbow(5)) +
   ggtitle("log(pop) vs noise(calc MSE) colored with average sample frequence")

@@ -1,0 +1,78 @@
+---
+title: "sampleFrequency"
+author: "Kyllan Wunder"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(anytime)
+library(noise)
+library(tidyr)
+library(zoo)
+library(lubridate)
+```
+
+
+```{r}
+year_week <- function(x,base) week(x) - week(base) + 52*(year(x) - year(base))
+
+data(WasteWater_data, package = "DSIWastewater")
+
+sfdata <- WasteWater_data 
+
+
+sfdata <- sfdata %>% 
+  group_by(wwtp_name) %>% 
+  mutate(rollaverage = rollmean(log(as.numeric(ppmov_conc)), k=7, fill = NA)) %>% 
+  drop_na(rollaverage) %>% ungroup()
+
+
+
+sfdata <- sfdata %>% group_by(wwtp_name, week = year_week(anydate(sample_collect_date), "2020-01-01")) %>% mutate(sampleFrequency = n()) %>% ungroup()
+
+sfdata <- sfdata %>% group_by(wwtp_name) %>% 
+  mutate(avgSampleFrequency = mean(sampleFrequency)) %>% ungroup()
+
+
+
+```
+
+```{r}
+sfdata <- sfdata %>%  group_by(wwtp_name) %>%  mutate(max = max(sampleFrequency))
+```
+
+
+```{r}
+sfdata %>% filter(max > 3) %>%#filter(grepl("Madison", wwtp_name)) %>%
+ggplot(aes(week, sampleFrequency,color=sampleFrequency)) +
+  geom_point() +
+  facet_wrap(~wwtp_name) +
+  ggtitle("average sample frequencey by week by site ") +
+  scale_colour_gradientn(colours=rainbow(7))
+
+
+```
+
+
+```{r}
+siteStats <- sfdata %>% select(1,14,32,33,34) %>% group_by(wwtp_name) %>% mutate(maxsf = max(sampleFrequency),startdate = min(anydate(sample_collect_date)), enddate = max(anydate(sample_collect_date)),minweek = min(week),maxweek = max(week))
+
+
+
+```
+
+```{r}
+siteStats %>% 
+  ggplot(mapping = aes(x = reorder(wwtp_name,minweek), y = minweek)) +
+    geom_pointrange(mapping = aes(ymin = maxweek, ymax = minweek))
+siteStats %>% 
+  ggplot(mapping = aes(x = reorder(wwtp_name,maxweek), y = maxweek)) +
+    geom_pointrange(mapping = aes(ymin = maxweek, ymax = minweek))
+```
+
+
