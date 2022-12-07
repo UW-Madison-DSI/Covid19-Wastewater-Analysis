@@ -1,0 +1,333 @@
+---
+title: "Convolution"
+author: "Marlin"
+date: "2022-11-28"
+output: pdf_document
+---
+```{r set up markdown settings, echo=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE
+)
+
+output.format <- knitr::opts_knit$get("rmarkdown.pandoc.to")
+```
+
+
+```{r Start enviroment, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+#Used library for visualization
+library(dplyr)
+library(ggplot2)
+library(lmtest)
+library(lubridate)
+#library(limma)
+library(zoo)
+
+if(is.null(output.format)){
+  library(plotly)
+}else if("html" != output.format) {
+  
+}else{
+  library(plotly)
+  library(formattable)
+}
+
+
+```
+
+
+
+```{r DF Set Up, echo=FALSE}
+library(DSIWastewater)
+data(Case_data, package = "DSIWastewater")
+
+#restrict Case data to only Madison data
+Case_DF <- Case_data[Case_data$Site == "Madison",]
+
+
+#restrict Case data to dates after 2021-02-01
+Case_DF <- Case_DF[Case_DF$date  >= as.Date("2020-9-10"),]
+
+#get the case flags
+Case_DF <- buildCaseAnalysisDF(Case_DF)
+
+Case_DF <- Case_DF[,c(1:2, 5, 7)]
+
+data(WasteWater_data, package = "DSIWastewater")
+
+#restrict Waste data to only Madison data
+baseWaste_DF <- WasteWater_data[WasteWater_data$wwtp_name == "Madison MSD WWTF",]
+
+#get DF into format for buildRegressionEstimateTable
+baseWaste_DF <-  buildWasteAnalysisDF(baseWaste_DF)
+baseWaste_DF$site <- "Madison"
+#Select columns needed in analysis
+
+LIMSDF <- baseWaste_DF[,c(1:2,8)]
+
+LIMSDF$sars_cov2_adj_load <- 10**LIMSDF$sars_cov2_adj_load_log10
+
+#joining the two data frames together
+FullDF <- full_join(Case_DF, LIMSDF, by = c("date","site"))
+
+FullDF <- FullDF[,c(1:4,6)]
+```
+
+
+
+
+
+
+```{r kalman filter}
+library(FKF)
+library(dplyr)
+yt <- FullDF%>%
+  dplyr::filter(site == "Madison")%>%
+  ungroup()%>%
+  mutate(N1 = log(sars_cov2_adj_load), case = log(FirstConfirmed.Per100K))%>%
+  arrange(date)%>%
+  select(case, N1)%>%
+  data.matrix()%>%
+  t()
+
+a0 <- c(4, 1.34)
+
+P0 = diag(2)*1#starting variance
+dt = c(.1,.1)#update equation intercept
+ct = c(.1,.1)#messurement update intercept
+Tt = matrix(c(.3, .1, 
+              .1, .7), nrow = 2)#update equation matrix
+Zt = diag(2)*.1#measurement equation matrix
+HT = matrix(rep(.1, 4), nrow = 2)
+HHt = HT %*% t(HT)
+GT = matrix(c(.1, 0, 
+              0, .263), nrow = 2)
+GGt = GT %*% t(GT)
+
+ret <- fkf(a0, P0, dt, ct, Tt, Zt, HHt, GGt, yt)
+
+plot(1:587, ret$at[1,], type = "state")
+length(ret$at[1,])
+
+
+y <- Nile
+y[c(3, 10)] <- NA  # NA values can be handled
+
+## Set constant parameters:
+dt <- ct <- matrix(0) 
+Zt <- Tt <- matrix(1)
+a0 <- y[1]            # Estimation of the first year flow 
+P0 <- matrix(100)     # Variance of 'a0'
+
+## Estimate parameters:
+fit.fkf <- optim(c(HHt = var(y, na.rm = TRUE) * .5,
+                   GGt = var(y, na.rm = TRUE) * .5),
+                 fn = function(par, ...)
+                 -fkf(HHt = matrix(par[1]), GGt = matrix(par[2]), ...)$logLik,
+                 yt = rbind(y), a0 = a0, P0 = P0, dt = dt, ct = ct,
+                 Zt = Zt, Tt = Tt)
+
+## Filter Nile data with estimated parameters:
+fkf.obj <- fkf(a0, P0, dt, ct, Tt, Zt, HHt = matrix(fit.fkf$par[1]),
+               GGt = matrix(fit.fkf$par[2]), yt = rbind(y))
+
+## Compare with the stats' structural time series implementation:
+y <- yt[2,]
+y <- y[!is.na(y)]
+fit.stats <- StructTS(y, type = "level")
+plot(y, type  = "l")
+lines(fitted(fit.stats), col = "green")
+
+
+fit.fkf$par
+fit.stats$coef
+
+## Plot the flow data together with fitted local levels:
+plot(y, main = "Nile flow")
+lines(fitted(fit.stats), col = "green")
+lines(ts(fkf.obj$att[1, ], start = start(y), frequency = frequency(y)), col = "blue")
+legend("top", c("Nile flow data", "Local level (StructTS)", "Local level (fkf)"),
+       col = c("black", "green", "blue"), lty = 1)
+```
+```{r}
+library(zoo)
+t_DF <- FullDF%>%
+  dplyr::filter(site == "Madison")%>%
+  arrange(date)
+t_DF <- t_DF[6:nrow(t_DF),]
+Madison_DF <- t_DF%>%
+  mutate(N1 = sars_cov2_adj_load,
+         N1_Fixed = log(fitted(StructTS(N1, type = "trend")))[,1],
+         N1_Fixed2 = N1_Fixed,
+          Cases = log(pastwk.avg.casesperday.Per100K))
+weights <- dgamma(1:21, scale = 1.017051, shape = 8.240112)
+#dgamma(1:21, scale = .3385332, shape = 9.6816513)
+  #dgamma(1:21, scale = 1.017051, shape = 8.240112)
+
+for(i in 1:length(Madison_DF$N1_Fixed)){
+  for(j in 1:11){
+    if (i - j > 0 && !is.na(Madison_DF$N1_Fixed[i - j])){
+      Madison_DF$N1_Fixed[i] = Madison_DF$N1_Fixed[i] - weights[j]*Madison_DF$N1_Fixed[i - j]
+    }
+    Madison_DF$N1_Fixed[i]#/sum(weights[11:21])
+  }
+}
+Madison_DF%>%
+  ggplot(aes(x = date))+
+  #geom_point(aes(y = log(sars_cov2_adj_load)), color = "red")+
+  #geom_point(aes(y = N1))+
+  geom_line(aes(y = Cases))+
+  geom_line(aes(y = 2*N1_Fixed), color = "green")+
+  geom_line(aes(y = N1_Fixed2))
+
+plot(weights[1:10])
+
+plot(StructTS(log(Madison_DF$sars_cov2_adj_load), type = "trend")$residuals)
+
+
+ccf(Madison_DF$N1_Fixed, Madison_DF$Cases, na.action = na.pass)
+ccf(log(Madison_DF$sars_cov2_adj_load), Madison_DF$Cases, na.action = na.pass)
+```
+
+
+```{r re data prep}
+library(DSIWastewater)
+data(Case_data, package = "DSIWastewater")
+
+#restrict Case data to only Madison data
+Case_DF <- Case_data
+
+
+#restrict Case data to dates after 2021-02-01
+Case_DF <- Case_DF[Case_DF$date  >= as.Date("2020-9-10"),]
+
+#get the case flags
+Case_DF <- buildCaseAnalysisDF(Case_DF)
+
+Case_DF <- Case_DF[,c(1:2, 5, 7)]
+
+data(WasteWater_data, package = "DSIWastewater")
+
+#restrict Waste data to only Madison data
+baseWaste_DF <- WasteWater_data
+
+#get DF into format for buildRegressionEstimateTable
+baseWaste_DF <-  buildWasteAnalysisDF(baseWaste_DF)%>%
+  mutate(site = ifelse(site == "Madison MSD WWTF" , "Madison", site))
+#Select columns needed in analysis
+
+LIMSDF <- baseWaste_DF[,c(1:2,8)]
+
+LIMSDF$sars_cov2_adj_load <- 10**LIMSDF$sars_cov2_adj_load_log10
+
+#joining the two data frames together
+FullDF <- full_join(Case_DF, LIMSDF, by = c("date","site"))
+
+FullDF <- FullDF[,c(1:4,6)]
+```
+
+
+
+
+```{r SLD}
+Mean <- 22.06299#11.73
+StandardDeviation <- 17.31275 #7.68
+Scale = StandardDeviation^2/Mean
+Shape = Mean/Scale
+SLDWidth <- 21
+weights <- dgamma(1:SLDWidth, scale = Scale, shape = Shape)
+plot(weights,  
+        main=paste("Gamma Distribution with mean =",Mean, "days,and SD =",StandardDeviation), 
+            ylab = "Weight", 
+            xlab = "Lag")
+library(signal)
+
+y <- FullDF%>%
+  dplyr::filter(site == "Madison")%>%
+  mutate(y = zoo::rollmean(FirstConfirmed.Per100K, 7, 
+                           na.pad = TRUE, align = "center"))%>%
+  dplyr::filter(!is.na(y))%>%
+  pull(y)
+
+x <- FullDF$sars_cov2_adj_load
+x <- x[6:length(x)]
+fit.stats <- StructTS(log(x))
+plot(x, type  = "l")
+lines(exp(fitted(fit.stats)[,1]), col = "green")
+xn <- exp(fitted(fit.stats)[,1])
+
+h <- convolve(y, weights, type = "filter", conj = TRUE)
+ccf(h, xn, na.action = na.pass)
+ccf(y, xn, na.action = na.pass)
+
+plot(xn, type  = "l")
+lines(h, col = "green")
+
+plot(x, type  = "l")
+lines(h, col = "green")
+
+plot(xn, type  = "l")
+lines(y, col = "green")
+
+plot(x, type  = "l")
+lines(y, col = "green")
+```
+
+
+
+
+```{r optConvo}
+Full_Case <- FullDF%>%
+  dplyr::filter(site != "Portage WWTF"&& site != "Cedarburg WWTF")%>%
+  #dplyr::filter(site == "Madison")%>%
+  select(date, site, pastwk.avg.casesperday.Per100K)%>%
+  #tidyr::pivot_wider(names_from = site, values_from = pastwk.avg.casesperday.Per100K)%>%
+  group_by(date, site)%>%
+  summarise(cases = mean(pastwk.avg.casesperday.Per100K, na.rm = TRUE))%>%
+  arrange(date)
+
+Full_Waste <- FullDF%>%
+  dplyr::filter(site != "Portage WWTF"&& site != "Cedarburg WWTF")%>%
+  #dplyr::filter(site == "Madison")%>%
+  select(date, site, sars_cov2_adj_load)%>%
+  #tidyr::pivot_wider(names_from = site, values_from = sars_cov2_adj_load)%>%
+  group_by(date, site)%>%
+  summarise(N1 = mean(sars_cov2_adj_load, na.rm = TRUE))%>%
+  arrange(date)
+
+
+CCF_Index <- function(i, a, b){
+  ret <- ccf((a[,i]), (b[,i]), na.action = na.pass, plot = FALSE)$acf
+  return(ret)
+}
+CCF_SLD_max <- function(SLD_params){
+  print(SLD_params)
+  Scale = SLD_params[1]
+  Shape = SLD_params[2]
+  if (Scale <= 0 || Shape <= 0){
+    return(0)
+  }
+  SLDWidth <- 21
+  weights <- dgamma(1:SLDWidth, scale = Scale, shape = Shape)
+  tsY <- ts(Full_Case$cases,#[,2:79], 
+            start = min(Full_Case$date), end = max(Full_Case$date))
+  Y <- stats::filter(tsY, weights, method = "convolution")
+
+  X <- ts(Full_Waste$N1,#[,2:79],
+          start = min(Full_Waste$date), end = max(Full_Waste$date))
+  #ret <- lapply(1:length(X[1,]), CCF_Index, a = X, b = tsY)
+  #ret <- -max(rowMeans(do.call(cbind, ret), na.rm = TRUE))
+  ret <- -max(ccf(X, Y, na.action = na.pass, plot = FALSE)$acf)
+  return(ret)
+}
+
+Scale = 5.028338
+Shape = 2.332779
+ret <- optim(par = c(Scale, Shape), fn = CCF_SLD_max,
+             method = "SANN")
+ret$par
+plot(dgamma(1:21, scale = .3385332, shape = 9.6816513))
+#plot(dgamma(1:SLDWidth, scale = 19.34068, shape = 12.02962))
+#plot(dgamma(1:SLDWidth, scale = 8.07657294, shape = 0.02301906))
+```

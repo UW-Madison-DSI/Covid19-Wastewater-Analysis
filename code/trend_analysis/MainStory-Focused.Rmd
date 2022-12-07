@@ -96,7 +96,7 @@ Case_DF <- Case_DF[,c(1:2, 5, 7)]
 data(WasteWater_data, package = "DSIWastewater")
 
 #restrict Waste data to only Madison data
-baseWaste_DF <- WasteWater_data[WasteWater_data$wwtp_name == "Madison MSD WWTF",]
+baseWaste_DF <- WasteWater_data[WasteWater_data$site == "Madison",]
 
 #get DF into format for buildRegressionEstimateTable
 baseWaste_DF <-  buildWasteAnalysisDF(baseWaste_DF)
@@ -111,6 +111,7 @@ LIMSDF$sars_cov2_adj_load <- 10**LIMSDF$sars_cov2_adj_load_log10
 FullDF <- full_join(Case_DF, LIMSDF, by = c("date","site"))
 
 FullDF <- FullDF[,c(1:4,6)]
+unique(WasteWater_data$site)
 ```
 
 # Data: The first look
@@ -309,9 +310,8 @@ CCFChar <- function(ccfObject){
 ModelTesting <- function(DF,Var1,Var2){
   #removing rows from before both series started
   UsedDF <- DF%>%
-    filter(!is.na(Var1),
-           !is.na(Var2))
-  
+    filter(is.finite(log(!!sym(Var1))),
+           is.finite(log(!!sym(Var2))))
   
   Vec1 <- log(unname(unlist(UsedDF[Var1])))
   
@@ -373,37 +373,5 @@ if(is.null(output.format)){
   OutputRightPosition%>%
     formattable()
 }
+
 ```
-
-
-```{r kalman filter}
-library(FKF)
-
-yt <- FullDF%>%
-  filter(site == "Madison")%>%
-  ungroup()%>%
-  mutate(N1 = log(sars_cov2_adj_load), case = log(FirstConfirmed.Per100K), true = NA)%>%
-  arrange(date)%>%
-  select(case, N1)%>%
-  data.matrix()%>%
-  t()
-
-a0 <- c(4, 1.34)
-
-P0 = diag(2)*1#starting variance
-dt = c(0,0)#update equation intercept
-ct = c(0,0)#messurement update intercept
-Tt = matrix(c(.3, 0, 
-              0, .7), nrow = 2)#update equation matrix
-Zt = diag(2)#measurement equation matrix
-HT = matrix(rep(10, 4), nrow = 2)
-HHt = HT %*% t(HT)
-GT = matrix(c(.1, 0, 
-              0, .263), nrow = 2)
-GGt = GT %*% t(GT)
-
-ret <- fkf(a0, P0, dt, ct, Tt, Zt, HHt, GGt, yt)
-
-plot(ret, type = "state")
-```
-

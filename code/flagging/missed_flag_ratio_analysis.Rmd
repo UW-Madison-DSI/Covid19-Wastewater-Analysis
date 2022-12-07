@@ -201,13 +201,29 @@ rawDateDistDF%>%
   geom_tile(aes(fill = num_flags))+
   geom_text(aes(label = num_flags))
 
+
 a <- rawDateDistDF%>%
-  group_by(date)%>%
+  group_by(week = week(date), year = year(date))%>%
   summarise(missed_avg = mean(flag_error, na.rm = TRUE),
-            n = n())%>%
-  ggplot(aes(x = date, y = missed_avg, info = n))+
+            num_flags = sum(!is.na(flag_error)),
+            date = mean(date))%>%
+  ggplot(aes(x = date, y = missed_avg, color = num_flags))+
   geom_point()
 ggplotly(a)
+
+date_Flag_DF%>%
+  group_by(week = week(date), year = year(date))%>%
+  summarize(num_flags = sum(!is.na(case_flag_Cases)),
+            date = mean(date))%>%
+  ggplot(aes(x = date, y = num_flags))+
+  geom_point()
+
+date_Flag_DF%>%
+  group_by(week = week(date), year = year(date))%>%
+  summarize(num_flags = sum(!is.na(flag.ntile.Pval_90_0.9)),
+            date = mean(date))%>%
+  ggplot(aes(x = date, y = num_flags))+
+  geom_point()
 ```
 
 
@@ -215,7 +231,7 @@ ggplotly(a)
 
 model_df <- rawDateDistDF%>%
   left_join(city_data)%>%
-  #filter(window > 30)%>%
+  filter(window > 30)%>%
   group_by(window, quant, FlagType, sample_rate, pop)%>%
   sum_analysis()
 
@@ -223,19 +239,53 @@ model_df%>%
   lm(missed_percent ~ FlagType + window + quant + sample_rate + pop + MSE, 
      weight = num_flags, data = .)%>%
   summary()
-
-model_df%>%
-  lm(missed_percent ~ FlagType + window + quant + sample_rate + pop + MSE, 
-     weight = 1/(Var+1), data = .)%>%
-  summary()
 ```
 
 ```{r}
 rawDateDistDF%>%
-    left_join(city_data)%>%
-  #filter(window > 30)%>%[]
-  group_by(sample_rate, pop)%>%
+  # left_join(city_data)%>%
+  filter(window > 30)%>%
+  group_by(sample_rate)%>%
   sum_analysis()%>%
   ggplot(aes(x = num_flags, y = sample_rate))+
   geom_point()
+
+
+rawDateDistDF%>%
+  left_join(city_data)%>%
+  lm(flag_error ~ site, data = .)%>%
+  summary()
+```
+
+
+```{r skew}
+a <- rawDateDistDF%>%
+  left_join(city_data)%>%
+  group_by(site)%>%
+  mutate(men = mean(flag_error, na.rm = TRUE),
+        test = flag_error - men)
+hist(a$test, breaks = 80)
+library(moments)
+mean(rawDateDistDF$flag_error, na.rm = TRUE)
+skewness(rawDateDistDF$flag_error, na.rm = TRUE)
+kurtosis(rawDateDistDF$flag_error, na.rm = TRUE)
+mean(a$test, na.rm = TRUE)
+skewness(a$test, na.rm = TRUE)
+kurtosis(a$test, na.rm = TRUE)
+
+rawDateDistDF%>%
+  left_join(city_data)%>%
+  group_by(sample_rate)%>%
+  summarise(m = mean(flag_error, na.rm = TRUE),
+            sd = sd(flag_error, na.rm = TRUE),
+            sk = skewness(flag_error, na.rm = TRUE),
+            k = kurtosis(flag_error, na.rm = TRUE))
+
+rawDateDistDF%>%
+  left_join(city_data)%>%
+  group_by(pop)%>%
+  summarise(m = mean(flag_error, na.rm = TRUE),
+            sd = sd(flag_error, na.rm = TRUE),
+            sk = skewness(flag_error, na.rm = TRUE),
+            k = kurtosis(flag_error, na.rm = TRUE))
 ```
