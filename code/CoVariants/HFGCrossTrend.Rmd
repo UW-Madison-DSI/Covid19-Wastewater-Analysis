@@ -150,19 +150,17 @@ logPlot
 
 looking at the relationship between HF183 and CrP you see a distinctly strong relationship in both the trend and the noise. We don't have enough understanding of the underlying process to know if this is expected.
 ```{r}
-a <- cor(log_trend_df$Trend_HF183, log_trend_df$Trend_CrP,
-    use = "complete.obs")
-b <- cor(log_trend_df$Diff_CrP, log_trend_df$Diff_HF183,
-    use = "complete.obs")
+logPlot <- log_trend_df%>%
+  select(Trend_PMMOV, Trend_HF183, Trend_CrP, 
+         Diff_PMMOV,  Diff_HF183,  Diff_CrP)%>%
+  correlate()%>%
+  pivot_longer(Trend_PMMOV:Diff_CrP)%>%
+  ggplot(aes(name, term)) +
+  geom_tile(aes(fill = value)) + 
+  geom_text(aes(label = round(value, 3))) +
+  scale_fill_gradient(low = "white", high = "red")
 
-c <- cor(trend_df$Trend_HF183, trend_df$Trend_CrP,
-    use = "complete.obs")
-d <- cor(trend_df$Diff_CrP, trend_df$Diff_HF183,
-    use = "complete.obs")
-corMat <- matrix(c(a,b,c,d), nrow = 2)
-colnames(corMat) <- c("log", "base")
-rownames(corMat) <- c("trend corr", "detrend corr")
-corMat
+logPlot
 ```
 For a baseline we showed the relationship between N1 and N2 that show an extremely strong correlation clearly due to them measuring the same thing.
 ```{r}
