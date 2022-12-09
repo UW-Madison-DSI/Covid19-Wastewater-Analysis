@@ -123,30 +123,43 @@ components. The baseline these covariates are meant to control for is population
 it acts as the baseline. We see the data it has a .25 correlation which is mildly meaningful. This is around the correlation the other covariants have. None of the detrended data correlates meaningful supporting the view that they are mostly caused by noise.
 
 
-```{r}
+```{r, fig.height=10, fig.width=10}
 library(tidyverse)
 library(corrr)
-logPlot <- log_trend_df%>%
+log_cor_df <- log_trend_df%>%
   correlate()%>%
-  focus(Trend_N1, Trend_N2, Diff_N1, Diff_N2)%>%
-  pivot_longer(Trend_N1:Diff_N2)%>%
-  mutate(name = factor(name, levels=c('Trend_N1', 'Trend_N2', 'Diff_N1', 'Diff_N2')),
-         term = factor(term, levels=rev(c('pop', 
-                       'Trend_PMMOV', 'Trend_HF183', 'Trend_flow', 'Trend_tss',
-                       'Trend_ph', 'Trend_conductivity', "Trend_temperature",
-                       'Diff_PMMOV', 'Diff_HF183', 'Diff_flow', 'Diff_tss', 'Diff_ph',
-                       'Diff_conductivity', "Diff_temperature")))
-          )%>%
+  #focus(Trend_N1, Trend_N2, Diff_N1, Diff_N2)%>%
+  pivot_longer(pop:Diff_temperature)%>%
+  group_by(name)%>%
+  filter(max(abs(value), na.rm = TRUE) > .2 )%>%
+  group_by(term)%>%
+  filter(max(abs(value), na.rm = TRUE) > .2 )%>%
+  ungroup()
+
+
+
+logPlot <- log_cor_df%>%
+  #mutate(name = factor(name, levels=c('Trend_N1', 'Trend_N2', 'Diff_N1', 'Diff_N2')),
+  #       term = factor(term, levels=rev(c('pop', 
+  #                     'Trend_PMMOV', 'Trend_HF183', 'Trend_flow', 'Trend_tss',
+  #                     'Trend_ph', 'Trend_conductivity', "Trend_temperature",
+  #                     'Diff_PMMOV', 'Diff_HF183', 'Diff_flow', 'Diff_tss', 'Diff_ph',
+  #                     'Diff_conductivity', "Diff_temperature")))
+  #        )%>%
   ggplot(aes(name, term)) +
   geom_tile(aes(fill = value)) + 
   geom_text(aes(label = round(value, 3))) +
   scale_fill_gradient(low = "white", high = "red")+
-  scale_x_discrete(position = "top") +
-  scale_fill_gradientn(colours = colorspace::diverge_hcl(7))
+  scale_fill_gradientn(colours = colorspace::diverge_hcl(7))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
 #basePlot
-logPlot
+log_cor_df%>%
+  arrange(desc(abs(value)))%>%
+  filter(abs(value) > .3)
 
+
+logPlot
 ```
 
 
