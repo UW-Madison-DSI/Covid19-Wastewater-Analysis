@@ -1,0 +1,193 @@
+---
+title: "Covid-19 Wastewater Flagging Method Optimization Using a Minimum Flagging         Difference of 10%"
+author: "Marlin Lee, Kyllan Wunder, Abe Megahed"
+date: "University of Wisconsin Data Science Institute - October 2022"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{css, echo=FALSE}
+h1, h4 {
+  text-align: center;
+}
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+using HFD to get a good understanding of the relationships between the Covid-19
+measurements and the other covariates. we did this by breaking the signal down into
+two components. (1) the trend of the data. This is created using a loess smoothing.
+ (2) the detrended data. We do this on the log of the data because the noise appears to be log normal meaning a more clear trend. The main goal of this document is to show the main takeaways of those plots in an easier way to see. The main takeaways are, 1) the covariates don't relate to the covid signal any more than the population does. 2) The detrended data seems to be largely independent
+
+
+```{r cars}
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+data("WasteWater_data", package = "DSIWastewater")
+
+```
+
+```{r}
+
+#crazy agressive method
+week_outlier_detection <- function(small_vec){
+  sortedVec <- sort(log(small_vec))
+  lower_quant <- sortedVec[4]
+  upper_quant <- sortedVec[6]
+  range <- upper_quant - lower_quant
+  retVec = ifelse(log(small_vec) > upper_quant + 1.5 * range,
+                  NA, small_vec)
+  retVec = ifelse(log(small_vec) < lower_quant - 1.5 * range,
+                  NA, small_vec)
+  retVec = ifelse(is.infinite(retVec), NA, retVec)
+  return(retVec)
+}
+
+
+lims_waste_filt_df <- WasteWater_data%>%
+  group_by(site)%>%
+  mutate(pop = mean(pop, na.rm=TRUE))%>%
+  select(site, date, pop, N1, N2, PMMoV, hf183, flow, tss,
+         ph, conductivity, temperature)%>%
+  mutate(tss = as.numeric(tss))%>%
+  group_by(site)
+
+```
+
+```{r}
+trend_df <- lims_waste_filt_df%>%
+  group_by(site)%>%
+  group_split()%>%
+  lapply(loessSmoothMod, InVar = "N1", OutVar = "Trend_N1")%>%
+  lapply(loessSmoothMod, InVar = "N2", OutVar = "Trend_N2")%>%
+  lapply(loessSmoothMod, InVar = "PMMoV", OutVar = "Trend_PMMOV")%>%
+  lapply(loessSmoothMod, InVar = "hf183", OutVar = "Trend_HF183")%>%
+  lapply(loessSmoothMod, InVar = "flow", OutVar = "Trend_flow")%>%
+  lapply(loessSmoothMod, InVar = "tss", OutVar = "Trend_tss")%>%
+  lapply(loessSmoothMod, InVar = "ph", OutVar = "Trend_ph")%>%
+  lapply(loessSmoothMod, InVar = "conductivity", OutVar = "Trend_conductivity")%>%
+  lapply(loessSmoothMod, InVar = "temperature", OutVar = "Trend_temperature")%>%
+  bind_rows()%>%
+  mutate(
+    Diff_N1 = Trend_N1 - N1,
+    Diff_N2 = Trend_N2 - N2,
+    Diff_PMMOV = Trend_PMMOV - PMMoV,
+    Diff_HF183 = Trend_HF183 - hf183,
+    Diff_HF183 = Trend_flow - flow,
+    Diff_tss = Trend_tss - tss,
+    Diff_ph = Trend_ph - ph,
+    Diff_conductivity = Trend_conductivity - conductivity,
+    Diff_temperature = Trend_temperature - temperature
+    )%>%
+  select(date, site, pop, Trend_N1:Diff_temperature)
+```
+
+
+
+```{r}
+log_trend_df <- lims_waste_filt_df%>%
+  group_by(site)%>%
+  mutate(across(N1:temperature, log))%>%
+  group_split()%>%
+  lapply(loessSmoothMod, InVar = "N1", OutVar = "Trend_N1")%>%
+  lapply(loessSmoothMod, InVar = "N2", OutVar = "Trend_N2")%>%
+  lapply(loessSmoothMod, InVar = "PMMoV", OutVar = "Trend_PMMOV")%>%
+  lapply(loessSmoothMod, InVar = "hf183", OutVar = "Trend_HF183")%>%
+  lapply(loessSmoothMod, InVar = "flow", OutVar = "Trend_flow")%>%
+  lapply(loessSmoothMod, InVar = "tss", OutVar = "Trend_tss")%>%
+  lapply(loessSmoothMod, InVar = "ph", OutVar = "Trend_ph")%>%
+  lapply(loessSmoothMod, InVar = "conductivity", OutVar = "Trend_conductivity")%>%
+  lapply(loessSmoothMod, InVar = "temperature", OutVar = "Trend_temperature")%>%
+  bind_rows()%>%
+  mutate(
+    Diff_N1 = Trend_N1 - N1,
+    Diff_N2 = Trend_N2 - N2,
+    Diff_PMMOV = Trend_PMMOV - PMMoV,
+    Diff_HF183 = Trend_HF183 - hf183,
+    Diff_HF183 = Trend_flow - flow,
+    Diff_tss = Trend_tss - tss,
+    Diff_ph = Trend_ph - ph,
+    Diff_conductivity = Trend_conductivity - conductivity,
+    Diff_temperature = Trend_temperature - temperature
+    )%>%
+  select(date, site, pop, Trend_N1:Diff_temperature)
+``` 
+
+The heatmap below shows the correlation between the Covid-19 signals and the covariate
+components. The baseline these covariates are meant to control for is population so
+it acts as the baseline. We see the data it has a .25 correlation which is mildly meaningful. This is around the correlation the other covariants have. None of the detrended data correlates meaningful supporting the view that they are mostly caused by noise.
+
+
+```{r}
+library(tidyverse)
+library(corrr)
+logPlot <- log_trend_df%>%
+  correlate()%>%
+  focus(Trend_N1, Trend_N2, Diff_N1, Diff_N2)%>%
+  pivot_longer(Trend_N1:Diff_N2)%>%
+  mutate(name = factor(name, levels=c('Trend_N1', 'Trend_N2', 'Diff_N1', 'Diff_N2')),
+         term = factor(term, levels=rev(c('pop', 
+                       'Trend_PMMOV', 'Trend_HF183', 'Trend_flow', 'Trend_tss',
+                       'Trend_ph', 'Trend_conductivity', "Trend_temperature",
+                       'Diff_PMMOV', 'Diff_HF183', 'Diff_flow', 'Diff_tss', 'Diff_ph',
+                       'Diff_conductivity', "Diff_temperature")))
+          )%>%
+  ggplot(aes(name, term)) +
+  geom_tile(aes(fill = value)) + 
+  geom_text(aes(label = round(value, 3))) +
+  scale_fill_gradient(low = "white", high = "red")+
+  scale_x_discrete(position = "top") +
+  scale_fill_gradientn(colours = colorspace::diverge_hcl(7))
+
+#basePlot
+logPlot
+
+```
+
+
+For a baseline we showed the relationship between N1 and N2 that show an extremely strong correlation clearly due to them measuring the same thing.
+```{r}
+a <- cor(log_trend_df$Trend_N1, log_trend_df$Trend_N2,
+    use = "complete.obs")
+b <- cor(log_trend_df$Diff_N1, log_trend_df$Diff_N2,
+    use = "complete.obs")
+
+c <- cor(trend_df$Trend_N1, trend_df$Trend_N2,
+    use = "complete.obs")
+d <- cor(trend_df$Diff_N1, trend_df$Diff_N2,
+    use = "complete.obs")
+corMat <- matrix(c(a,b,c,d), nrow = 2)
+colnames(corMat) <- c("log", "base")
+rownames(corMat) <- c("trend corr", "detrend corr")
+corMat
+```
+
+
+
+
+```{r fig.height = 15, fig.width= 15 ,eval=FALSE}
+library(ggcorrplot)
+library(GGally)
+
+trend_df%>%
+  mutate(date = as.numeric(date))%>%
+  select(date, pop:CrP_Diff)%>%
+  cor(use = "complete.obs")%>%
+  ggcorrplot()
+trend_df%>%
+  ggpairs(aes(colour = site, alpha = 0.4))
+
+
+log_trend_df%>%
+  select(date, pop, log_N1_Trend:CrP_Diff)%>%
+  mutate(date = as.numeric(date))%>%
+  cor(use = "complete.obs")%>%
+  ggcorrplot()
+log_trend_df%>%
+  ggpairs(aes(colour = site, alpha = 0.4))
+```
