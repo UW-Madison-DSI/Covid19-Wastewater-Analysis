@@ -82,16 +82,15 @@ library(DSIWastewater)
 data(Case_data, package = "DSIWastewater")
 
 #restrict Case data to only Madison data
-Case_DF <- Case_data[Case_data$Site == "Madison",]
+Case_DF <- Case_data[Case_data$site == "Madison",]
 
 
 #restrict Case data to dates after 2021-02-01
 Case_DF <- Case_DF[Case_DF$date  >= as.Date("2020-9-10"),]
 
 #get the case flags
-Case_DF <- buildCaseAnalysisDF(Case_DF)
-
-Case_DF <- Case_DF[,c(1:2, 5, 7)]
+Case_DF <- buildCaseAnalysisDF(Case_DF)%>%
+  select(site, date, conf_case, FirstConfirmed.Per100K, pastwk.avg.casesperday.Per100K)
 
 data(WasteWater_data, package = "DSIWastewater")
 
@@ -110,8 +109,14 @@ LIMSDF$sars_cov2_adj_load <- 10**LIMSDF$sars_cov2_adj_load_log10
 #joining the two data frames together
 FullDF <- full_join(Case_DF, LIMSDF, by = c("date","site"))
 
-FullDF <- FullDF[,c(1:4,6)]
-unique(WasteWater_data$site)
+FullDF <- FullDF[,c(1:5,7)]
+
+library(plotly)
+a <- Case_DF%>%
+  ggplot(aes(x = date, y = conf_case))+
+  geom_point()
+
+ggplotly(a)
 ```
 
 # Data: The first look

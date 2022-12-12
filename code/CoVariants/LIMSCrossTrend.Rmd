@@ -29,7 +29,13 @@ library(dplyr)
 library(ggplot2)
 library(tidyr)
 data("WasteWater_data", package = "DSIWastewater")
-
+a <- WasteWater_data%>%
+  filter(!is.na(county_names))%>%
+  select(county_names)#%>%
+  unique(a$county_names)
+  
+  group_by(site)%>%
+  summarise(mean(county_names, na.rm = TRUE))
 ```
 
 ```{r}
