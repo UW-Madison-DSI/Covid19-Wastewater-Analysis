@@ -103,7 +103,7 @@ ggplot(offsetresults, aes(x=wdateoffset, y=corilationSpearman)) +
 
 ```{r Madison}
 
-cases_madison <- cases_madison %>% mutate(rollingaverage = rollmean(cases_madison$FirstConfirmed, k=7, fill = NA))
+cases_madison <- cases_madison %>% mutate(rollingaverage = rollmean(cases_madison$FirstConfirmed, k=7, fill = NA, align = "center"))
 
 offsetresultsMadison <- data.frame(matrix(ncol = 7, nrow = 0))
 
@@ -142,7 +142,11 @@ ggplot(offsetresultsMadison, aes(x=wdateoffset, y=corilationPearson)) +
   geom_point()
 
 ggplot(offsetresultsMadison, aes(x=wdateoffset, y=corilationKendall)) +
-  geom_point()
+  geom_point(aes(color = wdateoffset %% 7)) +
+  xlab("Wastewater Offset") +
+  ylab("Correlation between N1 and 7 day case average (center)") +
+  ggtitle("Madison only wastewater offset") +
+  scale_color_gradientn(colours = rainbow(7))
 ggplot(offsetresultsMadison, aes(x=wdateoffset, y=corilationSpearman)) +
   geom_point()
 ```
