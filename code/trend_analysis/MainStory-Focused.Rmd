@@ -3,12 +3,12 @@ title: "Heuristic exploration of the relationship between FirstConfirmed.Per100K
 author: "Marlin Lee"
 date: "1/28/2022"
 output:
-  pdf_document: null
+  html_document:
+    df_print: paged
   bookdown::html_document2:
     fig_width: 8
     fig_height: 4
-  html_document:
-    df_print: paged
+  pdf_document: null
 always_allow_html: yes
 editor_options:
   chunk_output_type: inline
