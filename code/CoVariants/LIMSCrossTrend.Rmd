@@ -29,13 +29,6 @@ library(dplyr)
 library(ggplot2)
 library(tidyr)
 data("WasteWater_data", package = "DSIWastewater")
-a <- WasteWater_data%>%
-  filter(!is.na(county_names))%>%
-  select(county_names)#%>%
-  unique(a$county_names)
-  
-  group_by(site)%>%
-  summarise(mean(county_names, na.rm = TRUE))
 ```
 
 ```{r}
@@ -58,10 +51,9 @@ week_outlier_detection <- function(small_vec){
 lims_waste_filt_df <- WasteWater_data%>%
   group_by(site)%>%
   mutate(pop = mean(pop, na.rm=TRUE))%>%
-  select(site, date, pop, N1, N2, PMMoV, hf183, flow, tss,
+  select(regions, site, date, pop, N1, N2, PMMoV, hf183, flow, tss,
          ph, conductivity, temperature)%>%
-  mutate(tss = as.numeric(tss))%>%
-  group_by(site)
+  mutate(tss = as.numeric(tss))
 
 ```
 
@@ -90,7 +82,7 @@ trend_df <- lims_waste_filt_df%>%
     Diff_conductivity = Trend_conductivity - conductivity,
     Diff_temperature = Trend_temperature - temperature
     )%>%
-  select(date, site, pop, Trend_N1:Diff_temperature)
+  select(date, regions, pop, Trend_N1:Diff_temperature)
 ```
 
 
@@ -121,7 +113,7 @@ log_trend_df <- lims_waste_filt_df%>%
     Diff_conductivity = Trend_conductivity - conductivity,
     Diff_temperature = Trend_temperature - temperature
     )%>%
-  select(date, site, pop, Trend_N1:Diff_temperature)
+  select(date, regions, pop, Trend_N1:Diff_temperature)
 ``` 
 
 The heatmap below shows the correlation between the Covid-19 signals and the covariate
@@ -198,8 +190,9 @@ trend_df%>%
   select(date, pop:CrP_Diff)%>%
   cor(use = "complete.obs")%>%
   ggcorrplot()
+
 trend_df%>%
-  ggpairs(aes(colour = site, alpha = 0.4))
+  ggpairs(aes(colour = regions, alpha = 0.4))
 
 
 log_trend_df%>%
@@ -208,5 +201,5 @@ log_trend_df%>%
   cor(use = "complete.obs")%>%
   ggcorrplot()
 log_trend_df%>%
-  ggpairs(aes(colour = site, alpha = 0.4))
+  ggpairs(aes(colour = regions, alpha = 0.4))
 ```
