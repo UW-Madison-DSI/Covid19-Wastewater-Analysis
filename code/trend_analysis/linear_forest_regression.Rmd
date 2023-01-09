@@ -1,0 +1,237 @@
+---
+title: "linear forest Covid-19"
+author: "Marlin"
+date: "2023-01-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r data prep}
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+data(WasteWater_data, package = "DSIWastewater")
+data(Case_data, package = "DSIWastewater")
+
+model_data <- inner_join(Case_data, WasteWater_data, by = c("site", "date"))%>%
+  select(conf_case, N1, N2, tests,
+         regions, date, population_served,
+         PMMoV, flow, ph, conductivity, temperature)%>%
+  mutate(regions = factor(regions), date = as.numeric(date),
+         conf_case = log(conf_case + 1), N1 = log(N1 + 1), N2 = log(N2 + 1))%>%
+  drop_na()
+```
+
+```{r linear forest funcs}
+library(rsample)
+library(purrr)
+library(partykit)
+library(sandwich)
+
+down_sample_forest <- function(data_list, num_features){
+  base_names <- names(analysis(data_list[[1]]))
+  ret_IB <- list()
+  ret_OOB <- list()
+  ln_cols <- base_names[1:4]
+  col_options <- base_names[5:length(base_names)]
+  for(i in 1:length(data_list)){
+    selected_columns <- c(ln_cols, 
+                          sample(x = col_options, size = num_features))
+    
+    ret_IB[[i]] <- (data_list[[i]])%>%
+      analysis()%>%
+      select(any_of(selected_columns))
+  
+    ret_OOB[[i]] <- (data_list[[i]])%>%
+      assessment()%>%
+      select(any_of(selected_columns))
+  }
+  return(list(ret_IB, ret_OOB))
+}
+
+random_linear_forest <- function(data,
+                                 num_tree,
+                                 model_formula,
+                                 num_features = NULL){
+  if(is.null(num_features)){
+    num_features = (length(data) - 3)%>%
+      sqrt()%>%
+      ceiling()
+  }
+  
+  linear_forest <- list(models = NA,
+                        data = data,
+                        resid = NA,
+                        inbag_data = NA,
+                        oob_data = NA,
+                        oob_resid = NA)
+  
+  
+  
+  data$index <- 1:nrow(data)
+  data <- data%>%
+    select(index, everything())
+  
+  Boot_list_DF <- bootstraps(data, times = num_tree)$splits
+  Boot_list_DF <- down_sample_forest(Boot_list_DF, num_features = num_features)
+  
+  linear_forest$inbag_data <- Boot_list_DF[[1]]
+  linear_forest$oob_data <- Boot_list_DF[[2]]
+  
+  
+  glmtree_func <- function(data) {
+    data%>%
+      select(-index)%>%
+      glmtree(
+        formula = model_formula,
+        data = ., family = gaussian,
+        na.action = na.pass,
+        maxdepth = 3)
+      }
+  linear_forest$models <- linear_forest$inbag_data%>%
+          lapply(glmtree_func)
+  
+  linear_forest$resid <- data$conf_case - predict_tree(linear_forest$models, data)
+  
+  linear_forest$oob_resid <- gen_OOB_pred(linear_forest,
+                                resid = TRUE)
+  
+  return(linear_forest)
+}
+```
+
+
+```{r tree tools}
+predict_tree <- function(tree_model, new_data){
+  lapply(tree_model$models, predict, newdata = new_data)%>% 
+  transpose()%>%
+  lapply(unlist)%>%
+  lapply(mean)%>%
+  unlist()
+}
+
+gen_OOB_pred <- function(Tree_Model, 
+                         incMSE = NA, resid = FALSE){
+  model_list <- Tree_Model$models
+  oob_data_list <- Tree_Model$oob_data
+  num_trees <- length(model_list)
+  temp_pred <- list()
+  for(i in 1:num_trees){
+    pred_name <- as.name(paste0("pred_", i))
+    assessment_DF <- oob_data_list[[i]]
+    if(!is.na(incMSE) & incMSE %in% names(assessment_DF)){
+      assessment_DF[incMSE] <- sample(pull(assessment_DF,incMSE))
+    }
+    
+    pred_output <- assessment_DF%>%
+      mutate(!!pred_name := predict(model_list[[i]], newdata = .))
+    
+    temp_pred[[i]] <- pred_output%>%
+      select(index, conf_case, !!pred_name)
+  }
+  ret <- plyr::join_all(temp_pred, by = "index", type='full')
+  if(resid){
+    ret_pred <- ret%>%
+      select(-index, -conf_case)%>%
+      rowMeans(na.rm = TRUE)
+    return(ret$conf_case - ret_pred)
+  }else{
+    return(ret)
+  }
+}
+
+gen_INCMSE <- function(Tree_Model){
+  model_list <- Tree_Model$models
+  oob_data_list <- Tree_Model$oob_data
+  col_names <- names(Tree_Model$data)
+  ret_DF_list <- list()
+  base_MSE <- (gen_OOB_pred(Tree_Model,
+                                resid = TRUE)**2)%>%
+              mean(na.rm = TRUE)
+  for(i in 5:(length(col_names))){
+    I_MSE <- (gen_OOB_pred(Tree_Model,
+                           incMSE = col_names[i],
+                           resid = TRUE)**2)%>%
+              mean(na.rm = TRUE)
+    ret_DF_list[[i - 4]] <- data.frame(
+      incMSE = 100*(I_MSE - base_MSE)/base_MSE,
+                                   var = col_names[i])
+  }
+  ret <- bind_rows(ret_DF_list)
+  return(ret)
+}
+
+MSE <- function(true, pred){
+  mean((true - pred)**2, na.rm = TRUE)
+}
+```
+
+```{r modeling}
+train_df <- model_data%>%
+  slice_sample(prop = 0.70)
+test_df  <- model_data%>%
+  anti_join(train_df)
+
+
+forest_model <- random_linear_forest(train_df, 500, 
+                                     conf_case ~ N1 + N2 | . - N1 - N2)
+
+MSE(predict_tree(forest_model, test_df), test_df$conf_case)
+
+test_df$pred <- predict_tree(forest_model, test_df)
+
+test_df%>%
+  ggplot(aes(x = N1, y = conf_case - pred))+
+  geom_point()
+
+lm_model <- lm(conf_case ~ N1 + N2, data = train_df)
+MSE(predict(lm_model, test_df), test_df$conf_case)
+
+A <- gen_INCMSE(forest_model)
+A
+```
+
+
+
+
+
+
+```{r testing}
+OOB_MSE <- function(Tree_model){
+  pred_DF = gen_OOB_pred(Tree_model)
+  OOB_MSE_TREE <- list()
+  for(i in 1:length(Tree_model$models)){
+    OOB_MSE_TREE[[i]] <- pred_DF%>%
+      mutate(mean_pred = rowMeans(select(pred_DF,
+                                         pred_1:paste0("pred_",i)),
+                                  na.rm = TRUE))%>%
+      summarise(
+        model_MSE = MSE(conf_case, mean_pred)
+      )%>%
+      mutate(num_tree = i)
+  }
+  return(bind_rows(OOB_MSE_TREE))
+}
+
+temp <- OOB_MSE(forest_model)
+
+temp%>%
+  ggplot(aes(y = model_MSE, x = num_tree))+
+  geom_line()
+
+#500
+#1/3
+#1,3,4,5,6,7,8,10,12,14,16
+#1/3
+```
+
+
+
+
+
+

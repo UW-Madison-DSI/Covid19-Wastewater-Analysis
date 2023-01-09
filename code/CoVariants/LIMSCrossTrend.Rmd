@@ -29,6 +29,18 @@ library(dplyr)
 library(ggplot2)
 library(tidyr)
 data("WasteWater_data", package = "DSIWastewater")
+
+WasteWater_data%>%
+  distinct(regions, county,site)%>%
+  group_by(county)%>%
+  summarise(n = n())%>%
+  arrange(desc(n))
+
+WasteWater_data%>%
+  distinct(regions, county,site)%>%
+  group_by(regions)%>%
+  summarise(n = n())%>%
+  arrange(desc(n))
 ```
 
 ```{r}
