@@ -14,6 +14,10 @@ library(anytime)
 library(ggpubr)
 library(lubridate)
 library(zoo)
+library(TSstudio)
+library(plotly)
+library(grid)
+library(gridExtra)
 ```
 
 
@@ -24,6 +28,16 @@ cases$date <- anydate(cases$date)
 
 data(WasteWater_data, package = "DSIWastewater")
 waste <- WasteWater_data
+<<<<<<< HEAD
+#waste <- waste %>% rename(date = date, site = site)
+waste$date <- anydate(waste$date)
+
+cases_madison <- cases %>% filter(site == "Madison")
+waste_madison <- waste %>% filter(grepl('Madison', site)) %>% select("site","date","N1","N2","PMMoV") #1,7,10,12,14
+waste_madison$site <- paste0("Madison")
+waste2 <- waste %>% group_by(date)  %>% summarise(N1 = exp(mean(log(c(N1,N2)))), N2 = mean(N2), PMMoV = mean(PMMoV))
+waste_madison <- waste_madison %>% group_by(date)  %>% summarise(N1 = sum(N1), N2 = sum(N2), PMMoV = sum(PMMoV))
+=======
 
 cases_madison <- cases%>% 
   filter(site == "Madison")
@@ -44,11 +58,22 @@ waste_madison <- waste_madison %>%
   summarise(N1 = sum(N1),
             N2 = sum(N2),
             PMMoV = sum(PMMoV))
+>>>>>>> e58e2f6c25c5b7c091fa55de1d1d6a434098d585
 
 ```
 
 ```{r}
 
+<<<<<<< HEAD
+waste  <- waste %>% select("site","date","N1","N2","PMMoV") 
+```
+
+```{r all}
+waste <- waste %>% group_by(date)  %>% summarise(N1 = exp(mean(log(c(N1,N2)))), N2 = sum(N2), PMMoV = sum(PMMoV))
+
+cases <- cases %>% group_by(date)  %>% summarise(conf_case = mean(conf_case))# + prob_case
+casesavg <- cases %>% group_by(date)  %>% summarise(conf_case = mean(conf_case))
+=======
 waste  <- waste %>% 
   select(site, date, N1, N2, PMMoV) 
 ```
@@ -67,6 +92,7 @@ cases <- cases%>%
 casesavg <- cases%>%
   group_by(date)%>%
   summarise(conf_case = mean(conf_case))
+>>>>>>> e58e2f6c25c5b7c091fa55de1d1d6a434098d585
 ```
 
 ```{r}
@@ -75,8 +101,12 @@ MSE <- function(baseVal, meanVal){
   return(ret)
 }
 
+<<<<<<< HEAD
+cases <- cases %>% mutate(rollingaverage = rollmean(cases$conf_case, k=7, fill = NA))
+=======
 cases <- cases %>% 
   mutate(rollingaverage = rollmean(cases$conf_case, k=7, fill = NA))
+>>>>>>> e58e2f6c25c5b7c091fa55de1d1d6a434098d585
 
 offsetresults <- data.frame(matrix(ncol = 7, nrow = 0))
   
@@ -89,6 +119,11 @@ for(i in -30:30){
   
   temp <- merge(wasteTemp, cases, by.x = "tempdate" ,by.y = "date")  
   temp <- na.omit(temp)
+<<<<<<< HEAD
+  temp <- temp %>% mutate(proportionRolling = temp$N1/temp$rollingaverage,proportion = temp$N1/temp$conf_case, mse = MSE(temp$N1/temp$rollingaverage,mean(temp$N1/temp$rollingaverage)),)
+  temp <- na.omit(temp)
+  new <- c(i,mean(temp$proportion),mean(temp$proportionRolling),mean(temp$mse), cor(temp$N1,temp$rollingaverage,method = "pearson"), cor(temp$N1,temp$rollingaverage,method = "kendall"), cor(temp$N1,temp$rollingaverage,method = "spearman"))
+=======
   temp <- temp %>% 
     mutate(proportionRolling = temp$N1/temp$rollingaverage,
                           proportion = temp$N1/temp$conf_case, 
@@ -102,6 +137,7 @@ for(i in -30:30){
                method = "pearson"), 
            cor(temp$N1,temp$rollingaverage,method = "kendall"),
            cor(temp$N1,temp$rollingaverage,method = "spearman"))
+>>>>>>> e58e2f6c25c5b7c091fa55de1d1d6a434098d585
   
   offsetresults[nrow(offsetresults) + 1, ] <- new  
 }
@@ -143,9 +179,13 @@ ggplot(offsetresults, aes(x=wdateoffset, y=corilationSpearman)) +
 
 ```{r Madison}
 
+<<<<<<< HEAD
+cases_madison <- cases_madison %>% mutate(rollingaverage = rollmean(cases_madison$conf_case, k=7, fill = NA, align = "center"))
+=======
 cases_madison <- cases_madison%>%
   mutate(rollingaverage = rollmean(cases_madison$conf_case,
                                    k=7, fill = NA, align = "center"))
+>>>>>>> e58e2f6c25c5b7c091fa55de1d1d6a434098d585
 
 offsetresultsMadison <- data.frame(matrix(ncol = 7, nrow = 0))
 
@@ -158,6 +198,11 @@ for(i in -30:30){
   
   temp2 <- merge(wasteTempMadison, cases_madison, by.x = "tempdate" ,by.y = "date")  
   temp2 <- na.omit(temp2)
+<<<<<<< HEAD
+  temp2 <- temp2 %>% mutate(proportionRolling = temp2$N1/temp2$rollingaverage,proportion = temp2$N1/temp2$conf_case, mse = MSE(temp2$N1/temp2$rollingaverage,mean(temp2$N1/temp2$rollingaverage)),)
+  temp2 <- na.omit(temp2)
+  new <- c(i,mean(temp2$proportion),mean(temp2$proportionRolling),mean(temp2$mse), cor(temp2$N1,temp2$rollingaverage,method = "pearson"), cor(temp2$N1,temp2$rollingaverage,method = "kendall"), cor(temp2$N1,temp2$rollingaverage,method = "spearman"))
+=======
   temp2 <- temp2 %>% 
     mutate(proportionRolling = temp2$N1/temp2$rollingaverage,
            proportion = temp2$N1/temp2$conf_case, 
@@ -171,6 +216,7 @@ for(i in -30:30){
                method = "pearson"), 
            cor(temp2$N1,temp2$rollingaverage,method = "kendall"),
            cor(temp2$N1,temp2$rollingaverage,method = "spearman"))
+>>>>>>> e58e2f6c25c5b7c091fa55de1d1d6a434098d585
   
   offsetresultsMadison[nrow(offsetresultsMadison) + 1, ] <- new  
 }
@@ -215,6 +261,14 @@ ggplot(offsetresultsMadison, aes(x=wdateoffset, y=corilationSpearman)) +
 ```{r }
 year_week <- function(x,base) week(x) - week(base) + 52*(year(x) - year(base))
 
+<<<<<<< HEAD
+SampleFeqData <- WasteWater_data %>% select("site","date","pop") #c(1,3,14)
+SampleFeqData <- na.omit(SampleFeqData)
+
+SampleFeqData <- SampleFeqData %>% mutate(week = year_week(anydate(date), "2020-01-01")) %>% group_by(site, week) %>% mutate(sampleFrequency = n()) %>% ungroup() %>% group_by(site) %>% mutate(avgSampleFrequency = mean(sampleFrequency), freq = round(avgSampleFrequency)) %>% ungroup()
+
+SampleFeqData <- SampleFeqData %>% group_by(site) %>% mutate(totalSamples = sum(sampleFrequency)) %>% ungroup()
+=======
 SampleFeqData <- WasteWater_data %>% 
   select(date, site, N1, pop) 
 
@@ -234,20 +288,25 @@ SampleFeqData <- SampleFeqData %>%
   group_by(site) %>% 
   mutate(totalSamples = sum(sampleFrequency)) %>% 
   ungroup()
+>>>>>>> e58e2f6c25c5b7c091fa55de1d1d6a434098d585
 
 ```
 
 ```{r}
 #graph <- 
+<<<<<<< HEAD
+SampleFeqData %>% group_by(site) %>% ggplot(aes(x=as.numeric(pop), y=avgSampleFrequency, color=(totalSamples)/avgSampleFrequency, info=site)) + 
+=======
 SampleFeqData %>% 
   group_by(site) %>% 
   ggplot(aes(x=as.numeric(pop),
              y=avgSampleFrequency, color=(totalSamples)/avgSampleFrequency, info=site)) + 
+>>>>>>> e58e2f6c25c5b7c091fa55de1d1d6a434098d585
   geom_point() +
   scale_colour_gradientn(colours=rainbow(5)) +
   scale_x_log10()
 
-library(plotly)
+
 #ggplotly(graph)
 
 unique(SampleFeqData$freq)
@@ -260,12 +319,17 @@ unique(SampleFeqData$freq)
 
 
 ```{r}
+<<<<<<< HEAD
+onePerWeek <- SampleFeqData %>% filter(freq >= 1)
+onePerWeek <- onePerWeek %>% distinct(site, .keep_all = TRUE) %>% subset(select = -c(3,4,5))
+=======
 onePerWeek <- SampleFeqData %>% 
   filter(freq >= 1)
 
 onePerWeek <- onePerWeek %>% 
   distinct(site, .keep_all = TRUE) %>% 
   subset(select = -c(3,4,5))
+>>>>>>> e58e2f6c25c5b7c091fa55de1d1d6a434098d585
 ```
 
 
@@ -276,6 +340,14 @@ onePerWeek <- onePerWeek %>%
 SFwaste <- WasteWater_data[WasteWater_data$site %in% onePerWeek$site,]
 #unique(SFwaste$site)
 
+<<<<<<< HEAD
+SFwaste <- SFwaste %>% group_by(site, week = week(anydate(date))) %>% mutate(sampleFrequency = n()) %>% ungroup()
+
+SFwaste <- SFwaste %>% group_by(site) %>% 
+  mutate(avgSampleFrequency = mean(sampleFrequency))
+
+#SFwaste <- SFwaste  %>% rename(date = date, site = site)
+=======
 SFwaste <- SFwaste %>% 
   group_by(site, week = week(anydate(date))) %>% 
   mutate(sampleFrequency = n()) %>%
@@ -285,10 +357,22 @@ SFwaste <- SFwaste %>%
   group_by(site) %>% 
   mutate(avgSampleFrequency = mean(sampleFrequency))
 
+>>>>>>> e58e2f6c25c5b7c091fa55de1d1d6a434098d585
 SFwaste$date <- anydate(SFwaste$date)
 
 
 
+<<<<<<< HEAD
+SFwaste  <- SFwaste %>% select("site","date","pop","N1","N2","sampleFrequency") #1, 3, 7,10,14,33
+SFwaste <- na.omit(SFwaste)
+
+
+#SFwaste <- SFwaste %>% group_by(date,site)  %>% summarise(N1 = sum(N1), N2 = sum(N2))
+
+
+
+
+=======
 SFwaste  <- SFwaste %>% 
   select(site, pop, date, N1, N2, avgSampleFrequency)#1, 3, 7,10,14,33) 
 
@@ -298,16 +382,21 @@ SFwaste <- na.omit(SFwaste)
 SFwaste <- SFwaste %>% 
   group_by(date, site) %>% 
   summarise(N1 = sum(N1), N2 = sum(N2))
+>>>>>>> e58e2f6c25c5b7c091fa55de1d1d6a434098d585
 ```
 
 ```{r}
 SFcases <- Case_data
 
 SFcases$date <- anydate(SFcases$date)
+<<<<<<< HEAD
+SFcases <- SFcases %>% group_by(date,site)  %>% summarise(conf_case = sum(conf_case)) %>% mutate(rollingaverage = rollmean(conf_case, k=7, fill = NA))
+=======
 SFcases <- SFcases %>% 
   group_by(date,site) %>% 
   summarise(conf_case = sum(conf_case)) %>% 
   mutate(rollingaverage = rollmean(conf_case, k=7, fill = NA))
+>>>>>>> e58e2f6c25c5b7c091fa55de1d1d6a434098d585
 ```
 
 ```{r offset by sample frequency}
@@ -320,6 +409,13 @@ for(i in -30:30){
   
   #smooth case data
   
+<<<<<<< HEAD
+  temp <- merge(SFwasteTemp, SFcases, by =c("date","site"), all = TRUE)  
+  temp <- na.omit(temp)
+  temp <- temp %>% mutate(proportionRolling = temp$N1/temp$rollingaverage,proportion = temp$N1/temp$conf_case, mse = MSE(temp$N1/temp$rollingaverage,mean(temp$N1/temp$rollingaverage)),)
+   temp <- na.omit(temp)
+  new <- c(i,mean(temp$proportion),mean(temp$proportionRolling),mean(temp$mse), cor(temp$N1,temp$rollingaverage,method = "pearson"), cor(temp$N1,temp$rollingaverage,method = "kendall"), cor(temp$N1,temp$rollingaverage,method = "spearman"))
+=======
   temp <- merge(SFwasteTemp, SFcases, by = c("date","site"), all = TRUE)
   
   temp <- na.omit(temp)
@@ -337,6 +433,7 @@ for(i in -30:30){
            cor(temp$N1,temp$rollingaverage, method = "pearson"),
            cor(temp$N1,temp$rollingaverage, method = "kendall"),
            cor(temp$N1,temp$rollingaverage, method = "spearman"))
+>>>>>>> e58e2f6c25c5b7c091fa55de1d1d6a434098d585
   
   
   offsetresultsSF[nrow(offsetresultsSF) + 1, ] <- new  
@@ -378,22 +475,31 @@ ggplot(offsetresultsSF, aes(x=wdateoffset, y=corilationSpearman)) +
 
 ```{r}
 
+<<<<<<< HEAD
+wasteTemp2 <-  waste2 %>% group_by(date) #%>% mutate(avgn1 = mean(N1))#average all samples
+casesTemp <-  casesavg %>% group_by(date) %>% filter(date > anydate("2020-09-02"))
+=======
 wasteTemp2 <-  waste2 %>% 
   group_by(date) #%>% mutate(avgn1 = mean(N1))#average all samples
 casesTemp <-  casesavg %>% 
   group_by(date) %>% 
   filter(date > anydate("2020-09-02"))
+>>>>>>> e58e2f6c25c5b7c091fa55de1d1d6a434098d585
 wasteccf <- wasteTemp2[order(wasteTemp2$date),]
 
 casesccf <-  casesTemp[order(casesTemp$date),]
 
 #ccf(wasteccf$avgn1, casesccf$conf_case,na.action = na.pass)
 #ccf(wasteccf$avgn1, casesccf$rollingaverage,na.action = na.pass)
+<<<<<<< HEAD
+#ccf(wasteccf$N1, casesccf$rollingaverage,na.action = na.pass,lag.max = 30)
+=======
 ccf(wasteccf$N1, casesccf$rollingaverage,na.action = na.pass,lag.max = 30)
+>>>>>>> e58e2f6c25c5b7c091fa55de1d1d6a434098d585
 ```
 
 ```{r}
-library(TSstudio)
+
 wasten1 <- wasteccf[c(1,2)]# 1 = date, 2 = n1, 3 = n2, 4 = ppmov
 casesrolling <- casesccf[c(1,2)] #1 = date, 2 = conf_case, 3 = rollingaverage
 wastecaselag <- merge(wasten1, casesrolling, by.x = "date", by.y="date")
@@ -444,7 +550,7 @@ cor(wastecaselag$N1,wastecaselag$rollingaverage) #weak corrilation but if agains
 
 
 ```{r}
-library(gridExtra)
+
 waste[!is.na(waste$date),]
 cases[!is.na(cases$date),]
 waste$date <- anydate(waste$date)
@@ -455,7 +561,7 @@ par(mfrow = c(1, 2))
 ```
 
 ```{r}
-library(grid)
+
 casesplot <- ggplot(wastecase, aes(x=date, y=rollingaverage)) +
   geom_line() +
   ylab("7-day Case Average") +
