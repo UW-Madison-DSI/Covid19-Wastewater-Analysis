@@ -1,0 +1,240 @@
+---
+title: "offset_by_variant"
+author: "Kyllan Wunder"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(anytime)
+library(ggpubr)
+library(lubridate)
+library(zoo)
+library(reshape2)
+library(scales)
+library(plotly)
+library(tidyverse)
+library(psych)
+```
+
+
+```{r data}
+
+data(Case_data, package = "DSIWastewater")
+cases <- Case_data
+
+data(WasteWater_data, package = "DSIWastewater")
+waste <- WasteWater_data
+
+data(Covariants_data, package = "DSIWastewater")
+covar <- Covariants_data
+
+
+
+```
+
+```{r functions}
+
+MSE <- function(baseVal, meanVal){
+  ret <- mean((baseVal - meanVal)^2)
+  return(ret)
+}
+
+
+Offset <-function(length, startdate, enddate, casesdf, wastedf){
+  
+  wastedf <- subset(wastedf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
+  casesdf <- subset(casesdf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
+
+  wastedf <- wastedf%>% 
+  group_by(date)%>% 
+  summarise(N1 = mean(N1),
+            N2 = mean(N2),
+            PMMoV = mean(PMMoV)) %>% 
+  mutate(geo_mean = exp((log(N1) + log(N2))/2)) %>% 
+  drop_na(geo_mean)
+
+
+
+  casesdf <- casesdf %>%
+    group_by(date) %>% 
+    summarise(conf_case = mean(conf_case)) %>%
+    mutate(rollingaverage = rollmean(conf_case, k=7, fill = NA)) %>%
+    drop_na(rollingaverage)
+
+  offsetresults <- data.frame(matrix(ncol = 7, nrow = 0))
+  
+  for(i in -length:length){
+  
+    wasteTemp <- wastedf %>% 
+      mutate(tempdate = as.Date(wastedf$date + i))
+    
+    temp <- merge(casesdf, wasteTemp, by.x = "date" ,by.y = "tempdate") 
+    
+    temp <- temp %>% 
+      mutate(proportionRolling = temp$geo_mean/temp$rollingaverage,
+            proportion = temp$geo_mean/temp$conf_case, 
+            mse = MSE(temp$geo_mean/temp$rollingaverage,
+            mean(temp$geo_mean/temp$rollingaverage)))
+    
+    temp <- na.omit(temp)
+    new <- c(i,mean(temp$proportion),
+              mean(temp$proportionRolling),
+              mean(temp$mse), 
+              cor(temp$geo_mean,temp$rollingaverage,method = "pearson"), 
+              cor(temp$geo_mean,temp$rollingaverage,method = "kendall"),
+              cor(temp$geo_mean,temp$rollingaverage,method = "spearman"))
+    
+    offsetresults[nrow(offsetresults) + 1, ] <- new  
+  }
+
+  offsetresults <- offsetresults %>% rename(wdateoffset=X1,
+                                            wcratio=X2,
+                                            wcratiorolling=X3,
+                                            meanMSErolling=X4,
+                                            corilationPearson=X5,
+                                            corilationKendall=X6,
+                                            corilationSpearman=X7)
+  return(offsetresults)
+}
+
+#' Title
+#'
+#' @param data 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+Graph <- function(data){
+  wc <- ggplot(data, aes(x=wdateoffset, y=wcratio)) +
+    geom_point() +
+    geom_point(data = data[which.max(data$wcratio),], color = "red") +    
+    ylab("Waste-to-case ratio") +
+    xlab("Wastewater Offset") +
+    ggtitle("Waste-to-case ratio")
+  
+  wcrolling <- ggplot(data, aes(x=wdateoffset, y=wcratiorolling)) +
+    geom_point() + 
+    geom_point(data = data[which.min(data$wcratiorolling),], color = "red") +
+    ylab("Wastewater to Case ratio") +
+    xlab("Wastewater Offset") +
+    ggtitle("Rolling waste-to-case ratio") +
+    geom_text(data = data[which.min(data$wcratiorolling),], aes(wdateoffset,wcratiorolling, label = paste(wdateoffset, " " ,sep = "\n")))
+
+  mse <- ggplot(data, aes(x=wdateoffset, y=meanMSErolling)) +
+    geom_point() +
+    geom_point(data = data[which.min(data$meanMSErolling),], color = "red") +
+    ylab("Rolling Average MSE") +
+    xlab("Wastewater Offset") +
+    ggtitle("Rolling average MSE") +
+    geom_text(data = data[which.min(data$meanMSErolling),], aes(wdateoffset,meanMSErolling, label = paste(wdateoffset, " " ,sep = "\n")))
+
+  pearson <- ggplot(data, aes(x=wdateoffset, y=corilationPearson)) +
+    geom_point() +
+    geom_point(data = data[which.max(data$corilationPearson),], color = "red") +
+    ylab("Pearson Correlation") +
+    xlab("Wastewater Offset") +
+    ggtitle("Pearson") +
+    geom_text(data = data[which.max(data$corilationPearson),], aes(wdateoffset,corilationPearson, label = paste(" " ,wdateoffset,sep = "\n")))
+  
+  kendall <- ggplot(data, aes(x=wdateoffset, y=corilationKendall)) +
+    geom_point()+
+    geom_point(data = data[which.max(data$corilationKendall),], color = "red") +
+    ylab("Kendall correlation") +
+    xlab("Wastewater Offset") +
+    ggtitle("Kendall") +
+    geom_text(data = data[which.max(data$corilationKendall),], aes(wdateoffset,corilationKendall, label = paste(" " ,wdateoffset,sep = "\n")))
+  
+  spearman <- ggplot(data, aes(x=wdateoffset, y=corilationSpearman)) +
+    geom_point() +
+    geom_point(data = data[which.max(data$corilationSpearman),], color = "red") +
+    ylab("Spearman Correlation") +
+    xlab("Wastewater Offset") +
+    ggtitle("Spearman") +
+    geom_text(data = data[which.max(data$corilationSpearman),], aes(wdateoffset,corilationSpearman, label = paste(" " ,wdateoffset,sep = "\n")))
+  
+  grid.arrange(wc,wcrolling,mse,pearson,kendall,spearman,ncol=2)
+}
+```
+
+
+```{r}
+
+outputfinal <- Offset(20, as.Date("2020-01-01"), as.Date("2023-01-01"), cases, waste)
+
+Graph(outputfinal)
+
+
+```
+
+
+```{r}
+
+covar$category <- row.names(covar)
+onlycovar <- covar[-c(1,2)]
+mdfr <- melt(onlycovar, id.vars = "category")
+
+p <- ggplot(mdfr, aes(factor(category,levels = c(1:69)), value, fill = variable)) +
+    geom_bar(position = "fill", stat = "identity") +
+    scale_y_continuous(labels = percent) +
+    xlab("Week") +
+    ylab("Covariant Percent")
+
+ggplotly(p)
+
+
+percentages <- mdfr %>%
+  group_by(category) %>%
+  mutate(sum = sum(value), percent = value/sum, majority = case_when(percent > .5 ~ paste(variable)))
+
+per <- percentages %>% drop_na(majority)
+  
+
+p2 <- ggplot(per, aes(x=category, y=percent,color=majority)) +
+  geom_point()
+  
+  ggplotly(p2)
+#9-20 2020-08-17 2021-01-18
+#25-29 2021-03-29 2021-05-24
+#32-43 2021-07-05 2021-12-06
+#44-50 2021-12-20 2022-03-14
+#51-54 2022-03-28 2022-05-09
+#55-56 2022-05-23 2022-06-06
+#58-67 2022-07-04 2022-11-07
+#69-   2022-12-05
+```
+```{r}
+outputfinal <- Offset(10, as.Date("2020-08-17"), as.Date("2021-01-18"), cases, waste)
+Graph(outputfinal)
+
+outputfinal <- Offset(10, as.Date("2021-03-29"), as.Date("2021-05-24"), cases, waste)
+Graph(outputfinal)
+
+outputfinal <- Offset(10, as.Date("2021-07-05"), as.Date("2021-12-06"), cases, waste)
+Graph(outputfinal)
+
+outputfinal <- Offset(10, as.Date("2021-12-20"), as.Date("2022-03-14"), cases, waste)
+Graph(outputfinal)
+
+outputfinal <- Offset(10, as.Date("2022-03-28"), as.Date("2022-05-09"), cases, waste)
+Graph(outputfinal)
+
+outputfinal <- Offset(10, as.Date("2022-05-23"), as.Date("2022-06-06"), cases, waste)
+Graph(outputfinal)
+
+outputfinal <- Offset(10, as.Date("2022-07-04"), as.Date("2022-11-07"), cases, waste)
+Graph(outputfinal)
+
+outputfinal <- Offset(10, as.Date("2022-12-05"), as.Date("2023-01-01"), cases, waste)
+Graph(outputfinal)
+
+
+#add time widow to dates 
+#add 1 time window
+```
+
