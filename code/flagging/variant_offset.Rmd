@@ -19,6 +19,7 @@ library(scales)
 library(plotly)
 library(tidyverse)
 library(psych)
+library(timetk)
 ```
 
 
@@ -110,7 +111,7 @@ Offset <-function(length, startdate, enddate, casesdf, wastedf){
 #' @export
 #'
 #' @examples
-Graph <- function(data){
+Graph <- function(data,title){
   wc <- ggplot(data, aes(x=wdateoffset, y=wcratio)) +
     geom_point() +
     geom_point(data = data[which.max(data$wcratio),], color = "red") +    
@@ -158,7 +159,7 @@ Graph <- function(data){
     ggtitle("Spearman") +
     geom_text(data = data[which.max(data$corilationSpearman),], aes(wdateoffset,corilationSpearman, label = paste(" " ,wdateoffset,sep = "\n")))
   
-  grid.arrange(wc,wcrolling,mse,pearson,kendall,spearman,ncol=2)
+  grid.arrange(wc,wcrolling,mse,pearson,kendall,spearman,ncol=2,bottom=title)
 }
 ```
 
@@ -167,7 +168,7 @@ Graph <- function(data){
 
 outputfinal <- Offset(20, as.Date("2020-01-01"), as.Date("2023-01-01"), cases, waste)
 
-Graph(outputfinal)
+Graph(outputfinal,"All Wisconsin data over all time")
 
 
 ```
@@ -199,42 +200,145 @@ p2 <- ggplot(per, aes(x=category, y=percent,color=majority)) +
   geom_point()
   
   ggplotly(p2)
-#9-20 2020-08-17 2021-01-18
-#25-29 2021-03-29 2021-05-24
-#32-43 2021-07-05 2021-12-06
-#44-50 2021-12-20 2022-03-14
-#51-54 2022-03-28 2022-05-09
-#55-56 2022-05-23 2022-06-06
-#58-67 2022-07-04 2022-11-07
-#69-   2022-12-05
+#9-20 2020-08-17 2021-01-18  S.677H.Robin1
+#25-29 2021-03-29 2021-05-24 X20I..Alpha..V1.
+#32-43 2021-07-05 2021-12-06 X21J..Delta.
+#44-50 2021-12-20 2022-03-14 X21K..Omicron.
+#51-54 2022-03-28 2022-05-09 X21L..Omicron.
+#55-56 2022-05-23 2022-06-06 X22C..Omicron.
+#58-67 2022-07-04 2022-11-07 X22B..Omicron.
+#69-   2022-12-05 
 ```
 ```{r}
-outputfinal <- Offset(10, as.Date("2020-08-17"), as.Date("2021-01-18"), cases, waste)
-Graph(outputfinal)
-
-outputfinal <- Offset(10, as.Date("2021-03-29"), as.Date("2021-05-24"), cases, waste)
-Graph(outputfinal)
-
-outputfinal <- Offset(10, as.Date("2021-07-05"), as.Date("2021-12-06"), cases, waste)
-Graph(outputfinal)
-
-outputfinal <- Offset(10, as.Date("2021-12-20"), as.Date("2022-03-14"), cases, waste)
-Graph(outputfinal)
-
-outputfinal <- Offset(10, as.Date("2022-03-28"), as.Date("2022-05-09"), cases, waste)
-Graph(outputfinal)
-
-outputfinal <- Offset(10, as.Date("2022-05-23"), as.Date("2022-06-06"), cases, waste)
-Graph(outputfinal)
-
-outputfinal <- Offset(10, as.Date("2022-07-04"), as.Date("2022-11-07"), cases, waste)
-Graph(outputfinal)
-
-outputfinal <- Offset(10, as.Date("2022-12-05"), as.Date("2023-01-01"), cases, waste)
-Graph(outputfinal)
+#2 weeks before and 2 weeks after
+#2020-08-17 2021-01-18
+outputfinal <- Offset(10, as.Date("2020-08-03"), as.Date("2021-02-01"), cases, waste)
+Graph(outputfinal,"24 weeks, S.677H.Robin1")
+#2021-03-29 2021-05-24
+outputfinal <- Offset(10, as.Date("2021-03-15"), as.Date("2021-06-07"), cases, waste)
+Graph(outputfinal,"6 weeks, X20I..Alpha..V1.")
+#2021-07-05 2021-12-06
+outputfinal <- Offset(10, as.Date("2021-06-21"), as.Date("2021-12-20"), cases, waste)
+Graph(outputfinal,"24 weeks, X21J..Delta.")
+#2021-12-20 2022-03-14
+outputfinal <- Offset(10, as.Date("2021-12-06"), as.Date("2022-03-28"), cases, waste)
+Graph(outputfinal,"14 weeks, X21K..Omicron.")
+#2022-03-28 2022-05-09
+outputfinal <- Offset(10, as.Date("2022-03-14"), as.Date("2022-05-23"), cases, waste)
+Graph(outputfinal, "8 weeks, X21L..Omicron.")
+#2022-05-23 2022-06-06
+outputfinal <- Offset(10, as.Date("2022-05-09"), as.Date("2022-06-20"), cases, waste)
+Graph(outputfinal, "4 weeks, X22B..Omicron.")
+#2022-07-04 2022-11-07
+outputfinal <- Offset(10, as.Date("2022-06-20"), as.Date("2022-11-28"), cases, waste)
+Graph(outputfinal, "20 weeks, X22B..Omicron.")
+#2022-12-05 -
+outputfinal <- Offset(10, as.Date("2022-11-28"), as.Date("2023-01-01"), cases, waste)
+Graph(outputfinal, "2+ weeks, X22E..Omicron.")
 
 
 #add time widow to dates 
 #add 1 time window
+```
+```{r}
+#6 month chunks
+outputfinal <- Offset(10, as.Date("2020-08-01"), as.Date("2021-02-01"), cases, waste)
+Graph(outputfinal,"1")
+
+outputfinal <- Offset(10, as.Date("2021-02-01"), as.Date("2021-08-01"), cases, waste)
+Graph(outputfinal,"2")
+
+outputfinal <- Offset(10, as.Date("2021-08-01"), as.Date("2022-02-01"), cases, waste)
+Graph(outputfinal,"3")
+
+outputfinal <- Offset(10, as.Date("2022-02-01"), as.Date("2022-08-01"), cases, waste)
+Graph(outputfinal,"4")
+
+outputfinal <- Offset(10, as.Date("2022-08-01"), as.Date("2023-02-01"), cases, waste)
+Graph(outputfinal, "5")
+
+```
+
+
+
+```{r}
+wastedf <- waste
+casesdf <- cases
+
+#wasteccf <- function(wastedf, casesdf){
+  wastedf <- drop_na(wastedf, date)
+  casesdf <- drop_na(casesdf, date)
+  startdate <- max(c(min(wastedf$date),min(casesdf$date)))
+  enddate <- min(c(max(wastedf$date),max(casesdf$date)))
+  #enddate <- as.Date("2022-01-01")
+  wastedf <- subset(wastedf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
+  casesdf <- subset(casesdf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
+
+  wastedf <- wastedf%>% 
+  group_by(date)%>% 
+  summarise(N1 = mean(N1),
+            N2 = mean(N2),
+            PMMoV = mean(PMMoV)) %>% 
+  mutate(geo_mean = exp((log(N1) + log(N2))/2)) %>% 
+  drop_na(geo_mean)
+
+
+
+  casesdf <- casesdf %>%
+    group_by(date) %>% 
+    summarise(conf_case = mean(conf_case)) %>%
+    mutate(rollingaverage = rollmean(conf_case, k=7, fill = NA)) %>%
+    drop_na(rollingaverage)
+  
+  dim(wastedf)
+  min(wastedf$date)
+  max(wastedf$date)
+  dim(casesdf)
+  min(casesdf$date)
+  max(casesdf$date)
+  
+  
+  ccf(wastedf$geo_mean,casesdf$conf_case)
+  ccf(wastedf$geo_mean,casesdf$rollingaverage)
+  
+  wastecaseccfmerg <- merge(wastedf, casesdf, by.x = "date", by.y="date") 
+  wastecaseccf <- wastecaseccfmerg %>% 
+    select('geo_mean','conf_case')
+  lag_ts <- ts(na.omit(wastecaseccf))
+  ts_info(lag_ts)
+  plot(lag_ts)
+ts_plot(lag_ts)
+
+ccf(lag_ts[, c(1)], lag_ts[, c(2)], 
+    lag.max = 1000,
+    main = "Cros-Correlation Plot")
+acf(wastedf$geo_mean,casesdf$rollingaverage)
+
+
+
+
+wastecasepts <- wastecaseccfmerg %>% pivot_longer(cols = c(geo_mean, conf_case), names_to = "names", values_to = "value") 
+
+wastecasepts %>% plot_time_series(.date_var = date,
+                      .value = value,
+                   .facet_vars = names)
+
+
+wastecasepts %>%
+  group_by(names) %>% 
+  plot_acf_diagnostics(.date_var = date,
+                       .value = value,
+                       .show_white_noise_bars = T)
+
+wastecaseccfmerg %>% 
+  plot_acf_diagnostics(.date_var = date,
+                       .value = geo_mean,
+                       .ccf_vars = conf_case,
+                       .show_ccf_vars_only = T)
+
+#}
+#wasteccf(waste,cases)
+
+
 ```
 
