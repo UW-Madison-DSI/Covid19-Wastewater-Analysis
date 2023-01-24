@@ -28,17 +28,23 @@ Case_DF <- buildCaseAnalysisDF(Case_DF)
 Case_DF <- Case_DF[,c(1:2, 5, 7)]
 
 data(WasteWater_data, package = "DSIWastewater")
+data(pop_data, package = "DSIWastewater")
 
 #restrict Waste data to only Madison data
 baseWaste_DF <- WasteWater_data
 
 Temp <- baseWaste_DF%>%
+  
   mutate(n1_sars_cov2_lod = gsub(" ", "", tolower(n1_sars_cov2_lod)) == 
-        "yes", n2_sars_cov2_lod = gsub(" ", "", tolower(n2_sars_cov2_lod)) == 
-        "yes", n1_sars_cov2_conc = ifelse(n1_sars_cov2_lod, as.numeric(n1_lod)/2, 
-        n1_sars_cov2_conc), n2_sars_cov2_conc = ifelse(n2_sars_cov2_lod, 
-        as.numeric(n2_lod)/2, n2_sars_cov2_conc), population_served = as.numeric(gsub(",", 
-        "", population_served))) %>% 
+        "yes",
+        n2_sars_cov2_lod = gsub(" ", "", tolower(n2_sars_cov2_lod)) == 
+        "yes",
+        n1_sars_cov2_conc = ifelse(n1_sars_cov2_lod, as.numeric(n1_lod)/2, 
+        n1_sars_cov2_conc),
+        n2_sars_cov2_conc = ifelse(n2_sars_cov2_lod, 
+        as.numeric(n2_lod)/2, n2_sars_cov2_conc))%>% 
+  left_join(pop_data)%>%
+  rename()%>%
   select(wwtp_name, sample_collect_date, 
         population_served, n1_sars_cov2_conc, n2_sars_cov2_conc, 
         average_flow_rate, ppmov_conc) %>%

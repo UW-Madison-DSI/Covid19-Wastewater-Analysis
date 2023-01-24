@@ -17,6 +17,7 @@ library(DSIWastewater)
 library(dplyr)
 library(ggplot2)
 library(tidyr)
+library(randomForest)
 data(WasteWater_data, package = "DSIWastewater")
 data(Case_data, package = "DSIWastewater")
 data(pop_data, package = "DSIWastewater")
@@ -39,9 +40,11 @@ base_df <- inner_join(Case_data, WasteWater_data, by = c("site", "date"))%>%
 #conductivity, temperature, ph, tests
 
 base_df%>%
+  na.roughfix(base_df)%>%
   dplyr::summarise(across(everything(), function(x) sum(is.na(x))))
 
 model_data <- base_df%>%
+   na.roughfix()%>%
    filter(if_all(everything(), is.finite))
 ```
 
@@ -51,6 +54,9 @@ library(rsample)
 library(purrr)
 library(partykit)
 library(sandwich)
+
+
+library(randomForest)
 ```
 
 
@@ -70,22 +76,31 @@ test_df  <- model_data%>%
 
 form <- conf_case ~ N1 + N2 | . - N1 - N2
 #form <- conf_case ~ N1 | . - N1 - N2
-forest_model <- random_linear_forest(train_df, 500, 
-                                     form, max_depth = 3)
+forest_model <- random_linear_forest(data = na.roughfix(train_df),
+                                     num_tree = 100, 
+                                     model_formula = form,
+                                     max_depth = Inf,
+                                     verbose = TRUE)
 
 
+library(profvis)
 
-#benchmark(random_linear_forest(train_df, 5, 
-#                                     form, maxdepth = 3),
-#               times = 10)
-#library( rbenchmark)
+#profvis({random_linear_forest(data = na.roughfix(train_df),
+#                                     num_tree = 24, 
+#                                     model_formula = form,
+#                                     max_depth = 3,
+#                                     verbose = TRUE)})
+```
 
-MSE(predict(forest_model, test_df), test_df$conf_case)
+```{r}
+pred <- predict(forest_model, test_df)
+
+MSE(pred, test_df$conf_case)
 
 #look into pred being conservitive
 test_df%>%
-  ggplot(aes(x = conf_case, 
-             y = conf_case - predict(forest_model, test_df)))+
+  ggplot(aes(x = pred, 
+             y = conf_case - pred))+
   geom_point()
 
 
@@ -93,18 +108,26 @@ test_df%>%
 #compare tree vs linear tree
 #viz 1 tree -> viz forest
 #forest viz
-forest_model@models[[1]]
 library(plyr)
 library(dplyr)
-gen_INCMSE(forest_model)
+inc_MSE <- gen_INCMSE(forest_model)
+#reran model
+#or 
+inc_MSE%>%
+  ggplot(aes(y = var, x = incMSE))+
+  geom_bar(stat="identity")
+
+
+summary(forest_model)
 ```
 
 ```{r lm model}
 lm_model <- lm(conf_case ~ N1 + N2, data = train_df)
-MSE(predict(lm_model, test_df), test_df$conf_case)
+pred <- predict(lm_model, test_df)
+MSE(pred, test_df$conf_case)
 
 test_df%>%
-  ggplot(aes(x = conf_case, y = conf_case - predict(lm_model, test_df)))+
+  ggplot(aes(x = pred, y = conf_case - predict(lm_model, test_df)))+
   geom_point()
 ```
 
@@ -130,7 +153,8 @@ plot_lmTree <- function(lmtree_obj){
   for(i in 1:length(nodes)){
     indx <- nodes[i]
     new_data <- data_party(lmtree_obj[[as.numeric(indx)]])%>%
-      mutate(model = indx)
+      mutate(model = indx)%>%
+      mutate(N1 = N1 + N2)
     ###
     new_model <- coef(lmtree_obj[[as.numeric(indx)]])%>%
       as.data.frame()%>%
@@ -139,7 +163,7 @@ plot_lmTree <- function(lmtree_obj){
     names(new_model) <- c("intercept", "N1", "N2")
     mx_model <- new_model%>%
       mutate(model = indx)%>%
-      mutate(intercept = intercept + mean(new_data$N2, na.rm = TRUE)* N2)%>%
+      mutate(N1 = (N1 + N2) / 2)%>%
       bind_rows(mx_model)
     
     ####
@@ -157,44 +181,61 @@ plot_lmTree <- function(lmtree_obj){
 }
 lapply(1:5, function(x) ggplotly(plot_lmTree(forest_model@models[[x]])))
 #ggplotly(plot_lmTree(forest_model@models[[4]]))
+
+
+#make it 3d :(
 ```
 
-```{r temp}
-plot_lmTree <- function(lmtree_obj){
+
+```{r 3d plot}
+plotly_plot_lmTree <- function(lmtree_obj){
   plot(lmtree_obj)
   nodes <- as.character(c(3:4,6:7))
-  point_plot <- data.frame()
-  mx_model <- data.frame()
+  tree_plot <- plot_ly()
   for(i in 1:length(nodes)){
     indx <- nodes[i]
+    model_lab <- paste0("model", indx)
     new_data <- data_party(lmtree_obj[[as.numeric(indx)]])%>%
-      mutate(model = indx)
+      mutate(model = model_lab)
     ###
     new_model <- coef(lmtree_obj[[as.numeric(indx)]])%>%
       as.data.frame()%>%
       transpose()%>%
       as.data.frame()
+    
     names(new_model) <- c("intercept", "N1", "N2")
-    mx_model <- new_model%>%
-      mutate(model = indx)%>%
-      bind_rows(mx_model)
+    
+    
+    axis_x <- range(new_data$N1)
+    axis_y <- range(new_data$N2)
+    lm_DF <- expand.grid(N1 = axis_x,N2 = axis_y,KEEP.OUT.ATTRS = F)%>%
+            mutate(conf_case = N1 * new_model$N1 
+                     + N2 * new_model$N2 + new_model$intercept)%>%
+        pivot_wider(names_from = N1, values_from = conf_case) %>% 
+        select(-1) %>%  # kick the name's column out
+        as.matrix()
     
     ####
-    point_plot <- new_data%>%
-      mutate(conf_case = conf_case - N2 * new_model$N2)%>%
-      bind_rows(point_plot)
+    tree_plot <- tree_plot%>%
+      add_trace(data = new_data,
+                x = ~N1,
+                y = ~N2,
+                z = ~conf_case,
+                #color = model_lab,
+                legendgroup = model_lab,
+                type = "scatter3d",
+                mode = "markers")%>%
+       add_surface(p = .,
+                   data = lm_DF,
+                 x = axis_x,
+                 y = axis_y,
+                 z = lm_DF,
+                 legendgroup = model_lab,
+                 type = "surface",
+                 showscale = FALSE)
+    
   }
-  tree_plot <- ggplot() + 
-    geom_point(data = point_plot, aes(x = N1, y = conf_case,
-                                      color = model))+
-    geom_abline(data = mx_model,
-                aes(intercept = intercept,
-                    slope = N1,
-                    color = model))
   return(tree_plot)
 }
-lapply(1:5, function(x) ggplotly(plot_lmTree(forest_model@models[[x]])))
-
+lapply(1:5, function(x) ggplotly(plotly_plot_lmTree(forest_model@models[[x]])))
 ```
-
-

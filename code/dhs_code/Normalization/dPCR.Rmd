@@ -379,7 +379,7 @@ print(paste0("Note: ", length(which(is.na(data.select.1.sc.melt$value)=="TRUE"))
 ## Random forest #1 - Include all NAs
 
 ```{r label="Random forest model #1"}
-rf.1 <-randomForest(difference.log~., data=data.select.1.sc, ntree=500, na.action = na.roughfix, importance=TRUE) 
+rf.1 <-randomForest(difference.log ~ ., data=data.select.1.sc, ntree=500, na.action = na.roughfix, importance=TRUE) 
 print(rf.1)
 ```
 

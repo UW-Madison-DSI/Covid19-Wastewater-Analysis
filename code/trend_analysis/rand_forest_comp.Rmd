@@ -1,0 +1,275 @@
+---
+title: "Comprehensive Random Analysis of Covid-19"
+output: html_document
+date: "2023-01-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This is a response to Adeline document about using random forest to explore the factors
+related to Covid-19. We liked the ideas included and hoped to extend it by exploreing
+specfic hypothisis about the question.
+
+Hypothisis one: there is a linear relationship between N1 and cases. the covariates change the intercept of the relationship but there is always a base relationship.
+
+A quick look at the data makes this look plausible with a thick cloud that looks like it could be explained by many perpendicular linear models. furthoremore the residuals look normal which helps support
+that conclusion. 
+```{r }
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+```
+
+
+```{r plot Cases vs N1, include = FALSE}
+data(WasteWater_data, package = "DSIWastewater")
+data(Case_data, package = "DSIWastewater")
+data(pop_data, package = "DSIWastewater")
+
+base_df <- inner_join(Case_data, WasteWater_data, by = c("site", "date"))%>%
+  left_join(pop_data)%>%
+  group_by(site)%>%
+  arrange(date)%>%
+  mutate(conf_case = zoo::rollmean(conf_case, 7, align = "center", na.pad = TRUE))%>%
+  ungroup()%>%
+  filter(N1 != 0, conf_case != 0)%>%
+  select(conf_case, N1, N2,
+         regions, date, pop,
+         PMMoV, flow,
+         conductivity, temperature, ph, tests)%>%
+   mutate(regions = factor(regions), date = as.numeric(date),
+         conf_case = log(conf_case),
+         N1 = log(N1),
+         N2 = log(N2),
+         PMMoV = log(PMMoV))
+
+base_df%>%
+  ggplot(aes(x = N1, y = conf_case))+
+  geom_point()+
+  geom_smooth(method = "lm")
+
+
+lm_model = lm(conf_case ~ N1, data = base_df, na.action = na.exclude)
+base_df$resid = resid(lm_model)
+
+hist(base_df$resid)
+```
+
+```{r Adeline data}
+library(data.table)
+load("../dhs_code/Normalization/data/data.H12.backup.RData")
+'%!in%' <- function(x,y)!('%in%'(x,y))
+'%!like%' <- function(x,y)!('%like%'(x,y))
+data.H12<-data.H12.backup
+### Prep H12 data 
+names(data.H12) <- c("wwtp_name", "epaid", "zipcode", "county_names", "state", "capacity_mgd", "population_served", "sample_type", "composite_freq", "sample_matrix", "sample_location", "sample_location_specify", "sample_id", "wwtp_comments", "concentration_method", "extraction_method", "pcr_type", "lod_ref", "quant_stan_type", "quant_stan_ref", "inhibition_method", "n1_sars_cov2_units", "n1_sars_cov2_conc", "n1_sars_cov2_lod", "n1_sars_cov2_error", "n1_ntc_amplify", "n1_num_ntc_amplify", "n1_num_no_target_control", "n1_lod", "n1_loq", "n2_sars_cov2_units", "n2_sars_cov2_conc", "n2_sars_cov2_lod", "n2_sars_cov2_error", "n2_ntc_amplify", "n2_num_ntc_amplify", "n2_num_no_target_control", "n2_lod", "n2_loq", "avg_sars_cov2_conc", "avg_sars_cov2_below_lod", "pmmov_conc", "hf183_conc", "bcov_rec_rate", "inhibition_detect", "inhibition_adjust", "analytical_comments", "sample_collect_date", "sample_collect_time", "test_result_date", "average_flow_rate", "equiv_sewage_amt", "tss", "ph", "bod", "conductivity", "temperature", "do", "bcov_spike_conc")
+
+# Clean samples
+data.H12 <- data.H12 %>% filter(wwtp_name %!like% "Madison-P")
+data.H12 <- data.H12 %>% filter(wwtp_name %!in% c("Keshena", "Lac du Flambeau", "Menomonie", "Mondovi", "Neopit", "Red Cliff", "Wolf", "Wolf River"))
+data.H12 <- data.H12 %>% filter(wwtp_name != "")
+
+# Fix wwtp names
+data.H12$wwtp_name <- gsub(" WWTP", "", data.H12$wwtp_name)
+data.H12$wwtp_name <- gsub("WWTP", "", data.H12$wwtp_name)
+data.H12$wwtp_name <- gsub("WWTF", "", data.H12$wwtp_name)
+data.H12$wwtp_name <- gsub("BlackRiverFalls", "Black River Falls", data.H12$wwtp_name)
+data.H12$wwtp_name <- gsub(" Metro", "", data.H12$wwtp_name)
+data.H12$wwtp_name <- gsub("WI Rapids", "Wisconsin Rapids", data.H12$wwtp_name)
+#print("List wwtps investigated (in H12 extract):")
+#levels(as.factor(data.H12$wwtp_name))
+
+# Add ID
+data.H12$sample_collect_date<-as.Date(data.H12$sample_collect_date, format="%m/%d/%Y")
+data.H12$ID<-paste0(data.H12$wwtp_name, data.H12$sample_collect_date)
+
+
+data.meta<-read.table("../dhs_code/Normalization/data/WWDataRequestDNR.csv", sep = ",", h=T)
+data.meta<-data.meta %>% filter(lab_submitter == "SLH")
+### Preparation of metadata
+# Fix wwtp names
+data.meta$wwtp_name<-gsub(" WWTF", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" WWTP", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Sewage Utility", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" WW Utility", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Wastewater Utility", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" WPCF", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" MSD", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Utilities", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Municipal Utility", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Water Works", "", data.meta$wwtp_name)
+#levels(as.factor(data.meta$wwtp_name))
+#print("List wwtps with metadata (should be the same than above):")
+#levels(as.factor(data.H12$wwtp_name))
+
+# Add ID
+data.meta$sample_collect_date <- as.Date(data.meta$sample_collect_date, format="%m/%d/%Y")
+data.meta$ID <- paste0(data.meta$wwtp_name, data.meta$sample_collect_date)
+
+# Metadata #1
+data.meta.1 <- unique(data.meta[, c("ID", "sars_cov2_adj_load", "cases", "case_rate")])
+
+# Metadata #2
+data.meta.2 <- data.meta[, c("ID", "result_amt", "storet_parm_desc", "parm_unit_type")]
+data.meta.2$storet_parm_desc <- gsub("CBOD5", "BOD5", data.meta.2$storet_parm_desc)
+data.meta.2$storet_parm_desc <- gsub("BOD5, Total", "BOD5", data.meta.2$storet_parm_desc)
+data.meta.2$storet_parm_desc <- gsub("Suspended Solids, Total", "TSS", data.meta.2$storet_parm_desc)
+data.meta.2 <- reshape2::dcast(data.meta.2, ID~storet_parm_desc, value.var = "result_amt", fun.aggregate= function(x) if(length(x) == 0) NA_real_ else mean(x, na.rm = TRUE))
+data.meta.2 <- data.meta.2 %>% select("ID", "BOD5", "Flow Rate", "TSS")
+
+# Metadata - merged #1 and #2
+data.meta <- left_join(data.meta.1, data.meta.2, by="ID")
+
+data <- inner_join(data.H12, data.meta, by="ID")
+#data<-data.H12
+
+#data <-data %>% filter(pcr_type == "qPCR")
+
+data$avg_sars_cov2_conc <- as.numeric(as.character(data$avg_sars_cov2_conc))
+data$average_flow_rate <- as.numeric(as.character(data$average_flow_rate))
+data$population_served <- as.numeric(as.character(data$population_served))
+data$pmmov_conc <- as.numeric(as.character(data$pmmov_conc))
+data$hf183_conc <- as.numeric(as.character(data$hf183_conc))
+data$bcov_rec_rate <- as.numeric(as.character(data$bcov_rec_rate))
+data$tss <- as.numeric(as.character(data$tss))
+data$ph <- as.numeric(as.character(data$ph))
+data$temperature <- as.numeric(as.character(data$temperature))
+data$conductivity <- as.numeric(as.character(data$conductivity))
+data$sars_cov2_adj_load <- as.numeric(as.character(data$sars_cov2_adj_load))
+data$cases <- as.numeric(as.character(data$cases))
+data$case_rate <- as.numeric(as.character(data$case_rate))
+data$BOD5 <- as.numeric(as.character(data$BOD5))
+data$`Flow Rate` <- as.numeric(as.character(data$`Flow Rate`))
+data$TSS <- as.numeric(as.character(data$TSS))
+
+data$wwtp_name <- as.factor(data$wwtp_name)
+
+region_DF <- WasteWater_data%>%
+  select(regions, site)%>%
+  rename(wwtp_name = site)%>%
+  mutate(regions = as.factor(regions))%>%
+  unique()
+
+model_data <- data%>%
+  select(wwtp_name, pmmov_conc, bcov_rec_rate, average_flow_rate, ph,
+         BOD5, TSS, sars_cov2_adj_load,#temperature
+         case_rate)%>%
+   left_join(region_DF)%>%
+   select(-wwtp_name)%>%
+  filter(case_rate != 0)%>%
+  mutate(sars_cov2_adj_load = log(sars_cov2_adj_load),
+         case_rate = log(case_rate))
+  
+```
+
+```{r}
+model_data%>%
+  ggplot(aes(x = sars_cov2_adj_load, y = log(case_rate)))+
+  geom_point()+
+  geom_smooth(method = "lm")
+
+
+lm_model = lm(log(case_rate) ~ sars_cov2_adj_load, data = model_data, na.action = na.exclude)
+
+model_data$resid = resid(lm_model)
+
+hist(model_data$resid)
+base_df <- model_data%>%
+  rename(conf_case = case_rate)
+```
+Given this conclusion we can fit these residuals into a random forest model to find what the intercept should be.
+
+```{r}
+library(randomForest)
+rand_tree_df <- base_df%>%
+  select(-conf_case, -sars_cov2_adj_load)%>%
+   na.roughfix()%>%
+   filter(if_all(everything(), is.finite))
+  
+
+rf.2 <-randomForest(resid~., data = rand_tree_df, ntree=100,
+                    na.action = na.roughfix, importance=TRUE) 
+print(rf.2)
+
+plot(rf.2, type="l", main= "")
+
+pred = predict(rf.2)
+resid = rand_tree_df$resid - pred
+hist(resid)
+plot(resid, pred)
+```
+
+```{r}
+ImpData <- as.data.frame(importance(rf.2))
+ImpData$Var.Names <- row.names(ImpData)
+
+ggplot(ImpData, aes(x=Var.Names, y=`%IncMSE`)) +
+  geom_segment( aes(x=Var.Names, xend=Var.Names, y=0, yend=`%IncMSE`), color="skyblue") +
+  geom_point(aes(size = IncNodePurity), color="blue", alpha=0.6) +
+  theme_light() +
+  coord_flip() +
+  theme(
+    legend.position="bottom",
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+```
+
+This gives good results. but its assumption of a constant ratio does not match with what we expect of reality. depending on these factors we expect both a change in trend and a change in slope. This brings us to:
+s
+hypothsis 2: there is a linear relationship between N1 and cases. the covariates change the intercept and slope of the relationship.
+
+
+```{r}
+rand_tree_df <- base_df%>%
+  select(-resid)%>%#,  -date, -tests
+   na.roughfix()%>%
+   filter(if_all(everything(), is.finite)) # N1 + N2
+
+Form <- conf_case ~ sars_cov2_adj_load | . - sars_cov2_adj_load #N1 + N2
+library(rsample)
+forest_model <- random_linear_forest(data = rand_tree_df,
+                                     num_tree = 100, 
+                  model_formula = Form,
+                                     max_depth = Inf,
+                  verbose = FALSE)
+
+print(forest_model)
+
+oob_error_df <- OOB_MSE_num_trees(forest_model)
+oob_error_df%>%
+  ggplot(aes(y = model_MSE, x = num_tree))+
+  geom_line()
+
+#hist(rand_tree_df$conf_case - )
+pred = predict(forest_model, rand_tree_df)
+resid = rand_tree_df$conf_case - pred
+hist(resid)
+plot(resid, pred)
+```
+
+
+```{r}
+inc_MSE <- gen_INCMSE(forest_model)
+#reran model
+#or 
+inc_MSE%>%
+  ggplot(aes(y = var, x = incMSE))+
+  geom_bar(stat="identity")
+
+
+ggplot(inc_MSE, aes(x = var, y = incMSE)) +
+  geom_segment( aes(x=var, xend=var, y = 0, yend=incMSE), color="skyblue") +
+  theme_light() +
+  coord_flip() +
+  theme(
+    legend.position="bottom",
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank()
+)
+```
