@@ -1,0 +1,350 @@
+---
+title: "Comprehensive Random Analysis of Covid-19"
+output: 
+  
+  html_document:
+    code_folding: hide
+date: "2023-01-24"
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+run_base <- FALSE
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message=FALSE)
+```
+
+```{r include = FALSE}
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+set.seed(123)
+```
+
+
+```{r adeline data prep, include = FALSE}
+library(data.table)
+load("../dhs_code/Normalization/data/data.H12.backup.RData")
+'%!in%' <- function(x,y)!('%in%'(x,y))
+'%!like%' <- function(x,y)!('%like%'(x,y))
+data.H12<-data.H12.backup
+### Prep H12 data 
+names(data.H12) <- c("wwtp_name", "epaid", "zipcode", "county_names", "state", "capacity_mgd", "population_served", "sample_type", "composite_freq", "sample_matrix", "sample_location", "sample_location_specify", "sample_id", "wwtp_comments", "concentration_method", "extraction_method", "pcr_type", "lod_ref", "quant_stan_type", "quant_stan_ref", "inhibition_method", "n1_sars_cov2_units", "n1_sars_cov2_conc", "n1_sars_cov2_lod", "n1_sars_cov2_error", "n1_ntc_amplify", "n1_num_ntc_amplify", "n1_num_no_target_control", "n1_lod", "n1_loq", "n2_sars_cov2_units", "n2_sars_cov2_conc", "n2_sars_cov2_lod", "n2_sars_cov2_error", "n2_ntc_amplify", "n2_num_ntc_amplify", "n2_num_no_target_control", "n2_lod", "n2_loq", "avg_sars_cov2_conc", "avg_sars_cov2_below_lod", "pmmov_conc", "hf183_conc", "bcov_rec_rate", "inhibition_detect", "inhibition_adjust", "analytical_comments", "sample_collect_date", "sample_collect_time", "test_result_date", "average_flow_rate", "equiv_sewage_amt", "tss", "ph", "bod", "conductivity", "temperature", "do", "bcov_spike_conc")
+
+# Clean samples
+data.H12 <- data.H12 %>% filter(wwtp_name %!like% "Madison-P")
+data.H12 <- data.H12 %>% filter(wwtp_name %!in% c("Keshena", "Lac du Flambeau", "Menomonie", "Mondovi", "Neopit", "Red Cliff", "Wolf", "Wolf River"))
+data.H12 <- data.H12 %>% filter(wwtp_name != "")
+
+# Fix wwtp names
+data.H12$wwtp_name <- gsub(" WWTP", "", data.H12$wwtp_name)
+data.H12$wwtp_name <- gsub("WWTP", "", data.H12$wwtp_name)
+data.H12$wwtp_name <- gsub("WWTF", "", data.H12$wwtp_name)
+data.H12$wwtp_name <- gsub("BlackRiverFalls", "Black River Falls", data.H12$wwtp_name)
+data.H12$wwtp_name <- gsub(" Metro", "", data.H12$wwtp_name)
+data.H12$wwtp_name <- gsub("WI Rapids", "Wisconsin Rapids", data.H12$wwtp_name)
+#print("List wwtps investigated (in H12 extract):")
+#levels(as.factor(data.H12$wwtp_name))
+
+# Add ID
+data.H12$sample_collect_date<-as.Date(data.H12$sample_collect_date, format="%m/%d/%Y")
+data.H12$ID<-paste0(data.H12$wwtp_name, data.H12$sample_collect_date)
+
+
+data.meta<-read.table("../dhs_code/Normalization/data/WWDataRequestDNR.csv", sep = ",", h=T)
+data.meta<-data.meta %>% filter(lab_submitter == "SLH")
+### Preparation of metadata
+# Fix wwtp names
+data.meta$wwtp_name<-gsub(" WWTF", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" WWTP", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Sewage Utility", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" WW Utility", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Wastewater Utility", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" WPCF", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" MSD", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Utilities", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Municipal Utility", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Water Works", "", data.meta$wwtp_name)
+#levels(as.factor(data.meta$wwtp_name))
+#print("List wwtps with metadata (should be the same than above):")
+#levels(as.factor(data.H12$wwtp_name))
+
+# Add ID
+data.meta$sample_collect_date <- as.Date(data.meta$sample_collect_date, format="%m/%d/%Y")
+data.meta$ID <- paste0(data.meta$wwtp_name, data.meta$sample_collect_date)
+
+# Metadata #1
+data.meta.1 <- unique(data.meta[, c("ID", "sars_cov2_adj_load", "cases", "case_rate")])
+
+# Metadata #2
+data.meta.2 <- data.meta[, c("ID", "result_amt", "storet_parm_desc", "parm_unit_type")]
+data.meta.2$storet_parm_desc <- gsub("CBOD5", "BOD5", data.meta.2$storet_parm_desc)
+data.meta.2$storet_parm_desc <- gsub("BOD5, Total", "BOD5", data.meta.2$storet_parm_desc)
+data.meta.2$storet_parm_desc <- gsub("Suspended Solids, Total", "TSS", data.meta.2$storet_parm_desc)
+data.meta.2 <- reshape2::dcast(data.meta.2, ID~storet_parm_desc, value.var = "result_amt", fun.aggregate= function(x) if(length(x) == 0) NA_real_ else mean(x, na.rm = TRUE))
+data.meta.2 <- data.meta.2 %>% select("ID", "BOD5", "Flow Rate", "TSS")
+
+# Metadata - merged #1 and #2
+data.meta <- left_join(data.meta.1, data.meta.2, by="ID")
+
+data <- inner_join(data.H12, data.meta, by="ID")
+#data<-data.H12
+
+
+data$avg_sars_cov2_conc <- as.numeric(as.character(data$avg_sars_cov2_conc))
+data$average_flow_rate <- as.numeric(as.character(data$average_flow_rate))
+data$population_served <- as.numeric(as.character(data$population_served))
+data$pmmov_conc <- as.numeric(as.character(data$pmmov_conc))
+data$hf183_conc <- as.numeric(as.character(data$hf183_conc))
+data$bcov_rec_rate <- as.numeric(as.character(data$bcov_rec_rate))
+data$tss <- as.numeric(as.character(data$tss))
+data$ph <- as.numeric(as.character(data$ph))
+data$temperature <- as.numeric(as.character(data$temperature))
+data$conductivity <- as.numeric(as.character(data$conductivity))
+data$sars_cov2_adj_load <- as.numeric(as.character(data$sars_cov2_adj_load))
+data$cases <- as.numeric(as.character(data$cases))
+data$case_rate <- as.numeric(as.character(data$case_rate))
+data$BOD5 <- as.numeric(as.character(data$BOD5))
+data$`Flow Rate` <- as.numeric(as.character(data$`Flow Rate`))
+data$TSS <- as.numeric(as.character(data$TSS))
+
+data$wwtp_name <- as.factor(data$wwtp_name)
+
+
+
+####GROSS CODE
+
+
+#pmmov_conc bcov_rec_rate, average_flow_rate, TSS
+
+data.select.1 <- data %>% 
+  select(wwtp_name, pmmov_conc, bcov_rec_rate, average_flow_rate, 
+         ph, temperature, BOD5, TSS, case_rate,
+         avg_sars_cov2_conc, sample_collect_date)%>% 
+  mutate(across(c("pmmov_conc", "bcov_rec_rate", "average_flow_rate", "TSS") , ~log(.x)))%>%
+  filter(across(c("pmmov_conc", "bcov_rec_rate", "average_flow_rate", "TSS") , ~is.finite(.x)))%>%
+  #mutate_all(~ifelse(is.nan(.), NA, .)) %>%
+  mutate(sample_collect_date = as.numeric(sample_collect_date))
+
+# Center scale the data 
+data.select.1[data.select.1 == "NaN"] <- NA
+
+```
+This is an addendum to the Adeline analysis that looks at data as clearly as posible
+to extract meaning.
+
+
+```{r plot function}
+imp_ploting <- function(temp_mod){
+  ImpData <- as.data.frame(randomForest::importance(temp_mod))
+  ImpData$Var.Names <- row.names(ImpData)
+
+
+ggplot(ImpData, aes(x=Var.Names, y=`%IncMSE`)) +
+  geom_segment( aes(x=Var.Names, xend=Var.Names, y=0, yend=`%IncMSE`), color="skyblue") +
+  geom_point(aes(size = IncNodePurity), color="blue", alpha=0.6) +
+  theme_light() +
+  coord_flip() +
+  theme(
+    legend.position="bottom",
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank())
+}
+
+```
+
+```{r last stop data mod}
+library(DSIWastewater)
+data(pop_data, package = "DSIWastewater")
+data(WasteWater_data , package = "DSIWastewater")
+data(Covariants_data, package = "DSIWastewater")
+data.select.1$resid <- resid(lm(log(avg_sars_cov2_conc+1) ~ log(case_rate + 1), 
+                                data = data.select.1, na.action = na.exclude))
+
+reg_df <- WasteWater_data%>%
+  select(regions, site)%>%
+  distinct()
+
+
+
+data.select.2 <- data.select.1%>%
+  rename(site = wwtp_name)%>%
+  left_join(pop_data)%>%
+  left_join(reg_df)%>%
+  mutate(site = as.factor(site),
+         regions = as.factor(regions),
+         pop = log(pop))
+
+t_df <- Covariants_data%>%
+  select(-total_sequences)
+t_df$main_variant<-colnames(t_df)[apply(t_df, 1, which.max)]
+manga_df <- t_df%>%
+  mutate(dumby_merge_var = floor(as.numeric(lubridate::ymd(week)) / 7),
+         main_variant = as.factor(main_variant))%>%
+  select(dumby_merge_var, main_variant)
+
+
+data.select.3 <- data.select.2%>%
+  mutate(dumby_merge_var = floor((floor(sample_collect_date / 7) - 1)/2)*2 + 1 )%>%
+  left_join(manga_df)%>%
+  select(-dumby_merge_var)
+```
+
+```{r mod fit}
+library(randomForest)
+library(randomForestExplainer)
+resid_df <- data.select.3%>%
+  select(-case_rate, -avg_sars_cov2_conc)%>%
+  select(sample_collect_date, everything())
+
+
+resid_mod <-randomForest(resid ~ ., data = resid_df, ntree=100,
+                  na.action = na.roughfix, importance=TRUE, keep.inbag=TRUE)
+resid_mod
+imp_ploting(resid_mod)
+```
+
+```{r viz}
+
+
+graph_df <- resid_df%>%
+  na.roughfix()%>%
+  select(sample_collect_date:TSS, pop:main_variant, resid)
+library(forestFloor)
+ff = forestFloor(resid_mod, graph_df, calc_np=T)
+for(i in 1:12){
+  Col = fcol(ff, cols = i, outlier.lim = 2.5)
+  plot(ff, col = Col, plot_GOF = T)
+}
+```
+
+
+Given this conclusion we can fit these residuals into a random forest model to find what the intercept should be.
+
+
+This gives good results. but its assumption of a constant ratio does not match with what we expect of reality. depending on these factors we expect both a change in trend and a change in slope. This brings us to:
+s
+hypothesis 2: there is a linear relationship between N1 and cases. the covariates change the intercept and slope of the relationship.
+
+
+```{r, eval = FALSE}
+data(WasteWater_data, package = "DSIWastewater")
+reg_df <- WasteWater_data%>%
+  select(regions, site)%>%
+  rename(wwtp_name = site)%>%
+  distinct()
+
+
+rand_tree_df <- data.select.2.sc%>%
+  left_join(reg_df)%>%
+  select(-resid, - wwtp_name)%>%#,  -date, -tests
+  mutate(regions = as.factor(regions))%>%
+  na.roughfix()%>%
+  filter(if_all(everything(), is.finite)) # N1 + N2
+
+  
+  
+Form <- case_rate ~ avg_sars_cov2_conc| . - avg_sars_cov2_conc #sars_cov2_adj_load
+library(rsample)
+forest_model <- random_linear_forest(data = rand_tree_df,
+                                     num_tree = 20, 
+                  model_formula = Form,
+                                     max_depth = Inf,
+                  verbose = FALSE)
+
+pred = predict(forest_model, rand_tree_df)
+resid = rand_tree_df$conf_case - pred
+oob_error_df <- OOB_MSE_num_trees(forest_model)
+
+{
+layout(matrix(1:4, 2, 2, byrow = TRUE))
+plot(oob_error_df$num_tree, oob_error_df$model_MSE, type = "l")
+hist(resid)
+plot(resid, pred)
+plot(x = 0:10, y = 0:10, ann = F,bty = "n",type = "n",
+     xaxt = "n", yaxt = "n")
+ 
+text(x = 5, y = 5, paste(show(forest_model), collapse="\n"), cex = .7)
+}
+```
+
+
+```{r, eval = FALSE}
+inc_MSE <- gen_INCMSE(forest_model)
+#reran model
+#or
+
+
+ggplot(inc_MSE, aes(x = var, y = incMSE)) +
+  geom_segment( aes(x=var, xend=var, y = 0, yend=incMSE), color="skyblue") +
+  geom_point(aes(size = old_incMSE), color="blue", alpha=0.6) +
+  theme_light() +
+  coord_flip() +
+  theme(
+    legend.position="bottom",
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank()
+)
+inc_MSE
+
+rand_tree_df$pred <- exp(predict(forest_model, forest_model@data))
+rand_tree_df2 <- rand_tree_df%>%
+  select(regions, date, pred)
+
+B <- rand_tree_df%>%
+  ggplot(aes(x = date))+
+  geom_line(aes(y = log(pred), color = "red"))+
+  geom_line(aes(y = conf_case))
+ggplotly(B)
+
+```
+
+```{r gen flags, eval = FALSE}
+CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = rand_tree_df2, 
+    RunOn = "pred",
+    SplitOn = "regions", DaysRegressed = 7)%>%
+  rename(site = regions)
+
+CaseFlags2 <- CaseRegressionOutput%>%
+  mutate(flag = as.numeric(lmreg_slope > 1))%>%
+  select(date, flag)
+
+
+CaseFlags2%>%
+  select(-date)%>%
+  summarise(s = sum(flag))
+
+load("CaseFlags.Rdata")
+CaseFlags%>%
+  select(-date)%>%
+  mutate(across(case_flag_Cases:slope_switch_flag_7DayCases, ~ ifelse(is.na(.x),0,.x)))%>%
+  summarise(across(case_flag_Cases:slope_switch_flag_7DayCases, sum))
+
+CaseFlags <- CaseFlags%>%
+  select(date, case_flag_Cases)
+
+full_data <- inner_join(CaseFlags, 
+                       mutate(CaseFlags2,date = as.Date(date, lubridate::mdy("1/1/1970"))))%>%
+  DF_date_vector("date", c("case_flag_Cases", "flag"))
+
+
+
+mean(date_distance_calc(full_data, "case_flag_Cases", "flag")$flag**2, na.rm = TRUE)
+
+
+old_df <- date_Flag_DF%>%
+  select(date, flag.ntile_90_0.9)
+
+A <- full_data%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y = conf_case, x = as.Date(date, lubridate::mdy("1/1/1970"))), data = base_df)+
+  geom_point(aes(y = 1.25 + as.numeric(flag)/10000, color = "tree"))+
+  geom_point(aes(y = 1 + as.numeric(case_flag_Cases)/10000, color = "case"))+
+geom_point(aes(y = 1.5 + as.numeric(flag.ntile_90_0.9)/10000, color = "wastewater"), data = old_df)
+library(plotly)
+ggplotly(A)
+```
+

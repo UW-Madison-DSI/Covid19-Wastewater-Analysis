@@ -58,10 +58,15 @@ library(DSIWastewater)
 
 ```{r create wastewater data, eval = TRUE, echo = FALSE}
 #load WasteWater_data into the environment
+library(dplyr)
 data(WasteWater_data, package = "DSIWastewater")
+data(pop_data, package = "DSIWastewater")
 
 #get DF into format for buildRegressionEstimateTable
-baseWaste_DF <-  buildWasteAnalysisDF(WasteWater_data)
+baseWaste_DF <-  buildWasteAnalysisDF(WasteWater_data)%>%
+  left_join(pop_data)%>%
+  rename(population_served = pop)
+
 baseWaste_DF$site <- ifelse(baseWaste_DF$site == "Madison MSD WWTF",
                             "Madison", baseWaste_DF$site)
 baseWaste_DF <- baseWaste_DF[!(baseWaste_DF$site %in% c("Portage WWTF","Cedarburg WWTF")),]
@@ -77,29 +82,32 @@ baseWaste_DF <- baseWaste_DF%>%
     mutate(pastKavg.wwlog10 = rollmean(sars_cov2_adj_load_log10,
                                        K, align = "right",
                                        fill=NA))%>%
-  ungroup()
+    ungroup()%>%
+    filter(site == "Madison")
 
 #add quantile data to merge with the regression results
 Quantiles_DF <- makeQuantileColumns(baseWaste_DF,
                                     5:9/10, c(14, 30, 60, 90),
                                     "sars_cov2_adj_load_log10")
 
+
 Quantiles_DF <- Quantiles_DF[,c("site", "date", "window", "quant", "ntile", "pastKavg.wwlog10")]
 Quantiles_DF <- tidyr::pivot_wider(Quantiles_DF, 
-                                   names_from = c(window, quant), 
-                                  values_from = c(ntile))
+                   #id_cols = "site",
+                   names_from = c(window, quant), 
+                   values_from = c(ntile),
+                   values_fn = mean)
 ```
 
 
 ```{r wastewater flags, eval = TRUE, echo = FALSE}
 #Get 5 day rolling regression of data 
-CDCMethod <- buildRegressionEstimateTable(baseWaste_DF,
+CDCMethod <- buildRegressionEstimateTable(filter(baseWaste_DF, is.finite(sars_cov2_adj_load_log10)),
                                           PSigTest=FALSE)
+#sars_cov2_adj_load_log10
 
 CDCMethod <- CDCMethod[,c("date","site", "modeled_percentchange", "lmreg_sig")]
 #merge the regression DF and the quantile DF to get info for 
-
-library(dplyr)
 
 FULL_reg_DF <- left_join(CDCMethod, Quantiles_DF,
                                 by = c("site", "date"))%>%
@@ -127,7 +135,10 @@ data(Case_data, package = "DSIWastewater")
 Case_DF <- Case_data
 
 #get the case flags
-Case_DF <- buildCaseAnalysisDF(Case_DF)%>%
+Case_DF <- Case_DF%>%
+  left_join(pop_data)%>%
+  rename(population_served = pop)%>%
+  buildCaseAnalysisDF()%>%
   filter(site == "Madison")
 
 
@@ -143,12 +154,12 @@ CaseRegressionOutput$Method <- ifelse(CaseRegressionOutput$Method ==
                                       "FirstConfirmed.Per100K",
                                       "Cases", "7DayCases")
 
-
-library(dplyr)
 #Classify slope to create 3 flags described in @return  
 CaseFlags <- classifyCaseRegression(CaseRegressionOutput)%>%
   select(Method, site, date,all_of(case_flags_names))%>%
-  tidyr:::pivot_wider(names_from = "Method", values_from = all_of(case_flags_names))
+  tidyr:::pivot_wider(names_from = "Method",
+                      values_from = all_of(case_flags_names),
+                      values_fn = max)
 ```
 
 ```{r merge flag DF, eval = TRUE, echo = FALSE}
@@ -157,7 +168,8 @@ Full_wasteFlags <- Full_wasteFlags%>%
          flag.ntile = flag_ntile, 
          flag.ntile.Pval = flag_ntile_Pval)%>%
   tidyr::pivot_wider(names_from = c(window, quant), 
-                     values_from = c(cdc.flag, flag.ntile, flag.ntile.Pval))
+                     values_from = c(cdc.flag, flag.ntile, flag.ntile.Pval),
+                     values_fn = mean)
 
 Flag_DF <- full_join(Full_wasteFlags, CaseFlags, 
                      by = c("site", "date"))
@@ -165,6 +177,10 @@ Flag_DF <- full_join(Full_wasteFlags, CaseFlags,
 Flag_DF2 <- Flag_DF
 
 save_Dataset(Flag_DF)
+
+
+Flag_DF%>%
+  select()
 ```
 
 ```{r cache option}
@@ -205,12 +221,20 @@ rawDateDistDF <- date_Flag_DF%>%
                       names_to = c("FlagType","window", "quant"),
                       values_to = "FlagError",
                       names_sep = "_")%>%
-  mutate(window = as.numeric(window), quant = as.numeric(quant))
+  mutate(window = as.numeric(window), quant = as.numeric(quant))%>%
+  filter(!is.na(FlagError))
+
+
+
+
 ```
 
 ```{r}
 DateDistDF <- rawDateDistDF%>%
   date_distance_remove("FlagError", edgeThresh)
+
+
+save(CaseFlags, file = "CaseFlags.Rdata")
 ```
 
 ```{r get flag counts}
