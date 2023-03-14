@@ -112,9 +112,9 @@ data$TSS <- as.numeric(as.character(data$TSS))
 
 data$wwtp_name <- as.factor(data$wwtp_name)
 
-data <- data%>%
-  mutate(across(c("pmmov_conc", "bcov_rec_rate", "average_flow_rate", "TSS") , ~log(.x)))%>%
-  filter(across(c("pmmov_conc", "bcov_rec_rate", "average_flow_rate", "TSS") , ~is.finite(.x)))
+#data <- data%>%
+#  mutate(across(c("pmmov_conc", "bcov_rec_rate", "average_flow_rate", "TSS") , ~log(.x)))%>%
+#  filter(across(c("pmmov_conc", "bcov_rec_rate", "average_flow_rate", "TSS") , ~is.finite(.x)))
 
 ####GROSS CODE
 # Difference between value and average of the value for a given WWTP
@@ -133,7 +133,7 @@ mean.indpt<-data %>%
           mean_TSS = mean(TSS, na.rm=TRUE))
 
 data.select.1<-left_join(data, mean.indpt, by="wwtp_name")
-data.select.1$diff_pmmov_conc<-data.select.1$mean_pmmov_conc - data.select.1$pmmov_conc
+data.select.1$diff_pmmov_conc<-log10(data.select.1$mean_pmmov_conc+1)-log10(data.select.1$pmmov_conc+1)
 data.select.1$diff_bcov_rec_rate<-data.select.1$mean_bcov_rec_rate - data.select.1$bcov_rec_rate
 data.select.1$diff_average_flow_rate<-data.select.1$mean_average_flow_rate - data.select.1$average_flow_rate
 data.select.1$diff_ph<-data.select.1$mean_ph - data.select.1$ph
@@ -149,8 +149,7 @@ data.select.1<-data.select.1 %>%
   filter(!is.na(difference.log))
 
 
-sd_select_df <- data.select.1%>%
-  summarise(across(diff_pmmov_conc:diff_TSS, ~sd(.x, na.rm = TRUE)))
+
 
 # Center scale the data 
 data.select.1[data.select.1 == "NaN"] <- NA
@@ -162,9 +161,10 @@ data.select.1.sc<-cbind(data.select.1$wwtp_name,
                         data.select.1$avg_sars_cov2_conc, 
                         as.data.frame(data.select.1.sc))
 
-#names(data.select.1.sc)[1:3] <- c("wwtp_name", "case_rate", "avg_sars_cov2_conc")
-data.select.1.sc <- data.select.1
+names(data.select.1.sc)[1:3] <- c("wwtp_name", "case_rate", "avg_sars_cov2_conc")
 ```
+
+
 This is a response to Adeline document about using random forest to explore the factors
 related to Covid-19. We liked the ideas included and hoped to extend it by exploring
 specific hypothesis about the question.
@@ -172,7 +172,7 @@ specific hypothesis about the question.
 Motivation:
 Adeline document cheeked to answer the importance of wastewater covariants by using
 a random forest on the difference of N1 and cases. This is mathematically equivalent
-on running the forest on the residuals of the model Case = avg_sars_cov2_conc. This
+on running the forest on the residuals of the model Case = covid concentration This
 creates a problem because this difference remains strongly correlated with both the 
 case signal and the wastewater signal meaning that large deviance is more explained
 by deviance in two source vectors then in the need for another variable. Bellow
@@ -193,10 +193,6 @@ plot(x = log(data.select.1.sc$avg_sars_cov2_conc + 1), y = data.select.1.sc$diff
      xlab = "log(Covid-19 concentration)", ylab = "", main = title_prep(waste_cor))
 }
 
-gggg_plot <- data%>% 
-  select(wwtp_name, pmmov_conc, bcov_rec_rate, average_flow_rate, ph, temperature,
-         BOD5, TSS, difference.log, case_rate, avg_sars_cov2_conc)
-
 
 #summary(lm(log(case_rate + 1) ~  log(avg_sars_cov2_conc + 1):wwtp_name + wwtp_name, data = data.select.1.sc))
 ```
@@ -206,50 +202,52 @@ Hypothesis one: there is a linear relationship between the log of N1 and log of 
 A quick look at the data makes this look plausible with a thick cloud that looks like it could be explained by many perpendicular linear models.  There is a sequence of points where case_rate was 0 that do not fit the trend but these can be removed or fixed using the 7 day smoothing of the case data. Furthermore the residuals look normal which helps support that conclusion. 
 
 ```{r}
-data.select.2.sc <- data.select.1.sc
+
 #data.select.2.sc
-data.select.2.sc%>%
-  ggplot(aes(x = log10(avg_sars_cov2_conc + 1), y = log10(case_rate + 1)))+
+data.select.1.sc%>%
+  ggplot(aes(x = log(avg_sars_cov2_conc + 1), y = log(case_rate + 1)))+
   geom_point()+
   geom_smooth(method = "lm")+
-  ggtitle("strong linear relationship between variables")+
+  ggtitle("Strong Linear Relationship Between Log Cases and Log COVID Concentration")+
   xlab("log(Covid-19 concentration)")+
   ylab("log(case rate)")
 
 
-lm_model = lm(log10(avg_sars_cov2_conc + 1) ~ log10(case_rate + 1), 
-              data = data.select.2.sc, 
+lm_model = lm(log(avg_sars_cov2_conc + 1) ~ log(case_rate + 1) , 
+              data = data.select.1.sc, 
               na.action = na.exclude)
 
-data.select.2.sc$resid = resid(lm_model)
+data.select.1.sc$resid = resid(lm_model)
   
   #(data.select.1.sc$case_rate -  coef(lm_model)[1])/data.select.1.sc$sars_cov2_adj_load
-
-hist(data.select.2.sc$resid, main = "histogram of linear model residuals apear normal", xlab = "residuals")
-base_df <- data.select.2.sc%>%
+#? don't show. mention off hand instead
+hist(data.select.1.sc$resid, main = "Histogram of Linear Model Residuals Appear Normal", xlab = "residuals")
+base_df <- data.select.1.sc%>%
   rename(conf_case = case_rate)
+
+summary(lm_model)
 ```
 
 Because the goal is to capture variation in wastewater that is not in cases we used the residual of the model N1 ~ cases. This method has a much smaller correlation of the two source vectors giving results much better at capturing the important covariants
 
 
 ```{r}
-resid_case_cor <- cor(data.select.2.sc$resid, 
-                      data.select.2.sc$case_rate, 
+resid_case_cor <- cor(data.select.1.sc$resid, 
+                      data.select.1.sc$case_rate, 
                       use = "na.or.complete")
-resid_waste_cor <- cor(data.select.2.sc$resid, 
-                       data.select.2.sc$avg_sars_cov2_conc, 
+resid_waste_cor <- cor(data.select.1.sc$resid, 
+                       data.select.1.sc$avg_sars_cov2_conc, 
                        use = "na.or.complete")
 
 {
 layout(matrix(1:4, 2, 2, byrow = TRUE))
-plot(x = data.select.2.sc$case_rate, y = data.select.2.sc$difference.log, 
+plot(x = data.select.1.sc$case_rate, y = data.select.1.sc$difference.log, 
      xlab = "", ylab = "log(conc) - case rate", main = title_prep(case_cor))
-plot(x = log(data.select.2.sc$avg_sars_cov2_conc), y = data.select.2.sc$difference.log, 
+plot(x = log(data.select.1.sc$avg_sars_cov2_conc), y = data.select.1.sc$difference.log, 
      xlab = "", ylab = "", main = title_prep(waste_cor))
-plot(x = log(data.select.2.sc$case_rate), y = data.select.2.sc$resid, 
+plot(x = log(data.select.1.sc$case_rate + 1), y = data.select.1.sc$resid, 
      xlab = "case_rate", ylab = "linear model resid", main = title_prep(resid_case_cor))
-plot(x = log(data.select.2.sc$avg_sars_cov2_conc), y = data.select.2.sc$resid,
+plot(x = log(data.select.1.sc$avg_sars_cov2_conc), y = data.select.1.sc$resid,
      xlab = "log(Covid-19 concentration)", ylab = "", main = title_prep(resid_waste_cor))
 }
 
@@ -278,13 +276,15 @@ ggplot(ImpData, aes(x=Var.Names, y=`%IncMSE`)) +
 ```{r random forest fitting}
 library(randomForest)
 library(randomForestExplainer)
+na.controlmethod <- na.roughfix#na.exclude#
+
 
 adeline_df <- data.select.2.sc%>%
   select(-case_rate, -avg_sars_cov2_conc, - resid)
     
 
-ade_mod <- randomForest(difference.log ~ ., data = adeline_df, ntree=100,
-                    na.action = na.roughfix, importance=TRUE, keep.inbag=TRUE)
+ade_mod <- randomForest(difference.log ~ ., data = adeline_df, ntree=500,
+                    na.action = na.controlmethod, importance=TRUE, keep.inbag=TRUE)
 
 ade_mod
 
@@ -292,30 +292,87 @@ resid_df <- data.select.2.sc%>%
   select(-case_rate, -avg_sars_cov2_conc, - difference.log)
     
 
-resid_mod <- randomForest(resid ~ ., data = resid_df, ntree=100,
-                    na.action = na.roughfix, importance=TRUE, keep.inbag=TRUE) 
+resid_mod <- randomForest(resid ~ ., data = resid_df, ntree=500,
+                    na.action = na.controlmethod, importance=TRUE, keep.inbag=TRUE) 
 
 resid_mod
 
-dumb_df <- data.select.2.sc%>%
+case_df <- data.select.2.sc%>%
   select(-difference.log, -avg_sars_cov2_conc, - resid)
-dumb_mod <- randomForest(case_rate ~ ., data = dumb_df, ntree=100,
-                    na.action = na.roughfix, importance=TRUE, keep.inbag=TRUE) 
+case_mod <- randomForest(case_rate ~ ., data = case_df, ntree=500,
+                    na.action = na.controlmethod, importance=TRUE, keep.inbag=TRUE) 
 
-dumb_mod
+case_mod
+
+data.frame('target variable' = c('difference.log', 'lm resid', 'case_rate'),
+           'mean squared residuals' = c("0.7474236", " 0.29453", "4610.051"),
+           '% var explained' = c("25.24", "21.75", "25.73"))
 ```
+
+
 ```{r compare imp plots}
-imp_ploting(ade_mod)+
-  ggtitle("Adeline model importance plot")
+addSmallLegend <- function(myPlot, pointSize = 1.4, textSize = 8, spaceLegend = 0.21) {
+    myPlot +
+        guides(shape = guide_legend(override.aes = list(size = pointSize)),
+               color = guide_legend(override.aes = list(size = pointSize))) +
+        theme(legend.title = element_text(size = textSize), 
+              legend.text  = element_text(size = textSize),
+              legend.key.size = unit(spaceLegend, "lines"))
+}
 
-imp_ploting(dumb_mod)+
-  ggtitle("case model importance plot")
+#3 lines color based on group
 
-imp_ploting(resid_mod)+
-  ggtitle("linear residual model importance plot")
+ImpData_1 <- as.data.frame(randomForest::importance(ade_mod))%>%
+  mutate(IncNodePurity = IncNodePurity/mean(ade_mod$mse))
+ImpData_1$Var.Names <- row.names(ImpData_1)
+ImpData_2 <- as.data.frame(randomForest::importance(case_mod))%>%
+  mutate(IncNodePurity = IncNodePurity/mean(case_mod$mse))
+ImpData_2$Var.Names <- row.names(ImpData_2)
+ImpData_3 <- as.data.frame(randomForest::importance(resid_mod))%>%
+  mutate(IncNodePurity = IncNodePurity/mean(resid_mod$mse))
+ImpData_3$Var.Names <- row.names(ImpData_3)
 
 
+p <- ggplot(mapping  = aes(x=Var.Names, y=`%IncMSE`))+
+  geom_segment( mapping  = aes(x=Var.Names, xend=Var.Names, y=0, yend=`%IncMSE`, color = "case rate"),
+                data = ImpData_2, position = position_nudge(x = 0.2)) +
+  geom_point(mapping  = aes(size = IncNodePurity, color = "case rate"), alpha=0.6, data = ImpData_2,
+             position = position_nudge(x = 0.2))+
+  geom_segment( mapping  = aes(x=Var.Names, xend=Var.Names, y=0, yend=`%IncMSE`, color = "difference"),
+                data = ImpData_1) +
+  geom_point(mapping  = aes(size = IncNodePurity, color = "difference"), alpha=0.6, data = ImpData_1)+
+  geom_segment( mapping  = aes(x=Var.Names, xend=Var.Names, y=0, yend=`%IncMSE`, color = "resid"),
+                data = ImpData_3, position = position_nudge(x = -0.2)) +
+  geom_point(mapping  = aes(size = IncNodePurity, color = "resid"), alpha=0.6, data = ImpData_3, 
+                position = position_nudge(x = -0.2))+
+  theme_light() +
+  labs(color = "Model")+
+  xlab("variable name")+
+  ggtitle("Tree Model Feature Importance Shows Similarities")+
+  coord_flip() +
+  theme(
+    legend.position="bottom",
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank())
+addSmallLegend(p)
 ```
+
+
+
+
+
+
+
+
+We hope this shows the value of using the residual over the log difference.
+A key component missing so far is how to use this analysis. One method is to look
+at the partial difference plots. A partial difference plot looks at each independent
+variable and sees how the model output changes on average when you change that variable.
+This can show how important each variable is and hopefully how they relate to to the
+target variable. below is the partial difference plot for Adeline's model with each
+graphic is coloring a difference main data. This is also done with the residual model
+
 
 ```{r ade  partial plots temp}
 
@@ -341,9 +398,10 @@ for(i in 1:8){
 
 ```
 
-A potential use case of this analysis is using the partial difference plots as strategy to improve fitting.
-One issue is that a leveling of the graph could mean that the trend stops or that there is a lack of data
-in that area to split trees. looking at adeline plots we see a clear strong linear trend in flow. This seems
+
+One issue in interpreting these plots is that a leveling of the graph could mean
+that the trend stops or that there is a lack of data in that area to split trees.
+looking at Adeline's plots we see a clear strong linear trend in flow. This seems
 to reduce variance by around 5% but makes the correlation worse. overall this is not convening result.
 
 ```{r}
@@ -354,7 +412,7 @@ x = randomForest::partialPlot(ade_mod, graph_df,
 plot(x, 
      xlab = names(graph_df)[[4]], 
      ylab = "conditional change of forest model output",
-     main = "flow is proportional to difference")
+     main = "difference is proportional to flow")
 abline(a = -40, b = -90)
 }
 
@@ -406,7 +464,7 @@ x = randomForest::partialPlot(resid_mod, graph_df2,
 plot(x, 
      xlab = names(graph_df2)[[3]], 
      ylab = "conditional change of forest model output",
-     main = "flow is proportional to difference")
+     main = "difference is proportional to bcov")
 abline(a = 0, b = -.07)
 }
 
