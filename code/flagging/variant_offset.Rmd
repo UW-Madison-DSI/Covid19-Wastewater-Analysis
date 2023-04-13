@@ -50,8 +50,12 @@ MSE <- function(baseVal, meanVal){
   ret <- mean((baseVal - meanVal)^2)
   return(ret)
 }
-
-
+#10, start[i], end[i], caservtemp, wastervtemp
+#length = 10
+#startdate = start[i]
+#enddate = end[i]
+#casesdf <- caservtemp
+#wastedf <- wastervtemp
 Offset <-function(length, startdate, enddate, casesdf, wastedf){
   
   wastedf <- subset(wastedf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
@@ -73,7 +77,7 @@ Offset <-function(length, startdate, enddate, casesdf, wastedf){
     mutate(rollingaverage = rollmean(conf_case, k=7, fill = NA)) %>%
     drop_na(rollingaverage)
 
-  offsetresults <- data.frame(matrix(ncol = 7, nrow = 0))
+  offsetresults <- data.frame(matrix(ncol = 8, nrow = 0))
   
   for(i in -length:length){
   
@@ -81,21 +85,30 @@ Offset <-function(length, startdate, enddate, casesdf, wastedf){
       mutate(tempdate = as.Date(wastedf$date + i))
     
     temp <- merge(casesdf, wasteTemp, by.x = "date" ,by.y = "tempdate") 
-    
-    temp <- temp %>% 
-      mutate(proportionRolling = temp$geo_mean/temp$rollingaverage,
-            proportion = temp$geo_mean/temp$conf_case, 
-            mse = MSE(temp$geo_mean/temp$rollingaverage,
-            mean(temp$geo_mean/temp$rollingaverage)))
-    
-    temp <- na.omit(temp)
-    new <- c(i,mean(temp$proportion),
-              mean(temp$proportionRolling),
-              mean(temp$mse), 
-              cor(temp$geo_mean,temp$rollingaverage,method = "pearson"), 
-              cor(temp$geo_mean,temp$rollingaverage,method = "kendall"),
-              cor(temp$geo_mean,temp$rollingaverage,method = "spearman"))
-    
+    options(dplyr.summarise.inform = FALSE)
+    if(count(temp) != 0){
+      templm <- lm(log(geo_mean + 1)~log(rollingaverage+1), data=temp) 
+      temp <- temp %>% 
+        mutate(proportionRolling = temp$geo_mean/temp$rollingaverage,
+              proportion = temp$geo_mean/temp$conf_case, 
+              mse = MSE(temp$geo_mean/temp$rollingaverage,mean(temp$geo_mean/temp$rollingaverage)))
+      
+      temp <- na.omit(temp)
+      lmresult <- tryCatch({
+                  summary(templm)$r.squared},
+                  error = function(err) {
+                  return(0)
+                  })
+      new <- c(i,mean(temp$proportion),
+                mean(temp$proportionRolling),
+                mean(temp$mse), 
+                cor(temp$geo_mean,temp$rollingaverage,method = "pearson"), 
+                cor(temp$geo_mean,temp$rollingaverage,method = "kendall"),
+                cor(temp$geo_mean,temp$rollingaverage,method = "spearman"),
+                lmresult)
+    } else {
+      new <- c(i,NA,NA,NA,NA,NA,NA,NA)
+    }
     offsetresults[nrow(offsetresults) + 1, ] <- new  
   }
 
@@ -105,9 +118,12 @@ Offset <-function(length, startdate, enddate, casesdf, wastedf){
                                             meanMSErolling=X4,
                                             corilationPearson=X5,
                                             corilationKendall=X6,
-                                            corilationSpearman=X7)
+                                            corilationSpearman=X7,
+                                            rcor=X8)
   return(offsetresults)
 }
+
+testing <- Offset(10, start[i], end[i], caservtemp, wastervtemp)
 
 #' Title
 #'
@@ -493,21 +509,27 @@ heatmapcor
 ```
 
 ```{r}
+#scale = "offset"
+#timePeriods = 2
+#wasteinput = waste
+#caseinput = cases
 heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput){
-  scale = "rsquared"
   if(scale == "rsquared"){
     outputSelect = 0
   } else if (scale == "ccfmax"){
     outputSelect = 1
   } else if (scale == "pearson"){
     outputSelect = 2
-  }
+  } else if (scale == "offset"){
+    outputSelect = 3
+  } else if (scale == "offsetccf"){
+    outputSelect = 4
+  } else if (scale == "offsetrcor"){
+    outputSelect = 5
+    }
   
   wasterv <- wasteinput
   caserv <- caseinput
-  #wasterv <- waste
-  #caserv <- cases
-  #timePeriods = "covar"
   regionslist <- unique(wasterv$regions)
 
   tempregion <- select(wasterv,regions,site) %>% unique()
@@ -524,7 +546,7 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput){
     start <- c()
     end <- c()
     curtempdate <- firstday
-    while(curtempdate < endday){
+    while(curtempdate + 20 < endday){
       start <- append(start, curtempdate)
       curtempdate <- curtempdate + as.numeric(timePeriods) * 30
       end <- append(end, curtempdate)
@@ -537,7 +559,9 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput){
   
   for(j in regionslist){
     for(i in 1:length(start)){
-      
+      #print(j,i)
+      #j = "Northern"
+      #i = 1
       wastervtemp <- subset(wasterv, anydate(date)> anydate(start[i]) & anydate(date) < anydate(end[i]))
       caservtemp <- subset(caserv, anydate(date)> anydate(start[i]) & anydate(date) < anydate(end[i]))
       
@@ -563,6 +587,7 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput){
       if(outputSelect == 0){
         #lm r squared
         options(dplyr.summarise.inform = FALSE)
+        na.omit(regionvstimetemp)
         templm <- lm(log(geo_mean + 1)~log(rollingaverage+1), data=regionvstimetemp) 
         new <- c(i,j,summary(templm)$r.squared)
       } else if(outputSelect == 1){
@@ -578,6 +603,19 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput){
         #pearson cor
         tempcor <- cor(regionvstimetemp$rollingaverage,regionvstimetemp$geo_mean,method = "pearson")
         new <- c(i,j,tempcor)
+      } else if(outputSelect == 3){ #offset
+        offsetOutput <- Offset(10, start[i], end[i], caservtemp, wastervtemp)
+        offsetOutput <- offsetOutput[order(-offsetOutput$corilationPearson),]
+        new <- c(i,j,offsetOutput[1, "wdateoffset"])
+      } else if(outputSelect == 4){
+        ccfdatatemp <- ccf(as.numeric(caservtemp$conf_case),as.numeric(wastervtemp$geo_mean),plot=0) 
+        ccfdatadf <- data.frame(lag=ccfdatatemp$lag,acf=ccfdatatemp$acf)
+        ccfdatadf <- ccfdatadf[order(-ccfdatadf$acf),]
+        new <- c(i,j,ccfdatadf[1,"lag"])
+      } else if(outputSelect == 5){
+        offsetOutput <- Offset(10, start[i], end[i], caservtemp, wastervtemp)
+        offsetOutput <- offsetOutput[order(-offsetOutput$rcor),]
+        new <- c(i,j,offsetOutput[1, "wdateoffset"])
       }
       
       outputrvt = rbind(outputrvt,new)
@@ -605,23 +643,31 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput){
     geom_rect(aes(ymin = regionsizemin, ymax = regionsizemax, xmin = start, xmax = end)) +
     scale_fill_gradient(low = "blue", high = "yellow") 
   
-  
-  
-  #heatmaprvt <- ggplot(outputrvt,aes(x = time, y = region, fill = output))+ #time center dates width: how wide
-  #  geom_tile() + 
-   # scale_fill_gradient(low = "blue", high = "yellow") + 
-  #  xlab("time") + 
-   # ylab("region") 
-  #ggplotly(heatmaprvt)
+  #return(outputrvt)
   return(heatmaprvt)
 }
 
-ggplotly(heatmapfunc("rsquared",0,waste,cases))
-ggplotly(heatmapfunc("rsquared",6,waste,cases))
-ggplotly(heatmapfunc("rsquared",4,waste,cases))
-ggplotly(heatmapfunc("rsquared",3,waste,cases))
-ggplotly(heatmapfunc("rsquared",2,waste,cases))
+##ggplotly(heatmapfunc("rsquared",0,waste,cases))
+##ggplotly(heatmapfunc("rsquared",6,waste,cases))
+#ggplotly(heatmapfunc("rsquared",4,waste,cases))
+#ggplotly(heatmapfunc("rsquared",3,waste,cases))
+##ggplotly(heatmapfunc("rsquared",2,waste,cases))
 
+#ggplotly(heatmapfunc("offset",0,waste,cases))
+ggplotly(heatmapfunc("offset",6,waste,cases))#pearson cor
+ggplotly(heatmapfunc("offset",2,waste,cases)) 
+
+ggplotly(heatmapfunc("offsetccf",0,waste,cases))
+ggplotly(heatmapfunc("offsetccf",6,waste,cases))
+ggplotly(heatmapfunc("offsetccf",2,waste,cases))#using ccf
+
+ggplotly(heatmapfunc("offsetrcor",2,waste,cases))#using r cor
+ggplotly(heatmapfunc("offsetrcor",0,waste,cases))
+#non parametric corrilation test
+#spearman
+```
+```{r}
+ggplotly(heatmapfunc("offset",1,waste,cases)) 
 ```
 
 
