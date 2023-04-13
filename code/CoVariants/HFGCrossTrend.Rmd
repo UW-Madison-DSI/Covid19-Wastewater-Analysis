@@ -231,8 +231,6 @@ var_output%>%
   scale_x_discrete(position = "top")
 ```
 
-
-
 ```{r fig.height = 15, fig.width= 15 ,eval=FALSE}
 library(ggcorrplot)
 library(GGally)
