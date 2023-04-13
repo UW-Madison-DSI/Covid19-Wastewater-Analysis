@@ -1,0 +1,708 @@
+---
+title: "Comprehensive Random Analysis of Covid-19"
+output:
+  pdf_document: default
+  html_document:
+    code_folding: hide
+date: "2023-01-24"
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+run_base <- FALSE
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message=FALSE)
+```
+
+```{r include = FALSE}
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+set.seed(123)
+```
+
+
+```{r adeline data prep, eval = FALSE}
+library(data.table)
+load("../../dhs_code/Normalization/data/data.H12.backup.RData")
+'%!in%' <- function(x,y)!('%in%'(x,y))
+'%!like%' <- function(x,y)!('%like%'(x,y))
+data.H12<-data.H12.backup
+### Prep H12 data 
+names(data.H12) <- c("wwtp_name", "epaid", "zipcode", "county_names", "state", "capacity_mgd", "population_served", "sample_type", "composite_freq", "sample_matrix", "sample_location", "sample_location_specify", "sample_id", "wwtp_comments", "concentration_method", "extraction_method", "pcr_type", "lod_ref", "quant_stan_type", "quant_stan_ref", "inhibition_method", "n1_sars_cov2_units", "n1_sars_cov2_conc", "n1_sars_cov2_lod", "n1_sars_cov2_error", "n1_ntc_amplify", "n1_num_ntc_amplify", "n1_num_no_target_control", "n1_lod", "n1_loq", "n2_sars_cov2_units", "n2_sars_cov2_conc", "n2_sars_cov2_lod", "n2_sars_cov2_error", "n2_ntc_amplify", "n2_num_ntc_amplify", "n2_num_no_target_control", "n2_lod", "n2_loq", "avg_sars_cov2_conc", "avg_sars_cov2_below_lod", "pmmov_conc", "hf183_conc", "bcov_rec_rate", "inhibition_detect", "inhibition_adjust", "analytical_comments", "sample_collect_date", "sample_collect_time", "test_result_date", "average_flow_rate", "equiv_sewage_amt", "tss", "ph", "bod", "conductivity", "temperature", "do", "bcov_spike_conc")
+
+# Clean samples
+data.H12 <- data.H12 %>% filter(wwtp_name %!like% "Madison-P")
+data.H12 <- data.H12 %>% filter(wwtp_name %!in% c("Keshena", "Lac du Flambeau", "Menomonie", "Mondovi", "Neopit", "Red Cliff", "Wolf", "Wolf River"))
+data.H12 <- data.H12 %>% filter(wwtp_name != "")
+
+# Fix wwtp names
+data.H12$wwtp_name <- gsub(" WWTP", "", data.H12$wwtp_name)
+data.H12$wwtp_name <- gsub("WWTP", "", data.H12$wwtp_name)
+data.H12$wwtp_name <- gsub("WWTF", "", data.H12$wwtp_name)
+data.H12$wwtp_name <- gsub("BlackRiverFalls", "Black River Falls", data.H12$wwtp_name)
+data.H12$wwtp_name <- gsub(" Metro", "", data.H12$wwtp_name)
+data.H12$wwtp_name <- gsub("WI Rapids", "Wisconsin Rapids", data.H12$wwtp_name)
+#print("List wwtps investigated (in H12 extract):")
+#levels(as.factor(data.H12$wwtp_name))
+
+# Add ID
+data.H12$sample_collect_date<-as.Date(data.H12$sample_collect_date, format="%m/%d/%Y")
+data.H12$ID<-paste0(data.H12$wwtp_name, data.H12$sample_collect_date)
+
+
+data.meta<-read.table("../../dhs_code/Normalization/data/WWDataRequestDNR.csv", sep = ",", h=T)
+data.meta<-data.meta %>% filter(lab_submitter == "SLH")
+### Preparation of metadata
+# Fix wwtp names
+data.meta$wwtp_name<-gsub(" WWTF", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" WWTP", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Sewage Utility", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" WW Utility", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Wastewater Utility", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" WPCF", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" MSD", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Utilities", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Municipal Utility", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Water Works", "", data.meta$wwtp_name)
+#levels(as.factor(data.meta$wwtp_name))
+#print("List wwtps with metadata (should be the same than above):")
+#levels(as.factor(data.H12$wwtp_name))
+
+# Add ID
+data.meta$sample_collect_date <- as.Date(data.meta$sample_collect_date, format="%m/%d/%Y")
+data.meta$ID <- paste0(data.meta$wwtp_name, data.meta$sample_collect_date)
+
+# Metadata #1
+data.meta.1 <- unique(data.meta[, c("ID", "sars_cov2_adj_load", "cases", "case_rate")])
+
+# Metadata #2
+data.meta.2 <- data.meta[, c("ID", "result_amt", "storet_parm_desc", "parm_unit_type")]
+data.meta.2$storet_parm_desc <- gsub("CBOD5", "BOD5", data.meta.2$storet_parm_desc)
+data.meta.2$storet_parm_desc <- gsub("BOD5, Total", "BOD5", data.meta.2$storet_parm_desc)
+data.meta.2$storet_parm_desc <- gsub("Suspended Solids, Total", "TSS", data.meta.2$storet_parm_desc)
+data.meta.2 <- reshape2::dcast(data.meta.2, ID~storet_parm_desc, value.var = "result_amt", fun.aggregate= function(x) if(length(x) == 0) NA_real_ else mean(x, na.rm = TRUE))
+data.meta.2 <- data.meta.2 %>% select("ID", "BOD5", "Flow Rate", "TSS")
+
+# Metadata - merged #1 and #2
+data.meta <- left_join(data.meta.1, data.meta.2, by="ID")
+
+data <- inner_join(data.H12, data.meta, by="ID")
+#data<-data.H12
+
+data <-data %>% filter(pcr_type == "qPCR")
+
+data$avg_sars_cov2_conc <- as.numeric(as.character(data$avg_sars_cov2_conc))
+data$average_flow_rate <- as.numeric(as.character(data$average_flow_rate))
+data$population_served <- as.numeric(as.character(data$population_served))
+data$pmmov_conc <- as.numeric(as.character(data$pmmov_conc))
+data$hf183_conc <- as.numeric(as.character(data$hf183_conc))
+data$bcov_rec_rate <- as.numeric(as.character(data$bcov_rec_rate))
+data$tss <- as.numeric(as.character(data$tss))
+data$ph <- as.numeric(as.character(data$ph))
+data$temperature <- as.numeric(as.character(data$temperature))
+data$conductivity <- as.numeric(as.character(data$conductivity))
+data$sars_cov2_adj_load <- as.numeric(as.character(data$sars_cov2_adj_load))
+data$cases <- as.numeric(as.character(data$cases))
+data$case_rate <- as.numeric(as.character(data$case_rate))
+data$BOD5 <- as.numeric(as.character(data$BOD5))
+data$`Flow Rate` <- as.numeric(as.character(data$`Flow Rate`))
+data$TSS <- as.numeric(as.character(data$TSS))
+
+data$wwtp_name <- as.factor(data$wwtp_name)
+
+#data <- data%>%
+#  mutate(across(c("pmmov_conc", "bcov_rec_rate", "average_flow_rate", "TSS") , ~log(.x)))%>%
+#  filter(across(c("pmmov_conc", "bcov_rec_rate", "average_flow_rate", "TSS") , ~is.finite(.x)))
+
+####GROSS CODE
+# Difference between value and average of the value for a given WWTP
+
+data.select.1 <- data%>%
+  select(wwtp_name, case_rate, avg_sars_cov2_conc,everything())
+
+
+#names(data.select.1)[1:3] <- c("wwtp_name", "case_rate", "avg_sars_cov2_conc")
+
+
+mean(log(data.select.1$n1_lod), na.rm = TRUE)
+mean(data.select.1$n1_lod, na.rm = TRUE)
+```
+
+```{r}
+
+lm_plotly_model <- function(DF){
+  plotly_plot <- DF%>%
+  ggplot(aes(x = (avg_sars_cov2_conc), 
+             y = (case_rate),
+             color = n1_sars_cov2_lod,
+             fill = n2_sars_cov2_lod))+
+  geom_point()+
+  geom_smooth()+
+  ggtitle("Strong Linear Relationship Between Log Cases and Log COVID Concentration")+
+  xlab("log(Covid-19 concentration)")+
+  ylab("log(case rate)")
+
+  return(plotly::ggplotly(plotly_plot))#
+}
+```
+
+```{r package dataset}
+library(DSIWastewater)
+data("Case_data", package = "DSIWastewater")
+data("WasteWater_data", package = "DSIWastewater")
+
+roll_Case_data <- Case_data%>%
+  mutate(case_rate = conf_case + prob_death)%>%
+  group_by(site)%>%
+  arrange(date)%>%
+  mutate(case_rate = zoo::rollmean(case_rate, 7, fill = NA, align = "right"))
+  
+  
+data.select.1 <- WasteWater_data%>%
+  mutate(avg_sars_cov2_conc = exp(.5*(log(N1+2) + log(N2+2))))%>%
+  left_join(roll_Case_data )%>%
+  rename(sample_collect_date = date,
+         wwtp_name = site)%>%
+  select(-pop)
+  
+
+```
+
+```{r gen extra info DF}
+library(DSIWastewater)
+data(pop_data, package = "DSIWastewater")
+data(Covariants_data, package = "DSIWastewater")
+Graph_DF <- data.select.1%>%
+  gen_Variant_info("sample_collect_date")%>%#join variant data
+  left_join(rename(pop_data, wwtp_name = site), by = c("wwtp_name"))%>%#join pop data
+  filter(case_rate != 0,
+         avg_sars_cov2_conc != 0,
+         !is.na(pop))%>%
+  mutate(flow_avg_conc = log1p(flow * avg_sars_cov2_conc),
+         avg_sars_cov2_conc = log1p(avg_sars_cov2_conc),
+         case_rate = log(case_rate + 1),
+         LOD = (n1_sars_cov2_lod == "No") & (n2_sars_cov2_lod == "No"))
+
+Graph_DF$pop_group <- as.factor(ntile(Graph_DF$pop, 4))
+
+
+
+df_LOD <- Graph_DF%>%
+  filter(!n1_sars_cov2_lod & !n2_sars_cov2_lod)
+
+
+
+summary(lm(case_rate ~ avg_sars_cov2_conc, data = df_LOD))
+summary(lm(case_rate ~ flow_avg_conc, data = df_LOD))
+
+
+summary(lm(case_rate ~ avg_sars_cov2_conc:pop_group, data = df_LOD))
+summary(lm(case_rate ~ flow_avg_conc:pop_group, data = df_LOD))
+```
+
+```{r plots for paper}
+size = 10
+alpha = .008
+#Graph_DF,  df_LOD
+Graph_DF%>%
+  ggplot(aes(x = exp(avg_sars_cov2_conc), y = exp(case_rate)))+
+  geom_point(size = size, alpha = alpha, color = "black")+
+  scale_y_log10()+
+  scale_x_log10()+
+  theme_minimal()+
+  theme(panel.background = element_rect(fill = '#ff726f', color = 'white'),
+        plot.background = element_rect(fill = '#e06666ff', color = 'white'),
+        aspect.ratio=1)+
+  labs(y = "7-day average of weekly new cases", x = "SARS-CoV-2 particles per liter")
+
+Graph_DF%>%
+  ggplot(aes(x = exp(avg_sars_cov2_conc), y = exp(case_rate) / pop))+
+  geom_point(size = size, alpha = alpha, color = "black")+
+  scale_y_log10()+
+  scale_x_log10()+
+  theme_minimal()+
+  theme(aspect.ratio=1)+
+  labs(y = "7-day average of weekly new cases", x = "SARS-CoV-2 particles")
+
+df_LOD%>%
+  filter(flow_avg_conc > 5)%>%
+  ggplot(aes(x = exp(avg_sars_cov2_conc), y = exp(case_rate) / pop))+
+  geom_point(size = size, alpha = alpha)+
+  scale_y_log10()+
+  scale_x_log10()+
+  theme_minimal()+
+  theme(panel.background = element_rect(fill = '#ff726f', color = 'white'),
+        plot.background = element_rect(fill = '#e06666ff', color = 'white'),
+        aspect.ratio=1)+
+  labs(y = "7-day average of weekly new cases", x = "SARS-CoV-2 particles")
+
+```
+
+```{r summary plot}
+size = 10
+alpha = .02
+#Graph_DF,  df_LOD
+Graph_DF%>%
+  ggplot(aes(x = avg_sars_cov2_conc, y = case_rate))+
+  geom_point(size = size, alpha = alpha)
+summary(lm(case_rate ~ avg_sars_cov2_conc, data = Graph_DF))
+
+Graph_DF%>%
+  ggplot(aes(x = flow_avg_conc, y = case_rate))+
+  geom_point(size = size, alpha = alpha)
+
+df_LOD%>%
+  filter(flow_avg_conc > 5)%>%
+  ggplot(aes(x = flow_avg_conc, y = case_rate))+
+  geom_point(size = size, alpha = alpha)
+summary(lm(case_rate ~ flow_avg_conc, data = df_LOD))
+
+Graph_DF%>%
+  ggplot(aes(x = avg_sars_cov2_conc, y = case_rate, color = pop_group))+
+  geom_point(size = size, alpha = alpha)
+summary(lm(case_rate ~ avg_sars_cov2_conc:pop_group, data = df_LOD))
+Graph_DF%>%
+  ggplot(aes(x = flow_avg_conc, y = case_rate, color = pop_group))+
+  geom_point(size = size, alpha = alpha)
+summary(lm(case_rate ~ flow_avg_conc:pop_group, data = df_LOD))
+
+```
+
+```{r graphics}
+
+
+Graph_DF%>%#n2_sars_cov2_lod
+  filter(7 < avg_sars_cov2_conc)%>%
+  ggplot(aes(x = avg_sars_cov2_conc, y = case_rate))+
+  geom_point(aes(color = n2_sars_cov2_lod), size = 10, alpha = .02)+
+  geom_smooth()
+
+df_LOD%>%#n2_sars_cov2_lod
+  filter(avg_sars_cov2_conc > 10)%>%
+  ggplot(aes(x = avg_sars_cov2_conc, y = case_rate))+
+  geom_point(size = 10, alpha = .01)+
+  geom_smooth()
+
+df_LOD%>%#n2_sars_cov2_lod
+  filter(avg_sars_cov2_conc > 10)%>%
+  ggplot(aes(x = avg_sars_cov2_conc, y = case_rate, color = pop_group))+
+  geom_point(size = 10, alpha = .01)+
+  geom_smooth(method = "lm")
+
+
+best_mod <- lm(case_rate ~ avg_sars_cov2_conc:pop_group, data = df_LOD)
+
+summary(lm(case_rate ~ avg_sars_cov2_conc, data = Graph_DF))
+summary(lm(case_rate ~ avg_sars_cov2_conc, data = df_LOD))
+summary(lm(case_rate ~ avg_sars_cov2_conc + pop_group, data = df_LOD))
+
+
+Graph_DF%>%
+  ggplot(aes(x = avg_sars_cov2_conc, y = case_rate - .676*log(pop)))+
+  geom_point(aes(color = PMMoV), size = 5, alpha = .05)+
+  geom_smooth()
+
+df_LOD%>%
+  filter(5 < avg_sars_cov2_conc)%>%
+  ggplot(aes(x = avg_sars_cov2_conc, y = case_rate - .676*log(pop)))+
+  geom_point(aes(color = PMMoV), size = 5, alpha = .05)+
+  geom_smooth()
+
+
+summary(lm(case_rate ~ avg_sars_cov2_conc + log(pop), data  = df_LOD))
+#log(case) = mlog(cov) + ylog(pop) + x
+#log(case) - ylog(pop)
+#log(case/pop)
+
+df_LOD%>%
+  #filter(5 < avg_sars_cov2_conc)%>%
+  mutate(n_case_rate = case_rate  - .676*log(pop))%>%
+  lm(n_case_rate ~ avg_sars_cov2_conc + main_variant, data = .)%>%
+  summary()
+
+mod_df <- df_LOD%>%
+  mutate(n_case_rate = case_rate  - .676*log(pop))
+plot_lm_model <- lm(n_case_rate ~ avg_sars_cov2_conc, data = mod_df)
+summary(plot_lm_model)
+(mod_df%>%
+  modelr::add_predictions(plot_lm_model)%>%
+  filter(5 < avg_sars_cov2_conc)%>%
+  ggplot(aes(x = avg_sars_cov2_conc, y = case_rate - .676*log(pop)))+
+  geom_point(aes(color = main_variant), size = 5, alpha = .05)+
+  geom_smooth())%>%
+  plotly::ggplotly()
+```
+
+```{r random forest exploration}
+rm_data <- df_LOD%>%
+  mutate(n_case_rate = case_rate  - .676*log(pop))
+
+simple_lm_model <- lm(n_case_rate ~ avg_sars_cov2_conc + log(pop), data  = rm_data)
+library(randomForest)
+rm_data <- rm_data%>%
+  modelr::add_predictions(simple_lm_model)%>%
+  mutate(resid = n_case_rate - pred,
+         PMMoV = log(PMMoV + 2),
+         tss = as.numeric(tss),
+         pcr_type = as.factor(pcr_type),
+         regions = as.factor(regions))%>%
+  select(- n_case_rate)%>%
+  select(-case_rate, -pred, -avg_sars_cov2_conc)%>%
+  select(wwtp_name, resid, regions, PMMoV, flow, ph, pcr_type, main_variant, pop_group)%>%
+  group_by(wwtp_name, pcr_type)%>%
+   mutate(across(c(where(is.numeric), -resid), scale))%>%
+  ungroup()%>%
+  
+  select(-wwtp_name)%>%
+  na.roughfix()
+
+#n1_sars_cov2_lod, n2_sars_cov2_lod, LOD
+  #pcr_type
+resid_mod <- randomForest(resid ~ ., data = rm_data, ntree=500,
+                    importance=TRUE, keep.inbag=TRUE) 
+
+
+summary(simple_lm_model)
+resid_mod
+as.data.frame(randomForest::importance(resid_mod))%>%
+  arrange(IncNodePurity)
+ 
+as.data.frame(randomForest::importance(resid_mod))%>%
+   arrange(`%IncMSE`)
+ 
+ 
+ff = forestFloor::forestFloor(resid_mod, na.roughfix(rm_data), calc_np=T)
+Col = forestFloor::fcol(ff, cols = 1, outlier.lim = 2.5)
+plot(ff, col=Col, plot_GOF = T)
+
+#hf183, conductivity, bcov_rec_rate, temperature
+```
+
+
+```{r}
+best_mod <- lm(case_rate ~ avg_sars_cov2_conc:pop_group + pop_group, data = df_LOD)
+
+
+better_mod <- Graph_DF%>%
+  modelr::add_predictions(best_mod)
+
+better_mod%>%
+  ggplot(aes(x = pred, y = case_rate, color = n1_sars_cov2_lod))+
+  geom_point(size = 10, alpha = .02)+
+  geom_smooth(method = "lm")
+
+#df_LOD%>%
+
+best_mod <- lm(case_rate ~ avg_sars_cov2_conc:pop_group + pop_group, data = df_LOD)
+summary(best_mod)
+
+
+
+better_mod%>%
+  ggplot(aes(x = pred - case_rate, y = avg_sars_cov2_conc, color = n1_sars_cov2_lod))+
+  geom_point(size = 10, alpha = .02)
+  #geom_smooth()
+
+
+t_plot <- df_LOD2%>%
+  ggplot(aes(x = case_rate, y = avg_sars_cov2_conc, color = pop_group))+
+  geom_point(size = 10, alpha = .02)
+
+plotly::ggplotly(t_plot)
+```
+
+
+```{r analsis plot}
+lm_plotly_model(Graph_DF)#plot based N1 vs cases
+
+lm_plotly_model(Graph_DF2)#plot N1 vs cases with normalized data within site
+
+
+#M(t) = unknown function of T. Number of sick people at time t
+#C(t) = e_l + a * M(t)*e_m + e_l
+#W(t) = e_li + b * M(t)*e_e 
+
+
+
+plotly::ggplotly(
+  Graph_DF%>%
+    ggplot(aes(x = (avg_sars_cov2_conc), 
+               y = (case_rate),
+               fill = pop_group,
+               color = LOD))+
+    geom_point()+
+    #geom_smooth(method = "lm")+
+    ggtitle("Strong Linear Relationship Between Log Cases and Log COVID Concentration")+
+    xlab("log(Covid-19 concentration)")+
+    ylab("log(case rate)")
+)
+
+plotly::ggplotly(
+  Graph_DF%>%
+    ggplot(aes(x = (avg_sars_cov2_conc), 
+               y = (case_rate),
+               fill = main_variant,
+               color = LOD))+
+    geom_point()+
+    #geom_smooth(method = "lm")+
+    ggtitle("Strong Linear Relationship Between Log Cases and Log COVID Concentration")+
+    xlab("log(Covid-19 concentration)")+
+    ylab("log(case rate)")
+)
+
+gen_R2_params <- function(lm_formula, df){
+  lm_run <- lm(lm_formula, data = df)
+  return(c(summary(lm_run)$adj.r.squared, length(coef(lm_run))))
+}
+
+#main_variant
+full_formula <- case_rate ~ avg_sars_cov2_conc:LOD:pop_group:main_variant + LOD:pop_group:main_variant
+#
+lm_full_inder_formula <- case_rate ~ avg_sars_cov2_conc:LOD:pop_group +  avg_sars_cov2_conc:LOD:main_variant + LOD:pop_group + LOD:main_variant
+#
+lm_true_formula <- case_rate ~ avg_sars_cov2_conc:pop_group:main_variant + pop_group:main_variant
+#
+lm_true_inder_formula <- case_rate ~ avg_sars_cov2_conc:pop_group + avg_sars_cov2_conc:main_variant + pop_group + main_variant
+##
+lm_norm_formula <- case_rate ~ avg_sars_cov2_conc:LOD:main_variant + LOD:main_variant
+##
+lm_min_formula <- case_rate ~ avg_sars_cov2_conc:main_variant + main_variant
+#
+simple_formula <- case_rate ~ avg_sars_cov2_conc:LOD
+{
+  output_DF <- data.frame("Type" = c("adjusted R^2", "num_param"),
+             "full model" = gen_R2_params(full_formula, Graph_DF),
+             "full indirect model" = gen_R2_params(lm_full_inder_formula, Graph_DF),
+             "true model" = gen_R2_params(lm_true_formula, df_LOD),
+           "true indirect model"= gen_R2_params(lm_true_inder_formula, df_LOD),
+             "norm site model" = gen_R2_params(lm_norm_formula, Graph_DF2),
+             "true norm site model" = gen_R2_params(lm_min_formula, df_LOD2),
+             "Original relationship" = gen_R2_params(simple_formula, Graph_DF))
+  
+  n <- output_DF$Type
+  output_DF <- as.data.frame(t(output_DF[,-1]))
+  colnames(output_DF) <- n
+  output_DF
+}
+output_DF%>%
+  ggplot(aes(x = num_param, y = `adjusted R^2`))+
+  geom_point()+
+  geom_smooth(se = FALSE)
+```
+///////////////////////////////////////
+// HFG Work
+///////////////////////////////////////
+```{r, eval = FALSE}
+data("HFGWaste_data", package = "DSIWastewater")
+data(Case_data , package = "DSIWastewater")
+
+#crazy agressive method
+hfg_outlier_detection <- function(small_vec){
+  sortedVec <- sort(log(small_vec))
+  lower_quant <- sortedVec[4]
+  upper_quant <- sortedVec[6]
+  range <- upper_quant - lower_quant
+  retVec = ifelse(log(small_vec) > upper_quant + 1.5 * range,
+                  exp(upper_quant + 1.5 * range), small_vec)
+  retVec = ifelse(log(small_vec) < lower_quant - 1.5 * range,
+                  exp(lower_quant - 1.5 * range), small_vec)
+  retVec = ifelse(is.infinite(retVec), NA, retVec)
+  return(retVec)
+}
+
+Pop_DF <- data.frame(
+  site = c("Hudson","Kenosha","Platteville","Madison","Merrill","Plymouth","River Falls","Sun Prairie","Wausau","Oshkosh","Wausau"),
+  pop = c(19680,122000,14000,380000,10000,9000,16000,34926,42000,67000,42000)
+)
+
+hfg_waste_filt_df <- HFGWaste_data%>%
+  select(site, date, Filter, Well, N1, N2, PMMOV, HF183, CrP, everything())%>%
+  group_by(date, site)%>%
+  mutate(across(N1:CrP, hfg_outlier_detection))%>%
+  left_join(Pop_DF)
+```
+
+```{r, eval = FALSE}
+trend_df <- hfg_waste_filt_df%>%
+  group_by(site)%>%
+  group_split()%>%
+  lapply(loessSmoothMod, InVar = "N1", OutVar = "Trend_N1")%>%
+  lapply(loessSmoothMod, InVar = "N2", OutVar = "Trend_N2")%>%
+  lapply(loessSmoothMod, InVar = "PMMOV", OutVar = "Trend_PMMOV")%>%
+  lapply(loessSmoothMod, InVar = "HF183", OutVar = "Trend_HF183")%>%
+  lapply(loessSmoothMod, InVar = "CrP", OutVar = "Trend_CrP")%>%
+  bind_rows()%>%
+  mutate(
+    Diff_N1 = Trend_N1 - N1,
+    Diff_N2 = Trend_N2 - N2,
+    Diff_PMMOV = Trend_PMMOV - PMMOV,
+    Diff_HF183 = Trend_HF183 - HF183,
+    Diff_CrP = Trend_CrP - CrP
+    )%>%
+  select(date, site, Filter, Well, pop, Trend_N1:Diff_CrP, N1LOD, N2LOD)
+```
+
+
+
+```{r, eval = FALSE}
+log_trend_df <- hfg_waste_filt_df%>%
+  mutate(log_N1 = log(N1),
+         log_N2 = log(N2),
+         log_PMMOV = log(PMMOV),
+         log_HF183 = log(HF183),
+         log_CrP = log(CrP))%>%
+  group_by(site)%>%
+  group_split()%>%
+  lapply(loessSmoothMod, InVar = "log_N1", OutVar = "Trend_N1")%>%
+  lapply(loessSmoothMod, InVar = "log_N2", OutVar = "Trend_N2")%>%
+  lapply(loessSmoothMod, InVar = "log_PMMOV", OutVar = "Trend_PMMOV")%>%
+  lapply(loessSmoothMod, InVar = "log_HF183", OutVar = "Trend_HF183")%>%
+  lapply(loessSmoothMod, InVar = "log_CrP", OutVar = "Trend_CrP")%>%
+  bind_rows()%>%
+  mutate(
+    Diff_N1 = Trend_N1 - log_N1,
+    Diff_N2 = Trend_N2 - log_N2,
+    Diff_PMMOV = Trend_PMMOV - log_PMMOV,
+    Diff_HF183 = Trend_HF183 - log_HF183,
+    Diff_CrP = Trend_CrP - log_CrP)%>%
+  select(site, date, Filter, Well, pop, Trend_N1:Diff_CrP, N1LOD, N2LOD)
+
+
+diff_norm <- function(df){
+  df%>%
+    mutate(across(Diff_N1:Diff_CrP, ~.x - mean(.x, na.rm = TRUE)),
+                      across(Diff_N1:Diff_CrP, ~ifelse(is.finite(.x),.x,NA)))
+}
+
+diff_var <- function(df, name){
+  df%>%
+    ungroup()%>%
+    summarise(across(Diff_N1:Diff_CrP, ~var(.x, na.rm = TRUE)))%>%
+    mutate(var_type = name)
+}
+```
+
+```{r, eval = FALSE}
+gen_vars <- function(df){
+  trend_variance_df <- df%>%
+    group_by(site)%>%
+    diff_norm()
+
+  filter_variance_df <- df%>%
+    group_by(site, date)%>%
+    diff_norm()
+  
+  well_variance_df <- df%>%
+    group_by(site, date, Filter)%>%
+    diff_norm()
+  
+  bind_DF <- rbind(diff_var(trend_variance_df, "trend var"),
+                      diff_var(filter_variance_df, "filter var"),
+                      diff_var(well_variance_df, "well var"))%>%
+    pivot_longer(Diff_N1:Diff_CrP)%>%
+    mutate(name = factor(name, levels=c('Diff_N1', 'Diff_N2', 'Diff_PMMOV',
+                                        'Diff_HF183', 'Diff_CrP')),
+           var_type = factor(var_type, levels = c("trend var", "filter var",
+                                                  "well var")))
+  levels(bind_DF$name) <- c("N1", "N2", "PMMoV", "HF183", "CrP")
+  return(bind_DF)
+}
+
+gen_plot_heat <- function(df, title = NA){
+  df%>%
+    ggplot(aes(x = name, y = var_type)) +
+    geom_tile(aes(fill = value)) + 
+    geom_text(aes(label = round(value, 3))) +#formatC
+    scale_fill_gradient(low = "white", high = "red")+
+    scale_x_discrete(position = "top")+
+    xlab("signal source")+
+    ylab("variance source")+
+    ggtitle(title)
+}
+
+gen_plot_hist <- function(df, title = NA){
+  t_plot <- df%>%
+    ggplot(aes(x = name, fill = var_type))+
+    geom_col(aes(y = value), position="identity" ) +
+    xlab("signal source")+
+    ylab("Cumaltive Variance")+
+    ggtitle(title)
+  return(t_plot)
+}
+``` 
+
+
+```{r, eval = FALSE}
+dis_df <- log_trend_df
+
+var_output_base <- gen_vars(log_trend_df)
+
+var_output_lod <- log_trend_df%>%
+  filter(N2LOD | N1LOD)%>%
+  gen_vars()
+
+
+var_output_NLOD <- log_trend_df%>%
+  filter(!(N2LOD | N1LOD))%>%
+  gen_vars()
+
+
+gen_plot_heat(var_output_base, "source of variance in HFG data")
+gen_plot_heat(var_output_lod, "source of variance in above LOD info HFG data")
+gen_plot_heat(var_output_NLOD, "source of variance in bellow LOD info HFG data")
+
+gen_plot_hist(var_output_base, "source of variance in HFG data")
+gen_plot_hist(var_output_lod, "source of variance in above LOD info HFG data")
+gen_plot_hist(var_output_NLOD, "source of variance in bellow LOD info HFG data")
+
+
+#Trend var: variance points of a day #variance of the signal
+#Filter var: variance between collected points #collection variance
+#well var: variance of 3 points #PCR test variance / extraction variance
+
+#Gaussian mixture model
+#change label to make more clear
+#stacked in bar graph
+#z = x + y
+#var(z) = var(x) + var(y) if independent(
+
+```
+
+
+```{r histogram work, eval = FALSE}
+temp_func <- function(DF){
+  g_ret <- DF%>%
+    ggplot(aes(x = Diff_N1))+
+    geom_histogram()
+  return(g_ret)
+}
+temp_func(trend_variance_df)
+temp_func(filter_variance_df)
+temp_func(well_variance_df)
+
+hist_plot <- ggplot(mapping = aes(x = Diff_N1))+
+    geom_histogram(data = well_variance_df, fill = "green")+
+    geom_histogram(data = filter_variance_df, fill = "blue")+
+    geom_histogram(data = trend_variance_df, fill = "red")
+
+plotly::ggplotly(hist_plot)
+```
+
+
+```{r abstract design, eval = FALSE}
+
+num_samples <- 16000
+for(A in c(1,3,5)){
+  X <- 2 * rnorm(num_samples) + 10
+  yn_exp <- rnorm(num_samples)
+  yn_lin <- exp(2*A)*rnorm(num_samples)
+  Y <- exp(X + yn_exp) + yn_lin
+  xn_exp <- rnorm(num_samples)
+  xn_lin <- exp(1*A)*rnorm(num_samples)
+  X <- exp(X + xn_exp)# + xn_lin
+  #plot(X, Y)
+  plot(log(X), log(Y))
+}
+```

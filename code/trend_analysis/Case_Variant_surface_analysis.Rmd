@@ -1,0 +1,114 @@
+---
+title: "Case vs variant surface analysis"
+output: html_document
+date: "2023-03-28"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include = FALSE}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(zoo)
+set.seed(123)
+```
+
+```{r data prep}
+#load data from package
+library(DSIWastewater)
+data(pop_data, package = "DSIWastewater")
+data(WasteWater_data , package = "DSIWastewater")
+data(Case_data , package = "DSIWastewater")
+data(Covariants_data, package = "DSIWastewater")
+
+
+#convert covariant info to most prevalent covariant to make more efficient
+t_df <- Covariants_data%>%#remove info about total number of genes
+  select(-total_sequences)
+
+t_df$main_variant <- colnames(t_df)[apply(t_df[2:(length(t_df)-1)], 1, which.max)]#add column saying max value
+
+covar_floor_df <- t_df%>%#add merge variable to merge weekly data to daily+ data
+  mutate(dumby_merge_var = floor(as.numeric(lubridate::ymd(week)) / 7),
+         main_variant = as.factor(main_variant))%>%
+  select(dumby_merge_var, main_variant)
+
+
+#get rolling average of case data to remove 0 - 5 spikes and remove dow effect
+case_merge_df <- Case_data%>%
+  group_by(site)%>%
+  arrange(site, date)%>%
+  mutate(roll_prob_case = rollmean(prob_case, 7 ,na.pad = TRUE))%>%#,
+  ungroup()
+
+#merge three datasets into one dataset to do analysis on
+data.select.1 <- WasteWater_data%>%
+  left_join(pop_data, by = c("site", "pop"))%>%
+  left_join(case_merge_df, by = c("site", "date"))%>%
+  mutate(site = as.factor(site),
+         regions = as.factor(regions),
+         #N1 = ifelse(N1 >= n1_sars_cov2_lod, N1, n1_sars_cov2_lod/2),
+         #N2 = ifelse(N2 >= n2_sars_cov2_lod, N2, n2_sars_cov2_lod/2),
+         #roll_prob_case = roll_prob_case / pop,
+         #cov_flow_pop_norm = sqrt(N1 * N2) * flow / pop,
+         pop = log(pop))%>%
+  mutate(dumby_merge_var = floor((floor(as.numeric(date) / 7) - 1)/2)*2 + 1 )%>%
+  left_join(covar_floor_df, by = c("dumby_merge_var"))%>%
+  select(-dumby_merge_var)
+
+```
+
+
+```{r mod fit}
+library(randomForest)
+library(randomForestExplainer)
+#do data parsing
+#to get the dataframe ready to fit
+to_numeric = c("date", "bod", "created_on", "last_modified_on", "test_result_date", "sample_collect_time")
+to_factor = c("county", "pcr_type", "n1_sars_cov2_lod", "n2_sars_cov2_lod", "lab_submitter")
+
+
+#columns with log normal tendencys
+to_log = c("flow", "ph", "conductivity", "n1_lod", "n2_lod", "n1_loq", "n2_loq", "capacity_mgd", "PMMoV")
+
+#columns not worth doing analysis on
+to_drop <- c("created_on", "last_modified_on", "test_result_date", "site", "county")
+
+#columns with to much issues to work on RN
+weird_drop <- c("n1_sars_cov2_error", "n1_num_ntc_amplify", "n1_num_no_target_control", "n2_sars_cov2_error", "n2_num_ntc_amplify", "n2_num_no_target_control", "zipcode")
+
+#columns that lead to leaking the answers
+cheating_drop <- c("N1", "N2", "tests", "prob_case", "conf_case", "roll_prob_case",
+                   "avg_sars_cov2_conc", "cov_flow_pop_norm", "sample_id")
+
+#modify columns so they all have the right type
+resid_df <- data.select.1%>%
+  mutate(across(to_numeric, as.numeric),
+         across(to_factor, as.factor),
+         across(to_log, ~log(abs(.x) + 1)))
+```
+
+
+```{r, cov vs pos%}
+resid_df%>%
+  select(tests, conf_case,main_variant, date)%>%
+  group_by(date, main_variant)%>%
+  summarise(cases = mean((conf_case)))%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y = cases, color = lubridate::wday(as.Date(date))))
+
+resid_df%>%
+  select(tests, conf_case,main_variant, date)%>%
+  group_by(date, main_variant)%>%
+  summarise(PP = mean((conf_case/tests)))%>%
+  ggplot(aes(x = date))+
+  geom_point(aes(y = PP, color = lubridate::wday(as.Date(date))))
+
+
+resid_df%>%
+  select(tests, conf_case,main_variant, date)%>%
+  filter(conf_case/tests == 0)
+``` 

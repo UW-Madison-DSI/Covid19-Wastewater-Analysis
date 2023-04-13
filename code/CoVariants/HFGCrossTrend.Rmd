@@ -228,7 +228,7 @@ var_output%>%
   geom_tile(aes(fill = value)) + 
   geom_text(aes(label = round(value, 3))) +
   scale_fill_gradient(low = "white", high = "red")+
-  scale_x_discrete(position = "top") 
+  scale_x_discrete(position = "top")
 ```
 
 

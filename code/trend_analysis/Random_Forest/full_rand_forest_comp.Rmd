@@ -1,0 +1,339 @@
+---
+title: "Comprehensive Random Analysis of Covid-19"
+output:
+  html_document:
+    code_folding: hide
+  pdf_document: default
+date: "2023-01-24"
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+run_base <- FALSE
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message=FALSE)
+```
+
+```{r include = FALSE}
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(zoo)
+set.seed(123)
+```
+
+
+```{r plot function}
+#modified adeline code to work fro a supplied tree
+#graphs the node purity and increased MSE.
+imp_ploting <- function(temp_mod){
+  #extract relavent info from model into dataframe
+  ImpData <- as.data.frame(randomForest::importance(temp_mod))
+  ImpData$Var.Names <- row.names(ImpData)
+
+  #plot the data backwards to then cord_flip to make it show right
+ggplot(ImpData, aes(x = reorder(Var.Names, -`IncNodePurity`), y = `%IncMSE`)) +
+  geom_segment( aes(xend= reorder(Var.Names, -`IncNodePurity`),
+                    y=0, yend=`%IncMSE`), color="skyblue") +
+  geom_point(aes(size = IncNodePurity), color="blue", alpha=0.6) +
+  theme_light() +
+  coord_flip() +
+  theme(
+    legend.position="bottom",
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank())
+}
+
+#plot list of rnadom forest models instead of a single one
+imp_list_ploting <- function(temp_mod, num_tree = 100, unnorm = FALSE){
+  num_plot = length(temp_mod)
+  ret_plot <- ggplot(mapping = aes(y = `%IncMSE`))
+  for(plot_prog in 1:num_plot){
+      #extract relevant info from model into dataframe
+      p_model <- temp_mod[[plot_prog]]
+      ImpData <- as.data.frame(randomForest::importance(p_model))
+      ImpData$Var.Names <- row.names(ImpData)
+
+      if(unnorm){
+        mse_temp <- p_model$mse[num_tree]
+        ImpData <- ImpData%>%
+          mutate(`%IncMSE` = `%IncMSE`* mse_temp)
+      }
+      
+      ret_plot <- ret_plot+
+        #plot the data backwards to then cord_flip to make it show right
+          geom_segment(aes(
+            x = (reorder(Var.Names, -`IncNodePurity`)),
+            xend= (reorder(Var.Names, -`IncNodePurity`)),
+            yend=0, colour = as.factor(!!(plot_prog))),
+            position = position_nudge(x = plot_prog/(num_plot + 1) - .5),
+            data = ImpData)+
+            geom_point(aes(size = IncNodePurity, 
+                         x = reorder(Var.Names, -`IncNodePurity`),
+                         colour = as.factor(!!(plot_prog))),
+                        position = position_nudge(x = plot_prog/(num_plot + 1) -.5),
+                           ImpData, alpha=0.6)
+  }
+   ret_plot <- ret_plot+
+      theme_light() +
+      coord_flip() +
+      theme(
+        legend.position="bottom",
+        panel.grid.major.y = element_blank(),
+        panel.border = element_blank(),
+        axis.ticks.y = element_blank())
+   if(unnorm){
+        ret_plot <- ret_plot+
+          labs(y = "increased MSE", x = "var name", 
+               color = "model", title = "variable importance of random forest models")
+   }else{
+        ret_plot <- ret_plot+
+          labs(x = "var name", 
+               color = "model", title = "variable importance of random forest models")
+    }
+   return(ret_plot)
+}
+```
+
+```{r data prep}
+#load data from package
+library(DSIWastewater)
+data(pop_data, package = "DSIWastewater")
+data(WasteWater_data , package = "DSIWastewater")
+data(Case_data , package = "DSIWastewater")
+data(Covariants_data, package = "DSIWastewater")
+#convert covariant info to most prevalent covariant to make more efficient
+t_df <- Covariants_data%>%#remove info about total number of genes
+  select(-total_sequences)
+
+t_df$main_variant<-colnames(t_df)[apply(t_df, 1, which.max)]#add column saying max value
+
+covar_floor_df <- t_df%>%#add merge variable to merge weekly data to daily+ data
+  mutate(dumby_merge_var = floor(as.numeric(lubridate::ymd(week)) / 7),
+         main_variant = as.factor(main_variant))%>%
+  select(dumby_merge_var, main_variant)
+
+
+#get rolling average of case data to remove 0 - 5 spikes and remove dow effect
+case_merge_df <- Case_data%>%
+  group_by(site)%>%
+  arrange(site, date)%>%
+  mutate(roll_prob_case = rollmean(prob_case + conf_case, 7 ,na.pad = TRUE))%>%#,
+        #past_day_case = dplyr::lag(roll_prob_case, 21),
+        #post_day_case = dplyr::lead(roll_prob_case))%>%
+  ungroup()
+
+library(lubridate)
+#merge three datasets into one dataset to do analysis on
+data.select.1 <- WasteWater_data%>%
+  left_join(pop_data, by = c("site", "pop"))%>%
+  left_join(case_merge_df, by = c("site", "date"))%>%
+  mutate(site = as.factor(site),
+         regions = as.factor(regions),
+         #N1 = ifelse(N1 >= n1_sars_cov2_lod, N1, n1_sars_cov2_lod/2),
+         #N2 = ifelse(N2 >= n2_sars_cov2_lod, N2, n2_sars_cov2_lod/2),
+         #roll_prob_case = roll_prob_case / pop,
+         #cov_flow_pop_norm = sqrt(N1 * N2) * flow / pop,
+         pop = log(pop))%>%
+  mutate(dumby_merge_var = floor((floor(as.numeric(date) / 7) - 1)/2)*2 + 1 )%>%
+  left_join(covar_floor_df, by = c("dumby_merge_var"))%>%
+  select(-dumby_merge_var)%>%
+  mutate(DOW = wday(as.Date(date)),
+         MOY = month(as.Date(date)))#%>%
+  #select(-date)
+
+#run simple linear model to fit residuals on
+linear_model <- lm(log(roll_prob_case + 1) ~ log(sqrt(N1*N2) + 1):site, 
+                                data = data.select.1, na.action = na.exclude)
+data.select.1$resid <- resid(linear_model)
+
+
+#look at pop vs region conflict
+#look at region given pop normalization
+data.select.1%>%
+  group_by(regions)%>%
+  summarise(mean(exp(pop), na.rm = TRUE))
+
+
+pop_data%>%
+  ggplot(aes(x = pop))+
+  geom_histogram()
+```
+
+
+```{r mod fit}
+library(randomForest)
+library(randomForestExplainer)
+#do data parsing
+#to get the dataframe ready to fit
+to_numeric = c("bod", "created_on", "last_modified_on", "test_result_date", "sample_collect_time", "date")
+to_factor = c("county", "pcr_type", "n1_sars_cov2_lod", "n2_sars_cov2_lod", "lab_submitter")
+
+
+#columns with log normal tendencys
+to_log = c("flow", "ph", "conductivity", "n1_lod", "n2_lod", "n1_loq", "n2_loq", "capacity_mgd", "PMMoV")
+
+#columns not worth doing analysis on
+to_drop <- c("created_on", "last_modified_on", "test_result_date", "site", "county")
+
+#columns with to much issues to work on RN
+weird_drop <- c("n1_sars_cov2_error", "n1_num_ntc_amplify", "n1_num_no_target_control", "n2_sars_cov2_error", "n2_num_ntc_amplify", "n2_num_no_target_control", "zipcode")
+
+#columns that lead to leaking the answers
+cheating_drop <- c("N1", "N2", "tests", "prob_case", "conf_case", "roll_prob_case",
+                   "avg_sars_cov2_conc", "cov_flow_pop_norm", "sample_id")
+
+#modify columns so they all have the right type
+resid_df <- data.select.1%>%
+  mutate(across(to_numeric, as.numeric),
+         across(to_factor, as.factor),
+         across(to_log, ~log(abs(.x) + 1)))
+
+#select only needed columns
+train_df <- resid_df%>%
+  select(where(~(is.numeric(.x) || is.factor(.x))))%>%
+  select(-one_of(cheating_drop))%>%
+  select(-one_of(weird_drop))%>%
+  select(where( ~!all(is.na(.x))))%>%
+  group_by(site)%>%
+  arrange(site, date)%>%
+  select(-date)%>%
+  #mutate(across(where(is.numeric), scales::rescale))%>%
+  #mutate(across(where(is.numeric), ~dplyr::lag(.x, 1), .names = "lag_{.col}"))%>%
+  ungroup()%>%
+  #select(-lag_resid)%>%
+  select(-one_of(to_drop))
+  
+```
+
+
+```{r model fit}
+#fit model. Random forest regression on the residuals of the linear model
+#goal is to extract usful covariates to improve current methods
+resid_mod <-randomForest(resid ~ ., data = train_df, ntree = 50,
+                  na.action = na.roughfix, importance=TRUE, keep.inbag=TRUE)
+
+resid_mod
+```
+
+
+```{r imp analasis}
+imp_ploting(resid_mod)
+```
+
+```{r droping analysis}
+#drop nodes based on node purity
+drop_bad_treereg <- function(oldtree, DF, drop_num){
+  drop_names <- as.data.frame(randomForest::importance(oldtree))%>%
+    arrange(desc(!!sym('IncNodePurity')))%>%
+    tail(drop_num)%>%
+    row.names()
+  DF <- DF%>%
+    select(-one_of(drop_names))
+  
+  resid_mod <- randomForest(resid ~ ., data = DF, ntree=50,
+                  na.action = na.roughfix, importance=TRUE, keep.inbag=TRUE)
+  return(resid_mod)
+}
+clone_num = 1
+d5_model <- drop_bad_treereg(resid_mod, train_df, 5*clone_num)
+d10_model <- drop_bad_treereg(resid_mod, train_df, 10*clone_num)
+d15_model <- drop_bad_treereg(resid_mod, train_df, 15*clone_num)
+d20_model <- drop_bad_treereg(resid_mod, train_df, 20*clone_num)
+
+print_DF <- data.frame(name = c("base", "drop 10", "drop 20", "drop 30", "drop 40"),
+                       per_var_exp = c(resid_mod$rsq[50], 
+                                       d5_model$rsq[50],
+                                       d10_model$rsq[50],
+                                       d15_model$rsq[50],
+                                       d20_model$rsq[50]),
+                       mse = c(resid_mod$mse[50],
+                               d5_model$mse[50],
+                               d10_model$mse[50],
+                               d15_model$mse[50],
+                               d20_model$mse[50]))%>%
+  mutate(per_var_exp = per_var_exp * 100)
+
+reg_list <- list(resid_mod, d5_model, d15_model, d20_model)
+imp_list_ploting(reg_list, 50, unnorm = TRUE)
+imp_list_ploting(reg_list, 50,unnorm = FALSE)
+print_DF
+
+as.data.frame(randomForest::importance(d10_model))%>%
+  arrange('%IncMSE')
+```
+```{r random forest results}
+
+#we compared a bunch of stuff!!!
+#we improved case modeling
+#simple rule improves model
+#more forceful using the random forest to predict () gives upper bounds of covariate 
+```
+
+```{r viz partial plots, eval = FALSE}
+graph_df <- train_df%>%
+  na.roughfix()#%>%
+  #select(regions:main_variant)#%>%
+  #select(partial_plot_names)
+
+library(forestFloor)
+ff = forestFloor(resid_mod, graph_df, calc_np=T)
+for(i in 1:12){
+  Col = fcol(ff, cols = i, outlier.lim = 2.5)
+  plot(ff, plot_seq = 1:12, col = Col, plot_GOF = T)
+}
+
+Col = fcol(ff, cols = 1, outlier.lim = 2.5)
+plot(ff, col = Col)
+```
+
+```{r plot bcov partial plots, eval = FALSE}
+
+x = randomForest::partialPlot(resid_mod, graph_df, 
+                              x.var = names(graph_df)[[4]],
+                              plot = FALSE)
+{
+plot(x, 
+     xlab = names(graph_df2)[[4]], 
+     ylab = "conditional change of forest model output",
+     main = "difference is proportional to bcov")
+abline(a = 0, b = .1)
+}
+
+
+prop_df <- data.select.2.sc%>%
+  rename(bcov = diff_bcov_rec_rate)%>%
+  mutate(bcov_mod_diff = -.1*bcov  + resid,
+         cond_bcov_mod_diff = ifelse( bcov <= 2,
+                              -.1*bcov + resid,
+                              resid),
+         bcov_mod_conc = -.1*bcov  + log(avg_sars_cov2_conc + 1),
+         cond_bcov_mod_conc = ifelse( bcov <= 2,
+                              -.1*bcov + log(avg_sars_cov2_conc + 1),
+                              log(avg_sars_cov2_conc + 1))
+         )
+
+var_sum_df <- prop_df%>%
+  summarise(name = "variance",
+            'base value' = var(resid), 
+            'linear normalization' = var(bcov_mod_diff),
+            'conditional normalization' = var(cond_bcov_mod_diff))
+
+
+cor_sum_df <- prop_df%>%
+  summarise(name = "corelation",
+            'base value' = cor(log(avg_sars_cov2_conc + 1), case_rate), 
+            'linear normalization' = cor(bcov_mod_conc, case_rate),
+            'conditional normalization' = cor(cond_bcov_mod_conc, case_rate))
+
+
+rbind(var_sum_df, cor_sum_df)
+
+
+summary(lm(case_rate ~ avg_sars_cov2_conc,data = data.select.3))
+summary(lm(case_rate ~ (avg_sars_cov2_conc + avg_sars_cov2_conc*bcov_rec_rate) + regions, data = data.select.3))
+```
+
+
