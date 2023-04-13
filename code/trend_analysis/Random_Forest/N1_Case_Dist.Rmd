@@ -331,8 +331,8 @@ summary(plot_lm_model)
   filter(5 < avg_sars_cov2_conc)%>%
   ggplot(aes(x = avg_sars_cov2_conc, y = case_rate - .676*log(pop)))+
   geom_point(aes(color = main_variant), size = 5, alpha = .05)+
-  geom_smooth())%>%
-  plotly::ggplotly()
+  geom_smooth())#%>%
+  #plotly::ggplotly()
 ```
 
 ```{r random forest exploration}
@@ -406,18 +406,13 @@ better_mod%>%
   #geom_smooth()
 
 
-t_plot <- df_LOD2%>%
-  ggplot(aes(x = case_rate, y = avg_sars_cov2_conc, color = pop_group))+
-  geom_point(size = 10, alpha = .02)
 
-plotly::ggplotly(t_plot)
 ```
 
 
-```{r analsis plot}
+```{r analsis plot, eval = FALSE}
 lm_plotly_model(Graph_DF)#plot based N1 vs cases
 
-lm_plotly_model(Graph_DF2)#plot N1 vs cases with normalized data within site
 
 
 #M(t) = unknown function of T. Number of sick people at time t
