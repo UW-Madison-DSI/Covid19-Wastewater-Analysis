@@ -1,13 +1,44 @@
 ---
-title: "Comprehensive Random Analysis of Covid-19"
+title: "Data Precision During the Pandemic: Evaluating Normalization Approaches for Reliable COVID-19 Quantification in Wastewater"
 output:
   pdf_document: default
   html_document:
     code_folding: hide
-date: "2023-01-24"
+date: "2023-04-17"
 editor_options:
   chunk_output_type: inline
 ---
+Authors list:
+Marlin Lee, Dagmara Antkiewicz, Adélaïde Roguet, Kayley Janssen, Martin Shafer, Abe Megahed, Kyllan Wunder
+
+
+### Abstract
+
+The COVID-19 pandemic has presented unprecedented challenges to global public
+health, requiring rapid and accurate monitoring strategies. Wastewater-based epidemiology
+(WBE) has emerged as a promising approach for early community detection of SARS-CoV-2,
+the virus responsible for COVID-19. However, challenges remain in using the measured
+wastewater concentrations to reliably predict new outbreaks or call significant community viral
+load changes. The intrinsic complexity and variability of wastewater surveillance data
+necessitates the use of normalization approaches including viral markers, laboratory controls,
+and general collection source factors to establish and improve the connection between
+wastewater concentration and community health / trends.
+In this study, we investigated various characteristics of the collected samples, including
+human fecal marker (PMMoV) concentration, reported measurement LOD (limit of detection),
+and laboratory viral recovery control (BCoV), in an effort to reduce variance in the SARS-CoV-2
+measurement and to enhance its connection to collected case data. Additionally, we explored
+the information about the site's population, location, and current dominant SARS-CoV-2 variant
+as predictors of the relationship between wastewater concentration and case positivity. Our
+findings revealed that the linear relationship between the log of sewage concentration of
+SARS-CoV-2 and the log of reported cases was significantly improved when controlling for the
+site's population and LOD.
+These findings contribute to our understanding of the factors that can impact the
+accuracy and precision of wastewater-based epidemiology for COVID-19 detection. By
+identifying and incorporating appropriate normalizers, we can enhance the accuracy and
+precision of wastewater-based epidemiology, thus facilitating early detection and response to
+potential outbreaks, and supporting effective public health interventions in the ongoing fight
+against the pandemic. Further research in this area is warranted to optimize the use of
+normalizers and improve the precision of wastewater-based COVID-19 detection methods.
 
 ```{r setup, include=FALSE}
 run_base <- FALSE
@@ -21,6 +52,26 @@ library(ggplot2)
 library(tidyr)
 set.seed(123)
 ```
+
+### Background
+As epidemiologists continue to study the Covid-19 pandemic, caused by the novel coronavirus SARS-CoV-2, there is growing interest in exploring unconventional surveillance methods to track the spread of the virus in communities. One such approach gaining attention is WBE, also known as wastewater surveillance or sewage surveillance. WBE involves monitoring and analyzing wastewater samples to detect the presence of SARS-CoV-2, which has been found in human feces.
+
+
+The concept behind WBE is that infected individuals shed the virus in their feces, which then enters the wastewater system and can be detected in sewage. By analyzing wastewater samples for viral RNA, epidemiologists can estimate the prevalence of Covid-19 in a community, even among asymptomatic individuals who may not have been tested through traditional clinical testing methods.
+
+
+One of the key advantages of wastewater surveillance is its ability to provide population-level data, as wastewater samples can be collected from sewage treatment plants or other collection points that serve large populations. This makes it a cost-effective and non-invasive method for monitoring the overall prevalence of Covid-19 in a community, especially in areas with limited testing resources or where asymptomatic cases may be missed through clinical testing alone. 
+However, it's important to note that there are issues to using wastewater surveillance for Covid-19 monitoring.The accuracy and sensitivity of wastewater surveillance can also be influenced by various factors such as sampling protocols, wastewater treatment processes, and environmental factors, which may introduce variability in the results.
+
+
+### Data Collection:
+
+Wastewater samples were given to us by the Department of Health Services(DHS) and curated by the State Lab of Hygiene (SLH). These samples were collected from sewage treatment plants in multiple locations across Wisconsin over a period of 2 years from September of 200 to December of 2022. Samples were collected at regular intervals and processed according to established protocols for WBE. Specifically, samples were analyzed for the concentration of the SARS-CoV-2 gene’s N1 and N2. The sample was also measured for a human fecal marker, PMMoV. The Level of Detection (LOD) was determined by the SLH and reported for each concentration. Laboratory viral recovery control was performed using bovine coronavirus (BCoV) as a surrogate virus, added to the wastewater samples at a known concentration during the processing step, to assess the efficiency of viral recovery and potential inhibitory effects in the assay. Clinical data on reported Covid-19 cases in the corresponding geographic locations were obtained from DHS.
+
+### Data Analysis
+
+Our aim is to comprehensively capture the linear relationship between the two signals under investigation. To assess the strength of the linear trend after data modification, we employed linear regression and evaluated the impact of normalization and filtering on the relationship. We utilized the R^2 metric to gauge the quality of the model fit. Additionally, we employed random forest to capture the potential role of covariates on the reported errors to the fullest extent possible. The impact of these covariates on the relationship was visualized through partial plots generated by the models.
+
 
 
 ```{r adeline data prep, eval = FALSE}
@@ -166,8 +217,6 @@ data.select.1 <- WasteWater_data%>%
   rename(sample_collect_date = date,
          wwtp_name = site)%>%
   select(-pop)
-  
-
 ```
 
 ```{r gen extra info DF}
@@ -199,14 +248,18 @@ df_LOD <- Graph_DF%>%
 
 
 
-summary(lm(case_rate ~ avg_sars_cov2_conc, data = df_LOD))
-summary(lm(case_rate ~ flow_avg_conc, data = df_LOD))
+#summary(lm(case_rate ~ avg_sars_cov2_conc, data = df_LOD))
+#summary(lm(case_rate ~ flow_avg_conc, data = df_LOD))
 
 
-summary(lm(case_rate ~ avg_sars_cov2_conc:pop_group, data = df_LOD))
-summary(lm(case_rate ~ flow_avg_conc:pop_group, data = df_LOD))
+#summary(lm(case_rate ~ avg_sars_cov2_conc:pop_group, data = df_LOD))
+#summary(lm(case_rate ~ flow_avg_conc:pop_group, data = df_LOD))
 
 ```
+
+### Results
+
+
 
 ```{r plots for paper}
 size = 5
@@ -222,7 +275,9 @@ Graph_DF%>%
   #geom_smooth()+
   labs(y = "Average of Weekly New Cases", x = "SARS-CoV-2 Particles per Liter",
        title = "Original relationship across 63 sites")
+```
 
+```{r plot 2}
 Graph_DF%>%
   mutate(LOD = ifelse(LOD, "Above LOD", "Below LOD"))%>%
   ggplot(aes(x = exp(avg_sars_cov2_conc), y = exp(case_rate -.676*log(pop)) , color = LOD))+
@@ -233,7 +288,9 @@ Graph_DF%>%
   labs(y = "Normalized Average of Weekly New Cases", x = "SARS-CoV-2 Particles per Liter",
        title = "Relationship Post Population Normalization")
 
+```
 
+```{r lm_results}
 
 #covariant_control_lm <- df_LOD%>%
 #  mutate(n_case_rate = case_rate  - .676*log(pop))%>%
@@ -244,12 +301,13 @@ Graph_DF%>%
 
 plot_lm <- df_LOD%>%
   select(wwtp_name, pcr_type, flow, case_rate, pop, avg_sars_cov2_conc)%>%
-  mutate(n_case_rate = case_rate  - .676*log(pop))%>%
+  #mutate(n_case_rate = case_rate  - .5*log(pop))%>%
   filter(avg_sars_cov2_conc > log(6e4))%>%
   filter(avg_sars_cov2_conc < log(1e6))%>%
-  lm(n_case_rate ~ avg_sars_cov2_conc, data  = .)
-summary(plot_lm)#.7254
+  lm(case_rate ~ avg_sars_cov2_conc + log(pop), data  = .)
+```
 
+```{r plot 3}
 df_LOD%>%
   modelr::add_predictions(plot_lm)%>%
   filter(avg_sars_cov2_conc > log(3e4))%>%
@@ -274,17 +332,12 @@ Graph_DF%>%
   summary()
   
 
-df_LOD%>%
-  modelr::add_predictions(plot_lm)%>%
-  filter(avg_sars_cov2_conc > log(3e4))%>%
-  filter(avg_sars_cov2_conc < log(5e7))%>%
-  lm( case_rate ~ avg_sars_cov2_conc + log(pop) , data = .)%>%
-  summary()
+summary(plot_lm)
 
 ```
 
 
-```{r graphics}
+```{r graphics, eval = FALSE}
 
 
 Graph_DF%>%#n2_sars_cov2_lod
@@ -376,8 +429,6 @@ resid_mod <- randomForest(resid ~ ., data = rm_data, ntree=500,
                     importance=TRUE, keep.inbag=TRUE) 
 
 
-summary(simple_lm_model)
-resid_mod
 as.data.frame(randomForest::importance(resid_mod))%>%
   arrange(IncNodePurity)
  
@@ -413,9 +464,9 @@ summary(best_mod)
 
 
 
-better_mod%>%
-  ggplot(aes(x = pred - case_rate, y = avg_sars_cov2_conc, color = n1_sars_cov2_lod))+
-  geom_point(size = 10, alpha = .02)
+#better_mod%>%
+#  ggplot(aes(x = pred - case_rate, y = avg_sars_cov2_conc, color = n1_sars_cov2_lod))+
+#  geom_point(size = 10, alpha = .02)
   #geom_smooth()
 
 
@@ -463,9 +514,7 @@ simple_formula <- case_rate ~ avg_sars_cov2_conc:LOD
    kableExtra::kable_styling(latex_options = "striped")
 }
 ```
-///////////////////////////////////////
-// HFG Work
-///////////////////////////////////////
+
 ```{r, eval = FALSE}
 data("HFGWaste_data", package = "DSIWastewater")
 data(Case_data , package = "DSIWastewater")
