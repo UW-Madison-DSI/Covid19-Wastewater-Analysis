@@ -11,10 +11,10 @@ editor_options:
 
 ```{r setup, include=FALSE}
 run_base <- FALSE
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message=FALSE)
+knitr::opts_chunk$set( warning = FALSE, message=FALSE, echo=FALSE)
 ```
 
-```{r include = FALSE}
+```{r include = FALSE, message = FALSE}
 library(DSIWastewater)
 library(dplyr)
 library(ggplot2)
@@ -182,15 +182,20 @@ Graph_DF <- data.select.1%>%
          !is.na(pop))%>%
   mutate(flow_avg_conc = log1p(flow * avg_sars_cov2_conc),
          avg_sars_cov2_conc = log1p(avg_sars_cov2_conc),
-         case_rate = log(case_rate + 1),
-         LOD = (n1_sars_cov2_lod == "No") & (n2_sars_cov2_lod == "No"))
+         case_rate = log1p(case_rate),
+         LOD = (!n1_sars_cov2_lod) & (!n2_sars_cov2_lod))
 
 Graph_DF$pop_group <- as.factor(ntile(Graph_DF$pop, 4))
 
 
 
 df_LOD <- Graph_DF%>%
-  filter(!n1_sars_cov2_lod & !n2_sars_cov2_lod)
+  filter(!n1_sars_cov2_lod & !n2_sars_cov2_lod)%>%
+  group_by(wwtp_name, pcr_type)%>%
+  mutate(flow = scale(flow))%>%
+  ungroup()%>%
+  mutate(n_case_rate = case_rate  - .676*log(pop))%>%
+  mutate(low_flow = flow < -0)
 
 
 
@@ -200,75 +205,84 @@ summary(lm(case_rate ~ flow_avg_conc, data = df_LOD))
 
 summary(lm(case_rate ~ avg_sars_cov2_conc:pop_group, data = df_LOD))
 summary(lm(case_rate ~ flow_avg_conc:pop_group, data = df_LOD))
+
 ```
 
 ```{r plots for paper}
-size = 10
-alpha = .008
+size = 5
+alpha = .05
+theme_update(plot.title = element_text(hjust = 0.5))
 #Graph_DF,  df_LOD
 Graph_DF%>%
   ggplot(aes(x = exp(avg_sars_cov2_conc), y = exp(case_rate)))+
   geom_point(size = size, alpha = alpha, color = "black")+
   scale_y_log10()+
   scale_x_log10()+
-  theme_minimal()+
-  theme(panel.background = element_rect(fill = '#ff726f', color = 'white'),
-        plot.background = element_rect(fill = '#e06666ff', color = 'white'),
-        aspect.ratio=1)+
-  labs(y = "7-day average of weekly new cases", x = "SARS-CoV-2 particles per liter")
+  #theme_minimal()+
+  #geom_smooth()+
+  labs(y = "Average of Weekly New Cases", x = "SARS-CoV-2 Particles per Liter",
+       title = "Original relationship across 63 sites")
 
 Graph_DF%>%
-  ggplot(aes(x = exp(avg_sars_cov2_conc), y = exp(case_rate) / pop))+
-  geom_point(size = size, alpha = alpha, color = "black")+
+  mutate(LOD = ifelse(LOD, "Above LOD", "Below LOD"))%>%
+  ggplot(aes(x = exp(avg_sars_cov2_conc), y = exp(case_rate -.676*log(pop)) , color = LOD))+
+  geom_point(size = size, alpha = alpha,)+
   scale_y_log10()+
   scale_x_log10()+
-  theme_minimal()+
-  theme(aspect.ratio=1)+
-  labs(y = "7-day average of weekly new cases", x = "SARS-CoV-2 particles")
+  #theme_minimal()+
+  labs(y = "Normalized Average of Weekly New Cases", x = "SARS-CoV-2 Particles per Liter",
+       title = "Relationship Post Population Normalization")
+
+
+
+#covariant_control_lm <- df_LOD%>%
+#  mutate(n_case_rate = case_rate  - .676*log(pop))%>%
+#  filter(avg_sars_cov2_conc > log(6e4))%>%
+#  filter(avg_sars_cov2_conc < log(1e6))%>%
+#  lm(n_case_rate ~ PMMoV, data  = .)
+#summary(covariant_control_lm)
+
+plot_lm <- df_LOD%>%
+  select(wwtp_name, pcr_type, flow, case_rate, pop, avg_sars_cov2_conc)%>%
+  mutate(n_case_rate = case_rate  - .676*log(pop))%>%
+  filter(avg_sars_cov2_conc > log(6e4))%>%
+  filter(avg_sars_cov2_conc < log(1e6))%>%
+  lm(n_case_rate ~ avg_sars_cov2_conc, data  = .)
+summary(plot_lm)#.7254
 
 df_LOD%>%
-  filter(flow_avg_conc > 5)%>%
-  ggplot(aes(x = exp(avg_sars_cov2_conc), y = exp(case_rate) / pop))+
+  modelr::add_predictions(plot_lm)%>%
+  filter(avg_sars_cov2_conc > log(3e4))%>%
+  filter(avg_sars_cov2_conc < log(5e7))%>%
+  ggplot(aes(x = exp(avg_sars_cov2_conc), y = exp(n_case_rate)))+
   geom_point(size = size, alpha = alpha)+
+  #geom_line(aes(y = exp(pred)), color = "white", size = 1.5)+
   scale_y_log10()+
   scale_x_log10()+
-  theme_minimal()+
-  theme(panel.background = element_rect(fill = '#ff726f', color = 'white'),
-        plot.background = element_rect(fill = '#e06666ff', color = 'white'),
-        aspect.ratio=1)+
-  labs(y = "7-day average of weekly new cases", x = "SARS-CoV-2 particles")
+  #theme_minimal()+
+  labs(y = "Normalized Average of Weekly New Cases", x = "SARS-CoV-2 Particles per Liter",
+       title = "Relationship Post Normalization and LOD Filter")
 
+
+  #theme(panel.background = element_rect(fill = '#ff726f', color = 'white'),
+  #      plot.background = element_rect(fill = '#e06666ff', color = 'white'))+
 ```
 
-```{r summary plot}
-size = 10
-alpha = .02
-#Graph_DF,  df_LOD
+```{r}
 Graph_DF%>%
-  ggplot(aes(x = avg_sars_cov2_conc, y = case_rate))+
-  geom_point(size = size, alpha = alpha)
-summary(lm(case_rate ~ avg_sars_cov2_conc, data = Graph_DF))
-
-Graph_DF%>%
-  ggplot(aes(x = flow_avg_conc, y = case_rate))+
-  geom_point(size = size, alpha = alpha)
+  lm( case_rate ~ avg_sars_cov2_conc , data = .)%>%
+  summary()
+  
 
 df_LOD%>%
-  filter(flow_avg_conc > 5)%>%
-  ggplot(aes(x = flow_avg_conc, y = case_rate))+
-  geom_point(size = size, alpha = alpha)
-summary(lm(case_rate ~ flow_avg_conc, data = df_LOD))
-
-Graph_DF%>%
-  ggplot(aes(x = avg_sars_cov2_conc, y = case_rate, color = pop_group))+
-  geom_point(size = size, alpha = alpha)
-summary(lm(case_rate ~ avg_sars_cov2_conc:pop_group, data = df_LOD))
-Graph_DF%>%
-  ggplot(aes(x = flow_avg_conc, y = case_rate, color = pop_group))+
-  geom_point(size = size, alpha = alpha)
-summary(lm(case_rate ~ flow_avg_conc:pop_group, data = df_LOD))
+  modelr::add_predictions(plot_lm)%>%
+  filter(avg_sars_cov2_conc > log(3e4))%>%
+  filter(avg_sars_cov2_conc < log(5e7))%>%
+  lm( case_rate ~ avg_sars_cov2_conc + log(pop) , data = .)%>%
+  summary()
 
 ```
+
 
 ```{r graphics}
 
@@ -318,10 +332,9 @@ summary(lm(case_rate ~ avg_sars_cov2_conc + log(pop), data  = df_LOD))
 
 df_LOD%>%
   #filter(5 < avg_sars_cov2_conc)%>%
-  mutate(n_case_rate = case_rate  - .676*log(pop))%>%
-  lm(n_case_rate ~ avg_sars_cov2_conc + main_variant, data = .)%>%
+  lm(case_rate ~ avg_sars_cov2_conc, data = .)%>%
   summary()
-
+ # - .676*log(pop)
 mod_df <- df_LOD%>%
   mutate(n_case_rate = case_rate  - .676*log(pop))
 plot_lm_model <- lm(n_case_rate ~ avg_sars_cov2_conc, data = mod_df)
@@ -336,30 +349,29 @@ summary(plot_lm_model)
 ```
 
 ```{r random forest exploration}
+#
 rm_data <- df_LOD%>%
   mutate(n_case_rate = case_rate  - .676*log(pop))
 
-simple_lm_model <- lm(n_case_rate ~ avg_sars_cov2_conc + log(pop), data  = rm_data)
+simple_lm_model <- lm(n_case_rate ~ avg_sars_cov2_conc, data  = rm_data)
 library(randomForest)
 rm_data <- rm_data%>%
   modelr::add_predictions(simple_lm_model)%>%
-  mutate(resid = n_case_rate - pred,
+  mutate(resid = abs(n_case_rate - pred),
          PMMoV = log(PMMoV + 2),
          tss = as.numeric(tss),
          pcr_type = as.factor(pcr_type),
          regions = as.factor(regions))%>%
-  select(- n_case_rate)%>%
+  select(-n_case_rate)%>%
   select(-case_rate, -pred, -avg_sars_cov2_conc)%>%
-  select(wwtp_name, resid, regions, PMMoV, flow, ph, pcr_type, main_variant, pop_group)%>%
+  select(wwtp_name, resid, regions, PMMoV, flow, ph, pcr_type, pop_group)%>%
   group_by(wwtp_name, pcr_type)%>%
    mutate(across(c(where(is.numeric), -resid), scale))%>%
   ungroup()%>%
-  
   select(-wwtp_name)%>%
   na.roughfix()
 
-#n1_sars_cov2_lod, n2_sars_cov2_lod, LOD
-  #pcr_type
+#n1_sars_cov2_lod, n2_sars_cov2_lod, LOD, pcr_type, main_variant
 resid_mod <- randomForest(resid ~ ., data = rm_data, ntree=500,
                     importance=TRUE, keep.inbag=TRUE) 
 
@@ -370,8 +382,9 @@ as.data.frame(randomForest::importance(resid_mod))%>%
   arrange(IncNodePurity)
  
 as.data.frame(randomForest::importance(resid_mod))%>%
-   arrange(`%IncMSE`)
- 
+   arrange(`%IncMSE`)%>%
+   kableExtra::kable()%>% 
+   kableExtra::kable_styling(latex_options = "striped")
  
 ff = forestFloor::forestFloor(resid_mod, na.roughfix(rm_data), calc_np=T)
 Col = forestFloor::fcol(ff, cols = 1, outlier.lim = 2.5)
@@ -410,81 +423,45 @@ better_mod%>%
 ```
 
 
-```{r analsis plot, eval = FALSE}
-lm_plotly_model(Graph_DF)#plot based N1 vs cases
-
-
-
-#M(t) = unknown function of T. Number of sick people at time t
-#C(t) = e_l + a * M(t)*e_m + e_l
-#W(t) = e_li + b * M(t)*e_e 
-
-
-
-plotly::ggplotly(
-  Graph_DF%>%
-    ggplot(aes(x = (avg_sars_cov2_conc), 
-               y = (case_rate),
-               fill = pop_group,
-               color = LOD))+
-    geom_point()+
-    #geom_smooth(method = "lm")+
-    ggtitle("Strong Linear Relationship Between Log Cases and Log COVID Concentration")+
-    xlab("log(Covid-19 concentration)")+
-    ylab("log(case rate)")
-)
-
-plotly::ggplotly(
-  Graph_DF%>%
-    ggplot(aes(x = (avg_sars_cov2_conc), 
-               y = (case_rate),
-               fill = main_variant,
-               color = LOD))+
-    geom_point()+
-    #geom_smooth(method = "lm")+
-    ggtitle("Strong Linear Relationship Between Log Cases and Log COVID Concentration")+
-    xlab("log(Covid-19 concentration)")+
-    ylab("log(case rate)")
-)
+```{r analsis plot}
 
 gen_R2_params <- function(lm_formula, df){
   lm_run <- lm(lm_formula, data = df)
-  return(c(summary(lm_run)$adj.r.squared, length(coef(lm_run))))
+  return(c(round(summary(lm_run)$adj.r.squared, 3),
+           round(mean(lm_run$residuals^2, na.rm = TRUE),3),
+           length(coef(lm_run))))
 }
+```
 
-#main_variant
+
+```{r main models}
+
 full_formula <- case_rate ~ avg_sars_cov2_conc:LOD:pop_group:main_variant + LOD:pop_group:main_variant
-#
+
 lm_full_inder_formula <- case_rate ~ avg_sars_cov2_conc:LOD:pop_group +  avg_sars_cov2_conc:LOD:main_variant + LOD:pop_group + LOD:main_variant
-#
+
 lm_true_formula <- case_rate ~ avg_sars_cov2_conc:pop_group:main_variant + pop_group:main_variant
-#
+
 lm_true_inder_formula <- case_rate ~ avg_sars_cov2_conc:pop_group + avg_sars_cov2_conc:main_variant + pop_group + main_variant
-##
-lm_norm_formula <- case_rate ~ avg_sars_cov2_conc:LOD:main_variant + LOD:main_variant
-##
-lm_min_formula <- case_rate ~ avg_sars_cov2_conc:main_variant + main_variant
-#
+
+
 simple_formula <- case_rate ~ avg_sars_cov2_conc:LOD
 {
-  output_DF <- data.frame("Type" = c("adjusted R^2", "num_param"),
-             "full model" = gen_R2_params(full_formula, Graph_DF),
-             "full indirect model" = gen_R2_params(lm_full_inder_formula, Graph_DF),
-             "true model" = gen_R2_params(lm_true_formula, df_LOD),
-           "true indirect model"= gen_R2_params(lm_true_inder_formula, df_LOD),
-             "norm site model" = gen_R2_params(lm_norm_formula, Graph_DF2),
-             "true norm site model" = gen_R2_params(lm_min_formula, df_LOD2),
-             "Original relationship" = gen_R2_params(simple_formula, Graph_DF))
+  output_DF <- data.frame("Type" = c("adjusted R^2", "mse", "num_param"),
+             `All categorical interaction model` = gen_R2_params(full_formula, Graph_DF),
+             "All categorical indirect model" = gen_R2_params(lm_full_inder_formula, Graph_DF),
+             "Sub data all interaction model" = gen_R2_params(lm_true_formula, df_LOD),
+           "Sub data indirect interaction model"= gen_R2_params(lm_true_inder_formula, df_LOD),
+             "Base relationship" = gen_R2_params(simple_formula, Graph_DF),
+           check.names = FALSE)
   
   n <- output_DF$Type
   output_DF <- as.data.frame(t(output_DF[,-1]))
   colnames(output_DF) <- n
-  output_DF
+  output_DF%>%
+    kableExtra::kable()%>% 
+   kableExtra::kable_styling(latex_options = "striped")
 }
-output_DF%>%
-  ggplot(aes(x = num_param, y = `adjusted R^2`))+
-  geom_point()+
-  geom_smooth(se = FALSE)
 ```
 ///////////////////////////////////////
 // HFG Work
