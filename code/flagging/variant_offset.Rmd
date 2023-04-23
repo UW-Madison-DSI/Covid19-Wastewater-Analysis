@@ -123,7 +123,7 @@ Offset <-function(length, startdate, enddate, casesdf, wastedf){
   return(offsetresults)
 }
 
-testing <- Offset(10, start[i], end[i], caservtemp, wastervtemp)
+#testing <- Offset(10, start[i], end[i], caservtemp, wastervtemp)
 
 #' Title
 #'
@@ -179,7 +179,7 @@ Graph <- function(data,title){
     ylab("Spearman Correlation") +
     xlab("Wastewater Offset") +
     ggtitle("Spearman") +
-    geom_text(data = data[which.max(data$corilationSpearman),], aes(wdateoffset,corilationSpearman, label = paste(" " ,wdateoffset,sep = "\n")))
+    geom_text(data = data[which.max(data$corilationSpearman),], aes(wdateoffset,corilationSpearman, label = paste(" " ,wdateoffset,sep = "\n"))) 
   
   grid.arrange(wc,wcrolling,mse,pearson,kendall,spearman,ncol=2,bottom=title)
 }
@@ -513,27 +513,16 @@ heatmapcor
 #timePeriods = 2
 #wasteinput = waste
 #caseinput = cases
-heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput){
-  if(scale == "rsquared"){
-    outputSelect = 0
-  } else if (scale == "ccfmax"){
-    outputSelect = 1
-  } else if (scale == "pearson"){
-    outputSelect = 2
-  } else if (scale == "offset"){
-    outputSelect = 3
-  } else if (scale == "offsetccf"){
-    outputSelect = 4
-  } else if (scale == "offsetrcor"){
-    outputSelect = 5
-    }
+heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput, lod=FALSE){
+  
   
   wasterv <- wasteinput
   caserv <- caseinput
-  regionslist <- unique(wasterv$regions)
+  regionslist <- c("all", unique(wasterv$regions))#append(unique(wasterv$regions), "all")
 
   tempregion <- select(wasterv,regions,site) %>% unique()
   outputrvt <- data.frame(matrix(ncol = 1, nrow = 0))
+  firstday <- as.numeric(as.Date("2020-08-01"))
   if(timePeriods == 0){
     start <- covarstarts
     end <- covarends
@@ -541,7 +530,7 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput){
     #6 month periods
     #start <- c(as.Date("2020-08-01"),as.Date("2021-02-01"),as.Date("2021-08-01"),as.Date("2022-02-01"),as.Date("2022-08-01"))
     #end   <- c(as.Date("2021-02-01"),as.Date("2021-08-01"),as.Date("2022-02-01"),as.Date("2022-08-01"),as.Date("2023-02-01"))
-    firstday <- as.numeric(as.Date("2020-08-01"))
+    
     endday <- as.numeric(as.Date("2022-12-01"))
     start <- c()
     end <- c()
@@ -565,12 +554,24 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput){
       wastervtemp <- subset(wasterv, anydate(date)> anydate(start[i]) & anydate(date) < anydate(end[i]))
       caservtemp <- subset(caserv, anydate(date)> anydate(start[i]) & anydate(date) < anydate(end[i]))
       
-      wastervtemp <- wastervtemp %>% group_by(date,regions) %>% filter(regions == j) %>%
-      summarise(N1 = mean(N1),
+      if(j == "all"){
+        wastervtemp <- wastervtemp %>% group_by(date)
+      } else {
+        wastervtemp <- wastervtemp %>% group_by(date,regions) %>% filter(regions == j)
+      }
+      options(dplyr.summarise.inform = FALSE)
+      wastervtemp <- wastervtemp %>% summarise(N1 = mean(N1),
               N2 = mean(N2),
-              PMMoV = mean(PMMoV)) %>% 
-      mutate(geo_mean = exp((log(N1) + log(N2))/2)) %>% drop_na(geo_mean)
+              PMMoV = mean(PMMoV),
+              meanLOD = rowMeans(wastervtemp[,c('n1_lod', 'n2_lod')], na.rm=TRUE) )
       
+      if(lod){
+        wastervtemp <- wastervtemp %>% mutate(geo_mean = exp((log(N1) + log(N2))/2)) %>% 
+          drop_na(geo_mean) %>% filter(geo_mean > meanLOD / 2)
+      } else {
+        wastervtemp <- wastervtemp %>% mutate(geo_mean = exp((log(N1) + log(N2))/2)) %>% 
+          drop_na(geo_mean)
+      }
       
       caservtemp <- merge(tempregion,caservtemp,by = "site") %>% filter(regions == j)
       
@@ -584,13 +585,13 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput){
   
       regionvstimetemp <- merge(caservtemp,wastervtemp, by = "date")
       
-      if(outputSelect == 0){
+      if(scale == "rsquared_cor"){
         #lm r squared
         options(dplyr.summarise.inform = FALSE)
         na.omit(regionvstimetemp)
         templm <- lm(log(geo_mean + 1)~log(rollingaverage+1), data=regionvstimetemp) 
         new <- c(i,j,summary(templm)$r.squared)
-      } else if(outputSelect == 1){
+      } else if(scale == "ccf_max_cor"){
         #ccf max
         ccfdatarvt <- ccf(regionvstimetemp$rollingaverage,regionvstimetemp$geo_mean,plot=0) #,plot=0
         cor = ccfdatarvt$acf[,,1]
@@ -599,22 +600,30 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput){
         res_max = res[which.max(res$cor),]
         #new <- c(i,j,max(ccfdatarvt$acf))
         new <- c(i,j,res_max$lag)
-      } else if(outputSelect == 2){
+      } else if(scale == "pearson_cor"){
         #pearson cor
         tempcor <- cor(regionvstimetemp$rollingaverage,regionvstimetemp$geo_mean,method = "pearson")
         new <- c(i,j,tempcor)
-      } else if(outputSelect == 3){ #offset
+      } else if(scale == "pearson_offset"){ #pearson-offset
         offsetOutput <- Offset(10, start[i], end[i], caservtemp, wastervtemp)
         offsetOutput <- offsetOutput[order(-offsetOutput$corilationPearson),]
         new <- c(i,j,offsetOutput[1, "wdateoffset"])
-      } else if(outputSelect == 4){
+      } else if(scale == "offset_ccf"){
         ccfdatatemp <- ccf(as.numeric(caservtemp$conf_case),as.numeric(wastervtemp$geo_mean),plot=0) 
         ccfdatadf <- data.frame(lag=ccfdatatemp$lag,acf=ccfdatatemp$acf)
         ccfdatadf <- ccfdatadf[order(-ccfdatadf$acf),]
         new <- c(i,j,ccfdatadf[1,"lag"])
-      } else if(outputSelect == 5){
+      } else if(scale == "offset_rcor"){
         offsetOutput <- Offset(10, start[i], end[i], caservtemp, wastervtemp)
         offsetOutput <- offsetOutput[order(-offsetOutput$rcor),]
+        new <- c(i,j,offsetOutput[1, "wdateoffset"])
+      } else if(scale == "spearman_offset") {
+        offsetOutput <- Offset(10, start[i], end[i], caservtemp, wastervtemp)
+        offsetOutput <- offsetOutput[order(-offsetOutput$corilationSpearman),]  
+        new <- c(i,j,offsetOutput[1, "wdateoffset"])
+      } else if(scale == "kendall_offset"){
+        offsetOutput <- Offset(10, start[i], end[i], caservtemp, wastervtemp)
+        offsetOutput <- offsetOutput[order(-offsetOutput$corilationKendall),]
         new <- c(i,j,offsetOutput[1, "wdateoffset"])
       }
       
@@ -636,38 +645,83 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput){
                                                               region == "Northern" ~ 1,
                                                               region == "Northeastern" ~ 2,
                                                               region == "Western" ~ 3,
-                                                              region == "Southern" ~ 4),
+                                                              region == "Southern" ~ 4,
+                                                              region == "all" ~ 6),
                                     regionsizemax = regionsizemin+1)
   
-  heatmaprvt <- ggplot(data = outputrvt, aes(fill = output)) +
-    geom_rect(aes(ymin = regionsizemin, ymax = regionsizemax, xmin = start, xmax = end)) +
-    scale_fill_gradient(low = "blue", high = "yellow") 
+  heatmaprvt <- ggplot(data = outputrvt, aes(fill = output,)) +
+    geom_rect(aes(ymin = as.factor(regionsizemin), ymax = as.factor(regionsizemax), xmin = as.Date(start + firstday), xmax = as.Date(end + firstday))) +
+    scale_fill_gradient2(low = "blue", mid = "green", high = "yellow") + 
+    xlab(case_when(timePeriods == 0 ~ paste("Variants (Since August 1st 2020)"),
+                   .default = paste(timePeriods, " Month Periods (Since August 1st 2020)"))) +
+    ylab("Region") +
+    ggtitle(case_when(lod == TRUE ~ paste(scale, "values above LOD"),
+          .default = paste(scale, "using all N1/N2") ) )  +
+    scale_y_discrete(labels=c("0" = "Southeastern", "1" = "Northern","2" = "Northeastern","3" = "Western","4" = "Southern","5" = " ",  "6" = "All Sites","7" = " ")) +
+   labs(fill="Days")
+  #heatmaprvt <- heatmaprvt + guides(fill=guide_legend(title=paste(scale)))
+
   
   #return(outputrvt)
   return(heatmaprvt)
 }
 
-##ggplotly(heatmapfunc("rsquared",0,waste,cases))
-##ggplotly(heatmapfunc("rsquared",6,waste,cases))
-#ggplotly(heatmapfunc("rsquared",4,waste,cases))
-#ggplotly(heatmapfunc("rsquared",3,waste,cases))
-##ggplotly(heatmapfunc("rsquared",2,waste,cases))
+heatmapfunc("pearson_offset",0,waste,cases,TRUE)
+ggplotly(heatmapfunc("pearson_offset",0,waste,cases))
 
-#ggplotly(heatmapfunc("offset",0,waste,cases))
-ggplotly(heatmapfunc("offset",6,waste,cases))#pearson cor
-ggplotly(heatmapfunc("offset",2,waste,cases)) 
+##ggplotly(heatmapfunc("rsquared_cor",0,waste,cases))
+##ggplotly(heatmapfunc("rsquared_cor",6,waste,cases))
+#ggplotly(heatmapfunc("rsquared_cor",4,waste,cases))
+#ggplotly(heatmapfunc("rsquared_cor",3,waste,cases))
+##ggplotly(heatmapfunc("rsquared_cor",2,waste,cases))
 
-ggplotly(heatmapfunc("offsetccf",0,waste,cases))
-ggplotly(heatmapfunc("offsetccf",6,waste,cases))
-ggplotly(heatmapfunc("offsetccf",2,waste,cases))#using ccf
+ggplotly(heatmapfunc("pearson_offset",0,waste,cases))
+#ggplotly(heatmapfunc("pearson_offset",6,waste,cases))
+#ggplotly(heatmapfunc("pearson_offset",2,waste,cases)) 
+ggplotly(heatmapfunc("pearson_offset",1,waste,cases)) 
 
-ggplotly(heatmapfunc("offsetrcor",2,waste,cases))#using r cor
-ggplotly(heatmapfunc("offsetrcor",0,waste,cases))
-#non parametric corrilation test
-#spearman
+#ggplotly(heatmapfunc("offset_ccf",0,waste,cases))
+#ggplotly(heatmapfunc("offset_ccf",6,waste,cases))
+#ggplotly(heatmapfunc("offset_ccf",2,waste,cases))#using ccf
+
+#ggplotly(heatmapfunc("offset_rcor",2,waste,cases))#using r cor
+#ggplotly(heatmapfunc("offset_rcor",0,waste,cases))
+
+ggplotly(heatmapfunc("spearman_offset",0,waste,cases)) 
+ggplotly(heatmapfunc("spearman_offset",6,waste,cases)) 
+ggplotly(heatmapfunc("spearman_offset",3,waste,cases)) 
+ggplotly(heatmapfunc("spearman_offset",1,waste,cases)) 
+ggplotly(heatmapfunc("spearman_offset",3,waste,cases,TRUE)) 
+
+ggplotly(heatmapfunc("kendall_offset",0,waste,cases)) 
+ggplotly(heatmapfunc("kendall_offset",6,waste,cases)) 
+ggplotly(heatmapfunc("kendall_offset",3,waste,cases)) 
+ggplotly(heatmapfunc("kendall_offset",1,waste,cases)) 
+ggplotly(heatmapfunc("kendall_offset",3,waste,cases,TRUE))
+
+
+#Max value issue:
+#Drop max/min values.
+#Plot with true offset even if it does not make sense (looks more continuous).
+
+#Look at population grouping instead.
+#Break output into multiple code blocks to make it easier to find/parse
+
+#Fix problem with cumulative columns.	
+#Drop max values or label them?
+
+#variants with/without lod
+#Fix all site
+#Sort by population
+#Apply smoothings/normalizations/filterings
+#Better colors
+
+
 ```
+
+
 ```{r}
-ggplotly(heatmapfunc("offset",1,waste,cases)) 
+
 ```
 
 
