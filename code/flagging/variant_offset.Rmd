@@ -513,13 +513,22 @@ heatmapcor
 #timePeriods = 2
 #wasteinput = waste
 #caseinput = cases
-heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput, lod=FALSE){
+heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput,list,lod=FALSE){
   
   
   wasterv <- wasteinput
   caserv <- caseinput
-  regionslist <- c("all", unique(wasterv$regions))#append(unique(wasterv$regions), "all")
-
+  if(list == "region"){
+    regionslist <- c("all", unique(wasterv$regions))#append(unique(wasterv$regions), "all")
+  } else {#pop
+    populationtemp <- population %>% mutate(popgroup = case_when(pop >= 100000 ~ "Large",
+                                                         pop >= 10000  ~ "Medium",
+                                                         .default = "Small")) %>% subset(select = c(site,popgroup))
+                        
+    wasterv <- merge(wasterv,populationtemp, by.x = "site") %>% mutate(regions = popgroup)
+    
+    regionslist <- c("all", unique(wasterv$regions))#
+  }
   tempregion <- select(wasterv,regions,site) %>% unique()
   outputrvt <- data.frame(matrix(ncol = 1, nrow = 0))
   firstday <- as.numeric(as.Date("2020-08-01"))
@@ -527,10 +536,7 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput, lod=FALSE){
     start <- covarstarts
     end <- covarends
   } else {
-    #6 month periods
-    #start <- c(as.Date("2020-08-01"),as.Date("2021-02-01"),as.Date("2021-08-01"),as.Date("2022-02-01"),as.Date("2022-08-01"))
-    #end   <- c(as.Date("2021-02-01"),as.Date("2021-08-01"),as.Date("2022-02-01"),as.Date("2022-08-01"),as.Date("2023-02-01"))
-    
+
     endday <- as.numeric(as.Date("2022-12-01"))
     start <- c()
     end <- c()
@@ -554,6 +560,11 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput, lod=FALSE){
       wastervtemp <- subset(wasterv, anydate(date)> anydate(start[i]) & anydate(date) < anydate(end[i]))
       caservtemp <- subset(caserv, anydate(date)> anydate(start[i]) & anydate(date) < anydate(end[i]))
       
+      if(lod){
+        wastervtemp <- wastervtemp %>% filter(N1 > n1_lod)
+      }
+      
+      
       if(j == "all"){
         wastervtemp <- wastervtemp %>% group_by(date)
       } else {
@@ -563,24 +574,22 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput, lod=FALSE){
       wastervtemp <- wastervtemp %>% summarise(N1 = mean(N1),
               N2 = mean(N2),
               PMMoV = mean(PMMoV),
-              meanLOD = rowMeans(wastervtemp[,c('n1_lod', 'n2_lod')], na.rm=TRUE) )
-      
-      if(lod){
-        wastervtemp <- wastervtemp %>% mutate(geo_mean = exp((log(N1) + log(N2))/2)) %>% 
-          drop_na(geo_mean) %>% filter(geo_mean > meanLOD / 2)
-      } else {
-        wastervtemp <- wastervtemp %>% mutate(geo_mean = exp((log(N1) + log(N2))/2)) %>% 
+              geo_mean = exp((log(N1) + log(N2))/2) ) %>% 
           drop_na(geo_mean)
-      }
       
-      caservtemp <- merge(tempregion,caservtemp,by = "site") %>% filter(regions == j)
-      
-      caservtemp <- caservtemp %>%
+
+      if(j == "all"){
+        caservtemp <- merge(tempregion,caservtemp,by = "site") %>%
+        group_by(date) %>% 
+        summarise(conf_case = mean(conf_case)) 
+      } else {
+        caservtemp <- merge(tempregion,caservtemp,by = "site") %>% filter(regions == j) %>%
         group_by(date,regions) %>% 
         summarise(conf_case = mean(conf_case)) 
+      }
       
       caservtemp <- caservtemp %>% ungroup() %>%
-        mutate(rollingaverage = roll_sum(conf_case,5,align = "center",fill = NA)) %>%
+        mutate(rollingaverage = roll_sum(conf_case,3,align = "center",fill = NA)) %>%
         na.omit()
   
       regionvstimetemp <- merge(caservtemp,wastervtemp, by = "date")
@@ -641,24 +650,36 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput, lod=FALSE){
   newstart <- as.numeric(start) - as.numeric(start[1])
   newdatesdf <- data.frame(time = as.numeric(1:length(newend)), end = newend, start = newstart)
   outputrvt <- left_join(outputrvt,newdatesdf)
-  outputrvt <- outputrvt %>% mutate(regionsizemin = case_when(region == "Southeastern" ~ 0,
-                                                              region == "Northern" ~ 1,
-                                                              region == "Northeastern" ~ 2,
-                                                              region == "Western" ~ 3,
-                                                              region == "Southern" ~ 4,
-                                                              region == "all" ~ 6),
-                                    regionsizemax = regionsizemin+1)
-  
+    outputrvt <- outputrvt %>% mutate(regionsizemin = case_when(region == "Southeastern" ~ 0,
+                                                                region == "Northern" ~ 1,
+                                                                region == "Northeastern" ~ 2,
+                                                                region == "Western" ~ 3,
+                                                                region == "Southern" ~ 4,
+                                                                region == "all" ~ 6,
+                                                                region == "Small" ~ 0,
+                                                                region == "Medium" ~ 1,
+                                                                region == "Large" ~ 2),
+                                      regionsizemax = regionsizemin+1,
+                                      output = case_when(output == 10 ~ NA,
+                                                         output == -10 ~ NA,
+                                                         .default = output)
+                                      )
+  if(list == "region"){
+    templabels=c("0" = "Southeastern", "1" = "Northern","2" = "Northeastern","3" = "Western","4" = "Southern","5" = " ",  "6" = "All Sites","7" = " ")
+  } else {
+    templabels=c("0" = "Small(<10,000)", "1" = "Medium(10,000 - 100,000)","2" = "Large(>100,000)","3" = " ","4" = " ","5" = " ",  "6" = "All Sites","7" = " ")
+  }
   heatmaprvt <- ggplot(data = outputrvt, aes(fill = output,)) +
     geom_rect(aes(ymin = as.factor(regionsizemin), ymax = as.factor(regionsizemax), xmin = as.Date(start + firstday), xmax = as.Date(end + firstday))) +
-    scale_fill_gradient2(low = "blue", mid = "green", high = "yellow") + 
+    scale_fill_gradient2(low = "#D16BA5", mid = "#86A8E7", high = "#5FFBF1", na.value = "white" ) + 
     xlab(case_when(timePeriods == 0 ~ paste("Variants (Since August 1st 2020)"),
-                   .default = paste(timePeriods, " Month Periods (Since August 1st 2020)"))) +
+                   .default = paste(timePeriods, " Month Periods (Since August 1st 2020)"))) + 
+    scale_y_discrete(labels=templabels) +
     ylab("Region") +
     ggtitle(case_when(lod == TRUE ~ paste(scale, "values above LOD"),
           .default = paste(scale, "using all N1/N2") ) )  +
-    scale_y_discrete(labels=c("0" = "Southeastern", "1" = "Northern","2" = "Northeastern","3" = "Western","4" = "Southern","5" = " ",  "6" = "All Sites","7" = " ")) +
-   labs(fill="Days")
+   labs(fill="Offset in days")#Days wastewater is offset from cases
+  
   #heatmaprvt <- heatmaprvt + guides(fill=guide_legend(title=paste(scale)))
 
   
@@ -666,62 +687,31 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput, lod=FALSE){
   return(heatmaprvt)
 }
 
-heatmapfunc("pearson_offset",0,waste,cases,TRUE)
-ggplotly(heatmapfunc("pearson_offset",0,waste,cases))
+heatmapfunc("spearman_offset",0,waste,cases,"pop",TRUE) 
+heatmapfunc("spearman_offset",0,waste,cases,"pop") 
+heatmapfunc("spearman_offset",0,waste,cases,"region",TRUE)
+heatmapfunc("spearman_offset",0,waste,cases,"region")
 
-##ggplotly(heatmapfunc("rsquared_cor",0,waste,cases))
-##ggplotly(heatmapfunc("rsquared_cor",6,waste,cases))
-#ggplotly(heatmapfunc("rsquared_cor",4,waste,cases))
-#ggplotly(heatmapfunc("rsquared_cor",3,waste,cases))
-##ggplotly(heatmapfunc("rsquared_cor",2,waste,cases))
+heatmapfunc("kendall_offset",2,waste,cases,"pop",TRUE)
+heatmapfunc("kendall_offset",2,waste,cases,"pop")
 
-ggplotly(heatmapfunc("pearson_offset",0,waste,cases))
-#ggplotly(heatmapfunc("pearson_offset",6,waste,cases))
-#ggplotly(heatmapfunc("pearson_offset",2,waste,cases)) 
-ggplotly(heatmapfunc("pearson_offset",1,waste,cases)) 
-
-#ggplotly(heatmapfunc("offset_ccf",0,waste,cases))
-#ggplotly(heatmapfunc("offset_ccf",6,waste,cases))
-#ggplotly(heatmapfunc("offset_ccf",2,waste,cases))#using ccf
-
-#ggplotly(heatmapfunc("offset_rcor",2,waste,cases))#using r cor
-#ggplotly(heatmapfunc("offset_rcor",0,waste,cases))
-
-ggplotly(heatmapfunc("spearman_offset",0,waste,cases)) 
-ggplotly(heatmapfunc("spearman_offset",6,waste,cases)) 
-ggplotly(heatmapfunc("spearman_offset",3,waste,cases)) 
-ggplotly(heatmapfunc("spearman_offset",1,waste,cases)) 
-ggplotly(heatmapfunc("spearman_offset",3,waste,cases,TRUE)) 
-
-ggplotly(heatmapfunc("kendall_offset",0,waste,cases)) 
-ggplotly(heatmapfunc("kendall_offset",6,waste,cases)) 
-ggplotly(heatmapfunc("kendall_offset",3,waste,cases)) 
-ggplotly(heatmapfunc("kendall_offset",1,waste,cases)) 
-ggplotly(heatmapfunc("kendall_offset",3,waste,cases,TRUE))
-
-
-#Max value issue:
-#Drop max/min values.
 #Plot with true offset even if it does not make sense (looks more continuous).
 
-#Look at population grouping instead.
-#Break output into multiple code blocks to make it easier to find/parse
-
-#Fix problem with cumulative columns.	
-#Drop max values or label them?
-
-#variants with/without lod
-#Fix all site
-#Sort by population
 #Apply smoothings/normalizations/filterings
-#Better colors
-
 
 ```
 
 
 ```{r}
-
+p1 <- heatmapfunc("spearman_offset",0,waste,cases,"pop",TRUE) + theme(plot.margin = unit(c(0,0,0,0), "lines"),
+            plot.background = element_blank(),
+            legend.position = "none")
+p2 <- heatmapfunc("spearman_offset",0,waste,cases,"pop") + theme(axis.text.y = element_blank(), 
+            axis.ticks.y = element_blank(), 
+            axis.title.y = element_blank(),
+            plot.margin = unit(c(0,0,0,0), "lines"),
+            plot.background = element_blank())
+grid.arrange(p1, p2, ncol = 2)
 ```
 
 
@@ -739,8 +729,11 @@ populationtemp <- population %>% mutate(popgroup = case_when(pop >= 100000 ~ "La
                         
 wastepop <- merge(waste,populationtemp, by.x = "site")
 
-
-heatmapfuncpop <- function(scale, timePeriods,wasterv,caserv){
+scale = "rsquared"
+timePeriods = "6month"
+wasterv <- wastepop
+caserv <- cases
+#heatmapfuncpop <- function(scale, timePeriods,wasterv,caserv){
   if(scale == "rsquared"){
     outputSelect = 0
   } else if (scale == "ccfmax"){
@@ -748,7 +741,7 @@ heatmapfuncpop <- function(scale, timePeriods,wasterv,caserv){
   } else if (scale == "pearson"){
     outputSelect = 2
   }
-  poplist <- unique(wasterv$popgroup)
+  poplist <- c(unique(wasterv$popgroup),"Any")#
   outputrvt <- data.frame(matrix(ncol = 1, nrow = 0))
   if(timePeriods == "6month"){
     #6 month periods
@@ -758,14 +751,21 @@ heatmapfuncpop <- function(scale, timePeriods,wasterv,caserv){
     start <- covarstarts
     end <- covarends
   }
-for(j in poplist){
-  for(i in 1:length(start)){
+  j = "Any"
+  i = 1
+#for(j in poplist){
+  #for(i in 1:length(start)){
     
     wastervtemp <- subset(wasterv, anydate(date)> anydate(start[i]) & anydate(date) < anydate(end[i]))
     caservtemp <- subset(caserv, anydate(date)> anydate(start[i]) & anydate(date) < anydate(end[i]))
     
-    wastervtemp <- wastervtemp %>% group_by(date,popgroup) %>% filter(popgroup == j) %>%
-    summarise(N1 = mean(N1),
+    if(j == "Any"){
+      wastervtemp <- wastervtemp %>% group_by(date)
+    }else{
+      wastervtemp <- wastervtemp %>% group_by(date,popgroup) %>% filter(popgroup == j)
+    }
+    
+    wastervtemp <- wastervtemp %>% summarise(N1 = mean(N1),
             N2 = mean(N2),
             PMMoV = mean(PMMoV)) %>% 
     mutate(geo_mean = exp((log(N1) + log(N2))/2)) %>% drop_na(geo_mean)
@@ -804,8 +804,8 @@ for(j in poplist){
     }
     
     outputrvt = rbind(outputrvt,new)
-  }
-}
+  #}
+#}
 
 
   names(outputrvt)[1]="time" 
@@ -845,8 +845,9 @@ for(j in poplist){
   #xlab("time") + 
   #ylab("popgroup") 
 #ggplotly(heatmaprvt)
-return(heatmaprvt)
-}
+#return(heatmaprvt)
+#}
+heatmaprvt
 
 ggplotly(heatmapfuncpop("rsquared","6month",wastepop,cases))
 ggplotly(heatmapfuncpop("rsquared","covar",wastepop,cases))
