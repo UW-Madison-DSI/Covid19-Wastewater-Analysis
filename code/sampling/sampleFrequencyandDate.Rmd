@@ -27,15 +27,15 @@ sfdata <- WasteWater_data
 
 
 sfdata <- sfdata %>% 
-  group_by(wwtp_name) %>% 
-  mutate(rollaverage = rollmean(log(as.numeric(ppmov_conc)), k=7, fill = NA)) %>% 
+  group_by(site) %>% 
+  mutate(rollaverage = rollmean(log(as.numeric(PMMoV)), k=7, fill = NA)) %>% 
   drop_na(rollaverage) %>% ungroup()
 
 
 
-sfdata <- sfdata %>% group_by(wwtp_name, week = year_week(anydate(sample_collect_date), "2020-01-01")) %>% mutate(sampleFrequency = n()) %>% ungroup()
+sfdata <- sfdata %>% group_by(site, week = year_week(anydate(date), "2020-01-01")) %>% mutate(sampleFrequency = n()) %>% ungroup()
 
-sfdata <- sfdata %>% group_by(wwtp_name) %>% 
+sfdata <- sfdata %>% group_by(site) %>% 
   mutate(avgSampleFrequency = mean(sampleFrequency)) %>% ungroup()
 
 
@@ -43,24 +43,32 @@ sfdata <- sfdata %>% group_by(wwtp_name) %>%
 ```
 
 ```{r}
-sfdata <- sfdata %>%  group_by(wwtp_name) %>%  mutate(max = max(sampleFrequency))
+sfdata <- sfdata %>%  group_by(site) %>%  mutate(max = max(sampleFrequency)) %>% filter(sampleFrequency <= 6) 
 ```
 
 
 ```{r}
-sfdata %>% filter(max > 3) %>%#filter(grepl("Madison", wwtp_name)) %>%
+sitessubset <- c("Madison","Marshfield","Black River Falls","Sparta","Wausau","Clintonville","Appleton","Red Cliff","Racine")
+
+
+
+
+sfdata %>% filter(max > 1) %>% mutate(sampleFrequency = as.factor(sampleFrequency)) %>% filter(grepl(paste(sitessubset, collapse='|'), site)) %>%
 ggplot(aes(week, sampleFrequency,color=sampleFrequency)) +
   geom_point() +
-  facet_wrap(~wwtp_name) +
-  ggtitle("average sample frequencey by week by site ") +
-  scale_colour_gradientn(colours=rainbow(7))
+  facet_wrap(~site) +
+  ggtitle("Sample Frequency by Week") +
+  xlab("Weeks") + 
+  ylab("Sample Frequency") +
+  labs(fill=" ")
+  
 
 
 ```
 
 
 ```{r}
-siteStats <- sfdata %>% select(1,14,32,33,34) %>% group_by(wwtp_name) %>% mutate(maxsf = max(sampleFrequency),startdate = min(anydate(sample_collect_date)), enddate = max(anydate(sample_collect_date)),minweek = min(week),maxweek = max(week))
+siteStats <- sfdata %>% select(1,14,32,33,34) %>% group_by(site) %>% mutate(maxsf = max(sampleFrequency),startdate = min(anydate(sample_collect_date)), enddate = max(anydate(sample_collect_date)),minweek = min(week),maxweek = max(week))
 
 
 
@@ -68,10 +76,10 @@ siteStats <- sfdata %>% select(1,14,32,33,34) %>% group_by(wwtp_name) %>% mutate
 
 ```{r}
 siteStats %>% 
-  ggplot(mapping = aes(x = reorder(wwtp_name,minweek), y = minweek)) +
+  ggplot(mapping = aes(x = reorder(site,minweek), y = minweek)) +
     geom_pointrange(mapping = aes(ymin = maxweek, ymax = minweek))
 siteStats %>% 
-  ggplot(mapping = aes(x = reorder(wwtp_name,maxweek), y = maxweek)) +
+  ggplot(mapping = aes(x = reorder(site,maxweek), y = maxweek)) +
     geom_pointrange(mapping = aes(ymin = maxweek, ymax = minweek))
 ```
 

@@ -480,31 +480,65 @@ summary(wclm)
 ggplot(wastecaseccfmerg, aes(x=totalcases,y=geo_mean)) +
   geom_point()
 ```
+```{r}
+data("HFGWaste_data")
+HFGwaste <- HFGWaste_data
+HFGwaste$N1[is.na(HFGwaste$N1)] <- 0
+HFGwaste$N2[is.na(HFGwaste$N2)] <- 0
+HFGwaste <- HFGwaste%>% 
+  group_by(date)%>% 
+  summarise(N1 = mean(N1),
+            N2 = mean(N2)) %>% 
+  mutate(geo_mean = exp((log(N1) + log(N2))/2)) 
+
+data("HFGCase_data")
+HFGcase <- HFGCase_data
+HFGcase$ConfirmedCases[HFGcase$ConfirmedCases == -999] <- 2.5
+HFGcase$ConfirmedCases[is.na(HFGcase$ConfirmedCases)] <- 0
+HFGcase <- HFGcase %>%
+    group_by(date) %>% 
+    summarise(conf_case = mean(ConfirmedCases)) %>%
+    mutate(rollingaverage = rollmean(conf_case, k=7, fill = NA)) 
+
+fullHFG = merge(HFGwaste,HFGcase, by="date")
+```
 
 ```{r}
 
 
+
+heatmapcorfunc <- function(cordata){
+  
 rsquareddf <- data.frame(matrix(ncol = 1, nrow = 0))
-for(j in 0:14){
-  for(i in 0:14){
-    if(i == 0 || j == 0){#avoid subtracting when there is nothing
-      wctemplm <- wastecaseccfmerg %>% mutate(tempsum = roll_sum(conf_case,i,align = "left",fill = NA) + roll_sum(conf_case,j,align = "right",fill = NA))
-    } else {
-    wctemplm <- wastecaseccfmerg %>% mutate(tempsum = roll_sum(conf_case,i,align = "left",fill = NA) + roll_sum(conf_case,j,align = "right",fill = NA) - roll_sum(conf_case,1,align = "center",fill = NA) ) 
-    }
+for(j in 0:5){
+  for(i in 0:5){
+    wctemplm <- cordata %>% 
+      mutate(tempsum = roll_sum(conf_case,i,align = "left",fill = NA) + 
+                                roll_sum(conf_case,j,align = "right",fill = NA) + 
+                                roll_sum(conf_case,1,align = "center",fill = NA) ) 
+    
     templm <- lm(log(geo_mean + 1)~log(tempsum+1), data=wctemplm) # :variant :region
     new <- c(i,j,summary(templm)$r.squared)
     
     rsquareddf = rbind(rsquareddf,new)
+    print(i, j)
   }
 }
 names(rsquareddf)[1]="left" #(future)
 names(rsquareddf)[2]="right" #(past)
 names(rsquareddf)[3]="rsquared"
 
-heatmapcor <- rsquareddf[-1,] %>% ggplot(aes(x = left, y = right, fill = rsquared))+geom_tile() + scale_fill_gradientn(colours=rainbow(7)) + xlab("future") + ylab("past")
-ggplotly(heatmapcor)
-heatmapcor
+heatmapcor <- rsquareddf %>% ggplot(aes(x = left, y = right, fill = rsquared))+
+  geom_tile() + 
+  scale_fill_gradientn(colours=rainbow(7)) + 
+  xlab("Future Days") + 
+  ylab("Past Days") + 
+  ggtitle("Correlation of past and future days of N1 and N2 to current day cases")
+return(rsquareddf)
+}
+
+heatmapcorfunc(wastecaseccfmerg)
+heatmapcorfunc(fullHFG)
 
 ```
 
@@ -589,7 +623,8 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput,list,lod=FALSE){
       }
       
       caservtemp <- caservtemp %>% ungroup() %>%
-        mutate(rollingaverage = roll_sum(conf_case,3,align = "center",fill = NA)) %>%
+        mutate(roll_test = roll_sum(conf_case,3,align = "center",fill = NA),
+               rollingaverage = (roll_sum(conf_case,3,align = "center",fill = NA)/roll_test)) %>%
         na.omit()
   
       regionvstimetemp <- merge(caservtemp,wastervtemp, by = "date")
@@ -672,10 +707,11 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput,list,lod=FALSE){
   heatmaprvt <- ggplot(data = outputrvt, aes(fill = output,)) +
     geom_rect(aes(ymin = as.factor(regionsizemin), ymax = as.factor(regionsizemax), xmin = as.Date(start + firstday), xmax = as.Date(end + firstday))) +
     scale_fill_gradient2(low = "#D16BA5", mid = "#86A8E7", high = "#5FFBF1", na.value = "white" ) + 
-    xlab(case_when(timePeriods == 0 ~ paste("Variants (Since August 1st 2020)"),
+    xlab(case_when(timePeriods == 0 ~ paste("Variants (over 50% of cases)"),
                    .default = paste(timePeriods, " Month Periods (Since August 1st 2020)"))) + 
     scale_y_discrete(labels=templabels) +
-    ylab("Region") +
+    ylab(case_when(list == "region" ~ "Region",
+                   .default = "Population")) +
     ggtitle(case_when(lod == TRUE ~ paste(scale, "values above LOD"),
           .default = paste(scale, "using all N1/N2") ) )  +
    labs(fill="Offset in days")#Days wastewater is offset from cases
@@ -688,16 +724,33 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput,list,lod=FALSE){
 }
 
 heatmapfunc("spearman_offset",0,waste,cases,"pop",TRUE) 
-heatmapfunc("spearman_offset",0,waste,cases,"pop") 
-heatmapfunc("spearman_offset",0,waste,cases,"region",TRUE)
-heatmapfunc("spearman_offset",0,waste,cases,"region")
+#heatmapfunc("spearman_offset",0,waste,cases,"pop") 
+#heatmapfunc("spearman_offset",0,waste,cases,"region",TRUE)
+#heatmapfunc("spearman_offset",0,waste,cases,"region")
 
-heatmapfunc("kendall_offset",2,waste,cases,"pop",TRUE)
-heatmapfunc("kendall_offset",2,waste,cases,"pop")
+heatmapfunc("spearman_offset",6,waste,cases,"pop",TRUE) 
+heatmapfunc("spearman_offset",3,waste,cases,"pop",TRUE) 
+heatmapfunc("spearman_offset",2,waste,cases,"pop",TRUE) 
+heatmapfunc("spearman_offset",1,waste,cases,"pop",TRUE) 
 
+#heatmapfunc("kendall_offset",2,waste,cases,"pop",TRUE)
+#heatmapfunc("kendall_offset",2,waste,cases,"pop")
+
+heatmapfunc("kendall_offset",0,waste,cases,"pop",TRUE)
+#heatmapfunc("kendall_offset",6,waste,cases,"pop",TRUE)
+#heatmapfunc("kendall_offset",3,waste,cases,"pop",TRUE)
+#heatmapfunc("kendall_offset",1,waste,cases,"pop",TRUE)
 #Plot with true offset even if it does not make sense (looks more continuous).
 
 #Apply smoothings/normalizations/filterings
+#patchwork
+#Have x be the number of day sum and y offset?
+#Instead of sum of location - > rolling sum -> cor
+#Location -> rolling sum -> mean
+#Check when 2 day a week sampling happens
+#Run on hfg only
+#Try with smoothed
+#Split by variant timeframe
 
 ```
 
