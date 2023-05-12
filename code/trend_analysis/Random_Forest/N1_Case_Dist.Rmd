@@ -268,7 +268,8 @@ theme_update(plot.title = element_text(hjust = 0.5))
 #Graph_DF,  df_LOD
 Graph_DF%>%
   ggplot(aes(x = exp(avg_sars_cov2_conc), y = exp(case_rate)))+
-  geom_point(size = size, alpha = alpha, color = "black")+
+  stat_binhex()+
+  #geom_point(size = size, alpha = alpha, color = "black")+
   scale_y_log10()+
   scale_x_log10()+
   #theme_minimal()+
@@ -278,16 +279,24 @@ Graph_DF%>%
 ```
 
 ```{r plot 2}
-Graph_DF%>%
-  mutate(LOD = ifelse(LOD, "Above LOD", "Below LOD"))%>%
-  ggplot(aes(x = exp(avg_sars_cov2_conc), y = exp(case_rate -.676*log(pop)) , color = LOD))+
-  geom_point(size = size, alpha = alpha,)+
+temp = Graph_DF%>%
+  mutate(true_lod = avg_sars_cov2_conc > 6.5,
+         LOD = ifelse(true_lod, "Above LOD", "Below LOD"),)%>%
+  ggplot(aes(x = exp(avg_sars_cov2_conc), y = exp(case_rate -.676*log(pop))))+
+  #geom_point(size = size, alpha = alpha,)+
+  stat_bin2d()+
   scale_y_log10()+
   scale_x_log10()+
   #theme_minimal()+
   labs(y = "Normalized Average of Weekly New Cases", x = "SARS-CoV-2 Particles per Liter",
        title = "Relationship Post Population Normalization")
+plotly::ggplotly(temp)
 
+Graph_DF%>%
+  mutate(true_lod = avg_sars_cov2_conc > 7,
+         casezzz = case_rate -.676*log(pop))%>%
+  lm(casezzz ~ avg_sars_cov2_conc*true_lod, data = .)%>%
+  summary()
 ```
 
 ```{r lm_results}
@@ -312,8 +321,9 @@ df_LOD%>%
   modelr::add_predictions(plot_lm)%>%
   filter(avg_sars_cov2_conc > log(3e4))%>%
   filter(avg_sars_cov2_conc < log(5e7))%>%
-  ggplot(aes(x = exp(avg_sars_cov2_conc), y = exp(n_case_rate)))+
-  geom_point(size = size, alpha = alpha)+
+  ggplot()+
+  stat_binhex(aes(x = exp(avg_sars_cov2_conc), y = exp(n_case_rate)))+
+  #geom_point(size = size, alpha = alpha)+
   #geom_line(aes(y = exp(pred)), color = "white", size = 1.5)+
   scale_y_log10()+
   scale_x_log10()+

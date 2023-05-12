@@ -187,7 +187,7 @@ from the detrended data level. each level contains the lower levels variance. be
 is a table showing each signals three level of variances.
 
 
-```{r, variance}
+```{r, variance, fig.height=6, fig.width=8}
 variance_df <- log_trend_df
 
 diff_var <- function(df, name){
@@ -198,6 +198,7 @@ diff_var <- function(df, name){
     summarise(across(Diff_N1:Diff_CrP, ~var(.x, na.rm = TRUE)))%>%
     mutate(var_type = name)
 }
+
 trend_variance_df <- log_trend_df%>%
   group_by(site, date)%>%
   summarise(across(Diff_N1:Diff_CrP, ~mean(.x, na.rm = TRUE)))%>%
@@ -221,14 +222,37 @@ var_output <- rbind(
 
 var_output%>%
   pivot_longer(Diff_N1:Diff_CrP)%>%
-  mutate(name = factor(name, levels=c('Diff_N1', 'Diff_N2', 'Diff_PMMOV', 'Diff_HF183', 'Diff_CrP')),
+  mutate(name = ifelse(grepl("^Diff_", name), sub("^Diff_(.*)", "\\1", name), name))%>%
+  mutate(name = factor(name, levels=c('N1', 'N2', 'PMMOV', 'HF183', 'CrP')),
          var_type = factor(var_type, levels = c("trend var", "filter var",
                                                 "well var")))%>%
   ggplot(aes(name, var_type)) +
   geom_tile(aes(fill = value)) + 
   geom_text(aes(label = round(value, 3))) +
   scale_fill_gradient(low = "white", high = "red")+
-  scale_x_discrete(position = "top")
+  scale_x_discrete(position = "top")+
+  ylab("Variance source")+
+  xlab("Signal Type")+
+  labs(fill = "variance")#coefficient of variation
+
+
+
+X_Y_Dist <- log_trend_df%>%
+  group_by(site, date, Filter)%>%
+  summarise(across(Diff_N1:Diff_CrP, ~mean(.x, na.rm = TRUE)))%>%
+  select(site, date, Diff_N1, Filter)
+
+X_Dist <- log_trend_df%>%
+  select(site, date, Diff_N1, Filter)%>%
+  rename(X = Diff_N1)
+
+
+covar_df <- X_Dist%>%
+  left_join(X_Y_Dist, by = c("site", "date", "Filter"))%>%
+  filter(!is.na(X), !is.nan(Diff_N1))%>%
+  unique()
+
+cov(covar_df$X, covar_df$Diff_N1)
 ```
 
 ```{r fig.height = 15, fig.width= 15 ,eval=FALSE}
@@ -252,3 +276,65 @@ log_trend_df%>%
 log_trend_df%>%
   ggpairs(aes(colour = site, alpha = 0.4))
 ```
+
+
+```{r, fig.height=6, fig.width=8}
+
+detrended_df <- HFGWaste_data%>%
+  select(site, date, Filter, Well, N1, N2, PMMOV, HF183, CrP)%>%
+  group_by(site)%>%
+    arrange(date)%>%
+    mutate(across(
+          .cols = N1:CrP,
+          .fns = ~log(.x + 1) - zoo::rollapply(log(.x + 1), FUN = median, fill = NA, width = 9 * 5, na.rm = TRUE, align = "center")))%>%
+  ungroup()%>%
+  filter(!is.na(N1) | !is.na(N2) | !is.na(PMMOV) | !is.na(HF183) | !is.na(CrP))
+
+
+A <- detrended_df%>%
+  #group_by(site, date)%>%
+  summarise(across(.cols = N1:CrP,
+          .fns = ~ var(.x, na.rm = TRUE)))%>%
+  mutate(var_type = "trend var")
+
+B <- detrended_df%>%
+  group_by(site, date)%>%
+  mutate(across(N1:CrP, ~.x - mean(.x, na.rm = TRUE)))%>%
+  ungroup()%>%
+  summarise(across(.cols = N1:CrP,
+          .fns = ~ var(.x, na.rm = TRUE)))%>%
+  mutate(var_type = "filter var")
+
+C <- detrended_df%>%
+  group_by(site, date, Filter)%>%
+  mutate(across(N1:CrP, ~.x - mean(.x, na.rm = TRUE)))%>%
+  ungroup()%>%
+  summarise(across(.cols = N1:CrP,
+          .fns = ~ var(.x, na.rm = TRUE)))%>%
+  mutate(var_type = "well var")
+
+
+bind_rows(A,B,C)%>%
+  #mutate(across(N1:CrP, ~.x - lead(.x)))%>%
+  #bind_rows(C)%>%
+  filter(!is.na(N1))%>%
+  pivot_longer(N1:CrP)%>%
+  #mutate(name = ifelse(grepl("^Diff_", name), sub("^Diff_(.*)", "\\1", name), name))%>%
+  mutate(name = factor(name, levels=c('N1', 'N2', 'PMMOV', 'HF183', 'CrP')),
+         var_type = factor(var_type, levels = c("trend var", "filter var",
+                                                "well var")))%>%
+  ggplot(aes(name, var_type)) +
+  geom_tile(aes(fill = value)) + 
+  geom_text(aes(label = round(value, 3))) +
+  scale_fill_gradient(low = "white", high = "red")+
+  scale_x_discrete(position = "top")+
+  ylab("Variance source")+
+  xlab("Signal Type")+
+  labs(fill = "variance")
+```
+
+
+
+
+
+

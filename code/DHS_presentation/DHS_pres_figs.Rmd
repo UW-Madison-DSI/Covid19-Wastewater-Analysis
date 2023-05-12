@@ -1,0 +1,897 @@
+---
+title: "Final Wastewater"
+author: "Marlin"
+date: "2023-04-25"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+run_base <- FALSE
+knitr::opts_chunk$set( warning = FALSE, message=FALSE, echo=FALSE, fig.width = 12)
+```
+
+```{r include = FALSE, message = FALSE}
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+set.seed(321)
+```
+
+```{r package dataset}
+library(DSIWastewater)
+data("Case_data", package = "DSIWastewater")
+data("WasteWater_data", package = "DSIWastewater")
+```
+
+
+```{r}
+simple_plot <- function(df, site_name, legend = TRUE){#simple_plot()
+  site_df <- df%>%
+    filter(site == site_name)
+  
+  case_plot <- site_df%>%
+    ggplot(aes(x = date))+
+    geom_point(aes(y = 1 + 100 * case_rate / tests, color = "Reported cases"))+
+    geom_line(aes(y = 1 + roll_case_rate, color = "7 day Average of cases"))+
+    scale_y_log10()+
+    labs(title = site_name, y = "% of tests positive")
+
+  
+  waste_plot <- site_df%>%
+    ggplot(aes(x = date))+
+    geom_point(aes(y = 1 + N1_per, color = "N1"), alpha = .8)+
+    geom_point(aes(y = 1 + N2_per, color = "N2"), alpha = .8)+
+    scale_y_log10()+
+    labs(title = site_name, y = "gene copy's per person")
+  
+  if(!legend){
+    case_plot <- case_plot + theme(legend.position="none")
+    waste_plot <- waste_plot + theme(legend.position="none")
+  }
+  #waste_plot
+  case_plot / waste_plot
+}
+
+renormalize <- function(df, var_norm, var_source){
+  min_norm <- quantile(pull(df, !!sym(var_norm)), .25, na.rm = TRUE)
+  max_norm <- quantile(pull(df, !!sym(var_norm)), .75, na.rm = TRUE)
+  min_source <- quantile(pull(df, !!sym(var_source)), .25, na.rm = TRUE)
+  max_source <- quantile(pull(df, !!sym(var_source)), .75, na.rm = TRUE)
+  df%>%
+    mutate(temp = !!sym(var_norm),
+           temp = temp - min_norm,
+           temp = temp / (max_norm - min_norm),
+           temp = temp * (max_source - min_source),
+           temp = temp + min_source,
+           !!sym(var_norm) := temp)%>%
+    select(-temp)
+}
+
+simple_plot_overlay <- function(df, site_name, legend = TRUE){
+  site_df <- df%>%
+    filter(site == site_name)
+  
+  ret_plot <- site_df%>%
+    renormalize("N1_per", "roll_case_rate")%>%
+    renormalize("N2_per", "roll_case_rate")%>%
+    ggplot(aes(x = date))+
+    geom_line(aes(y = 1 + roll_case_rate, color = "Reported cases"), size = .75)+
+    geom_point(aes(y = 1 + N1_per, color = "N1"), alpha = .9)+
+    geom_point(aes(y = 1 + N2_per, color = "N2"), alpha = .9)+
+    scale_y_log10()+
+    labs(title = site_name, y = "% of tests positive")
+  
+  if(!legend){
+    ret_plot <- ret_plot + theme(legend.position="none")
+  }
+  ret_plot
+}
+
+#plotly::ggplotly(simple_plot(simple_merge_df, "Madison") + scale_x_continuous(limits = c(as.date(""), as.date(""))))
+```
+
+
+```{r gen_flags}
+gen_long_stat <- function(vector, func, width = 45){
+  return(zoo::rollapply(vector, width = 45, FUN = func, na.rm = TRUE, fill = NA, align = "center"))
+}
+
+filter_seq <- function(vec_log, vec_peak, sig = 1){
+  return(
+    vec_log & 
+    (is.na(lag(vec_log, 1)) | !lag(vec_log, 1) | sig * vec_peak > sig * lag(vec_peak, 1)) & 
+    (is.na(lead(vec_log, 1)) | !lead(vec_log, 1) | sig * vec_peak >= sig * lead(vec_peak, 1))
+  )
+}
+
+join_close_date <- function(df1, df2){
+
+  # find closest date within groups
+  closest_df <- df1 %>%
+    select(site,date)%>%
+    left_join(select(df2, site,date), by = "site") %>% 
+    group_by(site, date.x) %>%
+    mutate(diff = abs(date.x - date.y)) %>%
+    slice_min(diff) %>%
+    select(site, date.x, diff)
+  return(closest_df)
+}
+
+diff_summary <- function(df, thresh = 30){
+  df%>%
+    mutate(is_miss = diff > thresh,
+           diff = ifelse(diff > thresh, NA, diff))%>%
+    group_by(site)%>%
+    summarise(averge_diff = mean(diff, na.rm = TRUE), per_miss = mean(is_miss, na.rm = TRUE))%>%
+    ungroup()
+}
+
+gen_flags <- function(df, width = 90, fn_summary = FALSE){
+  case_flags <- df %>%
+      group_by(site)%>%
+      arrange(date) %>%
+        mutate(
+          roll_max_case = gen_long_stat(roll_case_rate, max, width = width),
+          roll_min_case = gen_long_stat(roll_case_rate, min, width = width),
+          is_max_case = roll_max_case == roll_case_rate,
+          is_min_case = roll_min_case == roll_case_rate
+          )%>%
+      filter(is_max_case | is_min_case)%>%
+      mutate(is_max_case = filter_seq(is_max_case, roll_max_case),
+             is_min_case = filter_seq(is_min_case, is_max_case, -1))%>%
+    select(site, date, is_max_case, is_min_case)%>%
+    ungroup()
+  
+  waste_flag <- df %>%
+      group_by(site)%>%
+      arrange(date) %>%
+        mutate(
+          roll_max_n1 = gen_long_stat(N12_per, max, width = width),
+          roll_min_n1 = gen_long_stat(N12_per, min, width = width),
+          is_max_n1 = roll_max_n1 == N12_per,
+          is_min_n1 = roll_min_n1 == N12_per)%>%
+      filter(is_max_n1 | is_min_n1)%>%
+      mutate(is_max_n1 = filter_seq(is_max_n1, roll_max_n1),
+             is_min_n1 = filter_seq(is_min_n1, roll_min_n1, -1))%>%
+    select(site, date, is_max_n1, is_min_n1)%>%
+    ungroup()
+  if(fn_summary){
+    min_date = max(c(min(pull(filter(df, !is.na(N12_per)), date), na.rm = TRUE),
+                     min(pull(filter(df, !is.na(roll_case_rate)), date), na.rm = TRUE)))
+    
+    max_date = min(c(max(pull(filter(df, !is.na(N12_per)), date), na.rm = TRUE), 
+                   max(pull(filter(df, !is.na(roll_case_rate)), date), na.rm = TRUE)))
+    
+    max_diff_df <- waste_flag%>%
+      filter(is_max_n1 & min_date < date & date < max_date)%>%
+      join_close_date(filter(case_flags, is_max_case & min_date < date & date < max_date))%>%
+      diff_summary()%>%
+      mutate(flag = "max")
+      min_diff_df <- waste_flag%>%
+        filter(is_min_n1 & min_date < date & date < max_date)%>%
+        join_close_date(filter(case_flags, is_min_case & min_date < date & date < max_date))%>%
+        diff_summary()%>%
+        mutate(flag = "min")
+      
+      return(bind_rows(min_diff_df, max_diff_df))
+  }
+  
+  full_join(case_flags, waste_flag, by = c("site", "date"))%>%
+    mutate(across(where(is.logical), ~ifelse(is.na(.x), FALSE, .x)))
+}
+```
+
+```{r simple smoothing for madison}
+simple_mean_plot_flag <- function(df, site_name, legend = TRUE){
+  site_df <- df%>%
+    filter(site == site_name)%>%
+    arrange(date)%>%
+    mutate(roll_N1 = exp(zoo::rollapply(log(N1_per), FUN = mean, fill = NA, width = 7, na.rm = TRUE)),
+           roll_N2 = exp(zoo::rollapply(log(N2_per), FUN = mean, fill = NA, width = 7, na.rm = TRUE)))
+  
+  peak_flag_df <- site_df%>%
+    mutate(N12_per = sqrt(roll_N1 * roll_N2))%>%
+    gen_flags()
+  
+  
+  case_plot <- site_df%>%
+    ggplot(aes(x = date))+
+    geom_line(aes(y = roll_case_rate, color = "Reported cases"))+
+    #geom_vline(aes(xintercept = date, color = "max case"), data = filter(peak_flag_df, is_max_case))+
+    #geom_vline(aes(xintercept = date, color = "min case"), data = filter(peak_flag_df, is_min_case))+
+    scale_y_log10()+
+    ggtitle(site_name)
+  
+  waste_plot <- site_df%>%
+    ggplot(aes(x = date))+
+    geom_point(aes(y = roll_N1, color = "N1"), alpha = .5)+
+    geom_point(aes(y = roll_N2, color = "N2"), alpha = .5)+
+    #geom_vline(aes(xintercept = date, color = "max N1"), data = filter(peak_flag_df, is_max_n1))+
+    #geom_vline(aes(xintercept = date, color = "min N2"), data = filter(peak_flag_df, is_min_n1))+
+    scale_y_log10()+
+    ggtitle(site_name)
+    
+  if(!legend){
+    case_plot <- case_plot + theme(legend.position="none")
+    waste_plot <- waste_plot + theme(legend.position="none")
+  }
+  case_plot / waste_plot
+}
+```
+
+
+```{r outlier explore, eval = FALSE}
+error_gen <- function(vec, dis = 1){
+  return(vec - lag(vec, dis) * (vec - lead(vec, dis)))
+}
+
+error_output <- simple_merge_df%>%
+  filter(!is.na(N12_per))%>%
+  group_by(site)%>%
+  arrange(date)%>%
+  #mutate(jump_error = log((N12_per + 1)**2 / ((lag(N12_per) + 1) * (lead(N12_per) + 1))))%>%
+  mutate(jump_error = error_gen(log(N12_per + 1)),
+         jump_error_2 = jump_error + .5*error_gen(log(N12_per + 1), 2))
+
+
+
+error_output%>%
+  ggplot(aes(x = log(N12_per), y = jump_error))+#, color = error_flag))+
+  geom_hex()
+
+error_output%>%
+  ggplot(aes(x = jump_error))+#, color = error_flag))+
+  geom_histogram()
+
+error_output%>%
+  ggplot(aes(x = log(N12_per), y = jump_error_2))+#, color = error_flag))+
+  geom_hex()
+
+error_output%>%
+  ggplot(aes(x = jump_error_2))+#, color = error_flag))+
+  geom_histogram()
+#plotly::ggplotly(error_output)
+```
+
+
+```{r remove simple outliers, fig.height = 6, fig.width= 10}
+error_gen <- function(vec, dis = 1){
+  
+  return(vec - .5*(lag(vec, dis) + lead(vec, dis)))
+}
+
+gen_outlier_df <- function(df, shift = 1, adjust = 4){
+  error_df_2 <- df%>%
+    select(date, site, N12_per)%>%
+    filter(!is.na(N12_per))%>%
+    group_by(site)%>%# 
+    arrange(date)%>%
+    mutate(medN1 = lag(zoo::rollapply(log(N12_per + 1), FUN = median, fill = NA, width = 5 + 2 * shift, na.rm = TRUE), shift),
+           mad_adj =  adjust * median(abs(log(N12_per + 1) - medN1), na.rm=TRUE),
+           jump_error = abs(log(N12_per + 1) - medN1) >  mad_adj)%>%
+    ungroup()%>%
+    select(-N12_per)
+  
+  df%>%
+    left_join(error_df_2, by = c("date", "site"))#%>%
+    #mutate(jump_error = ifelse(is.na(jump_error), FALSE, jump_error),
+           #N12_per_old = N12_per,
+           #N12_per = ifelse(jump_error, exp(medN1) - 1, N12_per))
+}
+
+IQR.outliers <- function(x, thresh = 7, is_oneSide = FALSE) {
+  if(!is.numeric(x))
+    stop("x is not numeric")
+  Q3 <- quantile(x, 0.75, na.rm = TRUE)
+  Q1 <- quantile(x, 0.25, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  
+  left <- (Q1 - (thresh * IQR))
+  right <- (Q3 + (thresh * IQR))
+  #print(right)
+  if(is_oneSide){
+    return(x > right)
+  }else{
+    return(x < left| x > right)
+  }
+}
+
+simple_plot_flag_outliers <- function(df, site_name, legend = TRUE, size = .75){
+  site_df <- df%>%
+    filter(site == site_name)
+  
+  pop_avg = round(mean(site_df$pop), -3)
+  
+  waste_plot <- site_df%>%
+    gen_outlier_df()%>%
+    mutate(jump_error_lab = ifelse(jump_error, "Outlier", "Inlier"),
+           jump_error_lab = ifelse(is.na(jump_error), "Not enought data", jump_error_lab),
+           jump_error_lab = factor(jump_error_lab, levels = c("Outlier", "Inlier", "Not enought data")))%>%
+    filter(date > lubridate::mdy("10/1/2020") )%>%
+    ggplot(aes(x = date, color = jump_error_lab))+
+    #geom_point(aes(y = N12_per_old + 1, color = "Outlier"), size = 1.5 * size, data = filter(filt_df, N12_per != N12_per_old))+
+    geom_point(aes(y = N12_per + 1), size = size)+
+    scale_color_manual(values = c("Outlier" = "#e41a1c", "Inlier" = "#377eb8", "Not enought data" = "#4daf4a"))+
+    scale_y_log10()+
+    ggtitle(paste(site_name, " - population: ", pop_avg))+
+    ylab("Covid Gene Copies per Person")+
+    labs(color = "color")
+  
+  if(!legend){
+    waste_plot <- waste_plot + theme(legend.position="none")
+  }
+  #plotly::ggplotly(waste_plot)
+  waste_plot
+}
+simple_plot_flag_outliers(simple_merge_df, "Black River Falls", size = 3)
+```
+
+
+```{r}
+
+
+```
+
+```{r}
+#assuming log_10
+library(patchwork)
+library(dplyr)
+
+gen_N12 <- function(df, n1_sym, n2_sym, out_name){
+  df%>%
+    mutate({{out_name}} := sqrt({{n1_sym}} * {{n2_sym}}),
+          out_name := ifelse(is.na({{out_name}}), {{n1_sym}}, {{out_name}}),
+          out_name := ifelse(is.na({{out_name}}), {{n2_sym}}, {{out_name}}))
+}
+
+waste_sites <- WasteWater_data%>%
+  pull(site)%>%
+  unique()
+
+site_info <- WasteWater_data%>%
+  select(site, regions, county, pop)%>%
+  group_by(site)%>%
+  mutate(pop = mean(pop, na.rm = TRUE))%>%
+  unique()%>%
+    ungroup()
+
+simple_merge_df <- Case_data%>%
+  full_join(WasteWater_data, by = c("date", "site"))%>%
+  group_by(site)%>%
+  mutate(flow = ifelse(is.na(flow), mean(flow),flow))%>%
+  ungroup()%>%
+  select(-regions, -county, -pop)%>%
+  left_join(site_info, by = c("site"))%>%
+  filter(site %in% waste_sites)%>%
+  mutate(case_rate = (conf_case))%>%
+  group_by(site)%>%
+  arrange(date)%>%#choice: what signal to use
+  mutate(roll_case = zoo::rollsum(case_rate, 7, fill = NA, align = "right"),
+         roll_test = zoo::rollsum(tests, 7, fill = NA, align = "right"),
+         roll_case_rate = 100 * roll_case / roll_test)%>%#case prep
+  mutate(N1_per = N1 * flow / pop,
+         N2_per = N2 * flow / pop)%>%
+  gen_N12(N1_per, N2_per, "N12_per")%>%
+  select(roll_case, roll_case_rate, N12_per, everything())%>%
+  filter(!(tests == 0 & is.na(N1_per) & is.na(N2_per)))%>%
+  ungroup()
+
+
+
+```
+
+```{r, pop research}
+plot_norm_strat <- function(plot_df0, var_plot, covar_plot, covar_plot2, var_name, legend = TRUE){
+  plot_df = plot_df0%>%
+    mutate(ind_var = {{var_plot}},
+           dep_var = {{covar_plot}},
+           t_var = {{covar_plot2}})%>%
+    select(ind_var, dep_var ,t_var)
+  
+  rep_plot <- plot_df%>%
+    filter(ind_var != 0, dep_var != 0)%>%
+    ggplot(aes(y = ind_var, x = dep_var))+
+    stat_binhex(bins = 40)+
+    labs(x = var_name[2], y = var_name[1])+
+    scale_x_log10()+
+    scale_y_log10()
+  
+  t_plot <- plot_df%>%
+    filter(ind_var != 0, t_var != 0)%>%
+    ggplot(aes(y = ind_var + 1, x = t_var + 1))+
+    stat_binhex(bins = 40)+
+    labs(x = var_name[3], y = var_name[1])+
+    scale_x_log10()+
+    scale_y_log10()
+  
+  if(!legend){
+    rep_plot <- rep_plot + xlab("")
+    t_plot <- t_plot + theme(legend.position="none") + xlab("")
+  }
+  rep_plot <- rep_plot + theme(legend.position="none")
+  t_plot <- t_plot + ylab("")
+  
+  rep_plot | t_plot
+}
+```
+
+```{r case norm}
+library(ggplot2)
+
+
+med_N1_df <- simple_merge_df%>%
+  gen_median_smoothing(N1, N2)
+
+case_names <- c("Covid Gene Copies per Liter", "Flow Rate", "Population Covered")
+
+P1 <- simple_merge_df%>%
+  gen_median_smoothing(N1, N2)%>%
+  filter(!is.na(N1) | !is.na(N2))%>%
+              plot_norm_strat(roll_N12, 
+                                  flow, 
+                                  pop,
+                legend = FALSE,
+                var_name = case_names) 
+
+case_names[1] <- "Covid Gene Copies per Liter per Person"
+P2 <- simple_merge_df%>%
+          mutate(N1_per = N1 / pop,
+                 N1_per = N2 / pop)%>%
+  #gen_median_smoothing(N1_per, N1_per)%>%
+  gen_N12(N1_per, N2_per, "roll_N12")%>%
+  filter(!is.na(N1) | !is.na(N2))%>%
+              plot_norm_strat(roll_N12, 
+                    flow, 
+                    pop,
+                legend = FALSE,
+                var_name = case_names)
+
+case_names[1] <- "Covid Gene Copies per Person"
+P3 <- simple_merge_df%>%
+          mutate(N1_per = N1 * flow / pop,
+                 N1_per = N2 * flow / pop)%>%
+  #gen_median_smoothing(N1_per, N1_per)%>%
+  gen_N12(N1_per, N2_per, "roll_N12")%>%
+  filter(!is.na(N1) | !is.na(N2))%>%
+              plot_norm_strat(roll_N12, 
+                    flow, 
+                    pop,
+                legend = TRUE,
+                var_name = case_names)
+
+P1 / P2 / P3
+
+```
+
+```{r N1 norm}
+
+case_names <- c("Reported Cases within last 7 days", "Reported Tests within last 7 days", "Population Covered")
+
+P1 <- plot_norm_strat(simple_merge_df, 
+                                roll_case, 
+                                  roll_test, 
+                                  pop,
+                legend = FALSE,
+                var_name = case_names) 
+
+case_names[1] <- "Cases Normalized by Population"
+P2 <- plot_norm_strat(simple_merge_df,
+                    100000 * roll_case / pop,
+                    roll_test, 
+                    pop,
+                legend = FALSE,
+                var_name = case_names)
+
+case_names[1] <- "Cases Normalized by Tests"
+P3 <- plot_norm_strat(simple_merge_df, 
+                      100 * roll_case / roll_test, 
+                      roll_test, 
+                                  pop,
+                legend = TRUE,
+                var_name = case_names)
+
+P1 / P2 / P3
+```
+
+
+
+```{r base plots}
+simple_plot(simple_merge_df, "Madison", legend = FALSE) | 
+  simple_plot(simple_merge_df, "Marshfield", legend = FALSE) |
+  simple_plot(simple_merge_df, "Black River Falls")
+
+
+simple_plot_overlay(simple_merge_df, "Madison", legend = FALSE) |
+  simple_plot_overlay(simple_merge_df, "Marshfield", legend = FALSE) |
+  simple_plot_overlay(simple_merge_df, "Black River Falls") +  
+  plot_annotation(
+  title = 'Gene Copys ajusted into Case rate range')
+```
+
+
+
+```{r outlier megathread, fig.hight = 4}
+simple_plot_flag_outliers(simple_merge_df, "Madison", legend = FALSE, size = 1.5) /
+  simple_plot_flag_outliers(simple_merge_df, "Marshfield", size = 2) /
+  simple_plot_flag_outliers(simple_merge_df, "Black River Falls",  legend = FALSE, size = 2)
+```
+
+```{r smoothing}
+gen_median_smoothing <- function(df, N1_sym, N2_sym){
+  df%>%
+    arrange(date)%>%
+    mutate(roll_N1 = zoo::rollapply({{N1_sym}}, FUN = median, fill = NA, width = 21, na.rm = TRUE, align = "right"),
+         roll_N2 = zoo::rollapply({{N2_sym}}, FUN = median, fill = NA, width = 21, na.rm = TRUE, align = "right"))%>%
+    gen_N12(roll_N1, roll_N2, "roll_N12")
+}
+
+simple_median_plot_flag <- function(df, site_name, legend = TRUE){
+  site_df <- df%>%
+    filter(site == site_name)%>%
+    #gen_outlier_df()%>%
+    gen_median_smoothing(N1_per, N2_per)
+  
+    pop_avg = round(mean(site_df$pop), -3)
+  
+  site_df2 <- site_df
+  
+  waste_smooth_plot <- site_df2%>%
+    filter(date > lubridate::mdy("10/1/2020") )%>%
+    filter(!is.na(N1) | !is.na(N2))%>%
+    ggplot(aes(x = date))+
+    geom_point(aes(y = N1_per + 1, color = "N1"), alpha = .5)+
+    geom_point(aes(y = N2_per + 1, color = "N2"), alpha = .5)+
+    geom_line(aes(y = roll_N1 + 1, color = "median N1"), size = 1, data = filter(site_df2, !is.na(N1)))+
+    geom_line(aes(y = roll_N2 + 1, color = "median N2"), size = 1, data = filter(site_df2, !is.na(N2)))+
+    scale_y_log10()+
+    ggtitle(paste(site_name, " - population: ", pop_avg))+
+    ylab("Covid Gene Copies per Person")
+    
+  if(!legend){
+    waste_smooth_plot <- waste_smooth_plot + theme(legend.position="none")
+  }
+  waste_smooth_plot
+}
+
+simple_median_plot_flag(simple_merge_df, "Madison", legend = FALSE) /
+simple_median_plot_flag(simple_merge_df, "Marshfield", legend = FALSE) /
+simple_median_plot_flag(simple_merge_df, "Black River Falls")
+```
+
+
+```{r, fig.width=12}
+simple_case_plot <- function(df, site_name, legend = TRUE){#paste
+  site_df <- df%>%
+    filter(site == site_name)
+  pop_avg <- round(mean(site_df$pop), -3)
+  
+  case_plot <- site_df%>%
+    #mutate(Per_pos = ifelse(case_rate == 0, 100 * 2.5 / tests, 100 * case_rate / tests))%>%
+    ggplot(aes(x = date))+
+    geom_point(aes(y = 1 + 100 * case_rate / tests, color = "Reported cases"))+
+    geom_line(aes(y = 1 + roll_case_rate, color = "7 day Average of cases"))+
+    scale_y_log10()+
+    labs(title = paste(site_name, " - population: ", pop_avg), y = "% of tests positive")
+    
+  if(!legend){
+    case_plot <- case_plot + theme(legend.position="none")
+  }
+  case_plot
+}
+
+p3_data <- simple_merge_df%>%#roll_test
+  mutate(N1 = ifelse(N1 < n1_lod, n1_lod / 2, N1),
+         N2 = ifelse(N2 < n2_lod, n2_lod / 2, N2),
+         N1_per = N1 * flow / pop,
+         N2_per = N2 * flow / pop)%>%
+  group_by(site)%>%
+  gen_median_smoothing(N1_per, N2_per)%>%
+  ungroup()
+
+(
+simple_case_plot(p3_data, "Madison", legend = FALSE) |
+simple_case_plot(p3_data, "Marshfield", legend = FALSE) + ylab("") |
+simple_case_plot(p3_data, "Black River Falls") + ylab("")
+) /
+
+(
+simple_median_plot_flag(p3_data, "Madison", legend = FALSE)+ggtitle("") |
+simple_median_plot_flag(p3_data, "Marshfield", legend = FALSE)+ggtitle("") + ylab("") |
+simple_median_plot_flag(p3_data, "Black River Falls")+ggtitle("") + ylab("")
+)
+```
+
+
+```{r}
+
+simple_ccf_func <- function(df, site_name){
+  site_name = "Marshfield"
+  ccf_df <- df%>%
+    filter(site == site_name)%>%
+    filter(!is.na(roll_case_rate) & !is.na(roll_N12))
+  
+  ccf(log(ccf_df$roll_case_rate + 1), log(ccf_df$roll_N12 + 1))
+  
+  print(ccf_df%>%
+    ggplot(aes(x = roll_case_rate, y = roll_N12, color = date))+
+    geom_point())#+
+    #scale_y_log10()+
+    #scale_x_log10())
+  
+  ccf_df%>%
+    lm(log(roll_case_rate + 1) ~ log(roll_N12 + 1), data = .)%>%
+    summary()
+}
+simple_ccf_func(p3_data,"Madison")
+simple_ccf_func(p3_data,"Marshfield")
+simple_ccf_func(p3_data,"Black River Falls")
+
+
+p3_data%>%
+  lm(roll_case_rate ~ roll_N12:site, data = .)%>%
+  summary()
+```
+
+
+```{r}
+
+p1_data <- simple_merge_df%>%
+  group_by(site)%>%
+  gen_median_smoothing(N1, N2)%>%
+  ungroup()
+
+p2_data <- simple_merge_df%>%
+  mutate(N1_per = N1 * flow / pop,
+         N2_per = N2 * flow / pop)%>%
+  group_by(site)%>%
+  gen_median_smoothing(N1_per, N2_per)%>%
+  ungroup()
+
+
+p3_data <- simple_merge_df%>%#roll_test
+  mutate(N1 = ifelse(N1 < n1_lod, NA, N1),
+         N2 = ifelse(N2 < n2_lod, NA, N2),
+         N1_per = N1 * flow / pop,
+         N2_per = N2 * flow / pop)%>%
+  group_by(site)%>%
+  gen_median_smoothing(N1_per, N2_per)%>%
+  ungroup()
+```
+
+```{r, fig.height = 4, fig.width=5}
+
+p1 <- p1_data%>%
+  filter(roll_N12 != 0 & roll_case != 0)%>%
+  filter(!is.na(N1) | !is.na(N2))#%>%
+  ggplot(aes(x = roll_N12, y = roll_case ))+
+  stat_binhex(bins = 40, alpha = .9)+
+  scale_fill_gradientn(colours=c("black","red"),name = "Frequency",na.value=NA)+
+  scale_y_log10()+
+  scale_x_log10()+
+    xlab("Median Covid Gene Copies per Liter")+
+    ylab("Weekly Average Reported Case")
+
+p2 <- p2_data%>%
+  filter(roll_N12 != 0 & roll_case_rate != 0)%>%
+  filter(!is.na(N1_per) | !is.na(N2_per))#%>%
+  ggplot(aes(x = roll_N12, y = roll_case_rate ))+
+  stat_binhex(bins = 40, alpha = .9)+
+  #stat_summary_hex(fun = mean, aes(z = qsec), binwidth = c(10, 2))+
+  scale_fill_gradientn(colours=c("black","red"),name = "Frequency",na.value=NA)+
+  scale_y_log10()+
+  scale_x_log10()+
+    xlab("Median Covid Gene Copies per Person")+
+    ylab("Weekly Average Case Rate")
+
+p1%>%
+  lm(log(roll_case) ~ log(roll_N12),data = .)%>%
+  summary()
+
+p2%>%
+  lm(log(roll_case_rate) ~ log(roll_N12),data = .)%>%
+  summary()
+
+simple_merge_df%>%#roll_test
+  mutate(bel_N1_lod = N1 < n1_lod,
+         bel_N2_lod = N2 < n2_lod,
+         N1 = ifelse(bel_N1_lod,  n1_lod / 2, N1),# n1_lod / new_low
+         N2 = ifelse(bel_N2_lod, n1_lod / 2, N2),
+         N1_per = N1 * flow / pop,
+         N2_per = N2 * flow / pop)%>%
+  group_by(site)%>%
+  gen_median_smoothing(N1_per, N2_per)%>%
+  ungroup()%>%
+  filter(roll_N12 != 0 & roll_case_rate != 0)%>%
+  filter(!is.na(N1_per) | !is.na(N2_per))%>%
+  lm(log(roll_case_rate) ~ log(roll_N12),data = .)%>%
+  summary()
+
+```
+
+```{r, fig.height = 4, fig.width=5}
+ajud = 1
+new_low = .5
+p3_data <- simple_merge_df%>%#roll_test
+  mutate(bel_N1_lod = N1 < n1_lod,
+         bel_N2_lod = N2 < n2_lod,
+         N1 = ifelse(bel_N1_lod,  n1_lod / 2, N1),# n1_lod / new_low
+         N2 = ifelse(bel_N2_lod, n1_lod  / 2, N2),
+         N1_per = N1 * flow / pop,
+         N2_per = N2 * flow / pop)%>%
+  group_by(site)%>%
+  gen_median_smoothing(N1_per, N2_per)%>%
+  ungroup()
+
+p3 <- p3_data%>%
+  filter(roll_N12 != 0 & roll_case_rate != 0)%>%
+  filter(!is.na(N1_per) | !is.na(N2_per))%>%
+  #filter(roll_N12 > 1.5)%>%
+  ungroup()%>%
+  ggplot(aes(x = roll_N12, y = roll_case_rate))+
+  #stat_binhex(bins = 40, alpha = .8, size = 2)+
+  stat_summary_hex(fun = mean, aes(z = as.numeric(bel_N1_lod | bel_N2_lod)), bins = 40, alpha = .9)+
+  scale_fill_gradientn(colours=c("black","red"),name = "% of below LOD",na.value=NA)+#% of below LOD
+  scale_y_log10()+
+  scale_x_log10()+
+    xlab("Median Covid Gene Copies per Person")+
+    ylab("Weekly average case rate")
+
+
+simple_merge_df%>%
+  group_by(site)%>%
+  gen_median_smoothing(N1_per, N2_per)%>%
+  ungroup()%>%
+  lm(log(roll_case_rate + 1) ~ log(roll_N12 + 1), data = .)%>%
+  summary()
+
+p3_data%>%
+  lm(log(roll_case_rate + 1) ~ log(roll_N12 + 1), data = .)%>%
+  summary()
+```
+
+
+```{r, concrete}
+df_1 <- filter(simple_merge_df, site == "Madison")
+df_2 <- filter(simple_merge_df, site == "Marshfield")
+df_3 <- filter(simple_merge_df, site == "Black River Falls")
+width = 60
+anal_ret <- bind_rows(
+  mutate(bind_rows(
+  gen_flags(df_1, width = width, fn_summary = TRUE),
+  gen_flags(df_2,  width = width, fn_summary = TRUE),
+  gen_flags(df_3,  width = width, fn_summary = TRUE)), method = "base"),
+
+  mutate(bind_rows(
+  gen_flags(gen_outlier_df(df_1), width = width, fn_summary = TRUE),
+  gen_flags(gen_outlier_df(df_2), width = width, fn_summary = TRUE),
+  gen_flags(gen_outlier_df(df_3), width = width, fn_summary = TRUE)), method = "outliers"),
+
+  mutate(bind_rows(
+  gen_flags(mutate(gen_median_smoothing(df_1), N12_per = sqrt(roll_N1 * roll_N2)), width = width, fn_summary = TRUE),
+  gen_flags(mutate(gen_median_smoothing(df_2), N12_per = sqrt(roll_N1 * roll_N2)), width = width, fn_summary = TRUE),
+  gen_flags(mutate(gen_median_smoothing(df_3), N12_per = sqrt(roll_N1 * roll_N2)), width = width, fn_summary = TRUE)), method = "median smoothing")
+)
+anal_ret%>%
+  arrange(flag, site, method)%>%
+  ggplot(aes( x = site, fill = method, y = averge_diff))+
+  geom_col(position = "dodge")
+```
+
+
+```{r tabel stress test}
+anal_ret_t <- bind_rows(
+  mutate(gen_flags(simple_merge_df,  width = width, fn_summary = TRUE), method = "base"),
+
+  mutate(gen_flags(gen_outlier_df(simple_merge_df), width = width, fn_summary = TRUE), method = "outliers"),
+
+  mutate(gen_flags(mutate(gen_median_smoothing(df_3), N12_per = sqrt(roll_N1 * roll_N2)), width = width, fn_summary = TRUE), method = "median smoothing")
+)
+
+anal_ret_t%>%
+  arrange(flag, site, method)%>%
+  ggplot(aes( x = site, fill = method, y = averge_diff))+
+  geom_col(position = "dodge")
+
+
+anal_ret_t%>%
+  group_by(method, flag)%>%
+  summarise(`average error` = mean(averge_diff, na.rm = TRUE), 
+            `average miss percent` = 100 * mean(per_miss, na.rm = TRUE))%>%
+  arrange(flag, method)
+```
+
+
+
+```{r sampling frequency}
+library(lubridate)
+simple_freq <- function(df, site_name){
+  case_freq <- df%>%
+    filter(site == site_name)%>%
+    filter(!is.na(roll_case_rate))%>%
+    group_by(week(date), year(date))%>%
+    summarise(avg_collect_per_week = n())%>%
+    ungroup()%>%
+    summarise(avg_collect_per_week = median(avg_collect_per_week))%>%
+    mutate(method = "case freq")
+  
+  waste_freq <- df%>%
+    filter(site == site_name)%>%
+    filter(!is.na(N1))%>%
+    group_by(week(date), year(date))%>%
+    summarise(avg_collect_per_week = n())%>%
+    ungroup()%>%
+    summarise(avg_collect_per_week = median(avg_collect_per_week))%>%
+    mutate(method = "waste freq")
+
+  ret <- rbind(case_freq, waste_freq)%>%
+    mutate(site = site_name)%>%
+    select(site, method, avg_collect_per_week)#%>%
+    #rename(`Samples per week` = avg_collect_per_week)
+  ret
+}
+bind_rows(
+  simple_freq(simple_merge_df, "Madison"),
+  simple_freq(simple_merge_df, "Marshfield"),
+  simple_freq(simple_merge_df, "Black River Falls")
+)%>%
+  pivot_wider(names_from = method, values_from = avg_collect_per_week)
+
+
+
+```
+
+
+```{r, trival relationship}
+simple_merge_df%>%
+  mutate(full_lod = sqrt(n1_lod * n2_lod))%>%
+  ggplot(aes(x = roll_case_rate, y = N12_per, fill = N12_per < full_lod * flow / pop))+
+  stat_binhex(bins = 40, alpha = .5)+
+  #geom_point(size = size, alpha = alpha, color = "black")+
+  scale_y_log10()+
+  scale_x_log10()+
+  #theme_minimal()+
+  #geom_smooth()+
+  labs(y = "Average of Weekly New Cases", x = "SARS-CoV-2 Particles per Liter",
+       title = "Original relationship across 63 sites")
+```
+
+
+```{r flags}
+
+
+```
+
+GOALS: data consistency
+```{r smoothing}
+loessSmoothMod(simple_merge_df, "N1", "smooth_N1")
+
+```
+
+
+```{r, case scale with pop}
+simple_merge_df%>%
+  ggplot(aes(x = pop))+
+  geom_point(aes(y = roll_case_rate))+
+  scale_x_log10()+#conf_case
+  scale_y_log10()
+```
+
+```{r work}
+roll_Case_data <- Case_data%>%
+  mutate(case_rate = conf_case + prob_case)%>%
+  group_by(site)%>%
+  arrange(date)%>%
+  mutate(case_rate = zoo::rollmean(case_rate, 7, fill = NA, align = "right"))%>%
+    ungroup()
+  
+  
+data.select.1 <- WasteWater_data%>%
+  mutate(avg_sars_cov2_conc = exp(.5*(log(N1+2) + log(N2+2))))%>%
+  left_join(roll_Case_data )%>%
+  rename(sample_collect_date = date,
+         wwtp_name = site)%>%
+  select(-pop)
+```
