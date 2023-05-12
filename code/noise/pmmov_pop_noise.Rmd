@@ -2,7 +2,9 @@
 title: "noisevspopulation"
 author: "Kyllan Wunder"
 date: "`r Sys.Date()`"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -29,19 +31,19 @@ data(WasteWater_data, package = "DSIWastewater")
 
 
 noisedata <- WasteWater_data %>% 
-  drop_na(wwtp_name) %>% 
-  drop_na(ppmov_conc)
+  drop_na(site) %>% 
+  drop_na(PMMoV)
 
 #sqrt(sum((mean-ppmov)^2)/n)
 noisedata <- noisedata %>% 
-  group_by(wwtp_name) %>% 
-  mutate(noise = MSE(log(as.numeric(ppmov_conc)), 
-                     mean(log(as.numeric(ppmov_conc)),na.rm = TRUE)))
+  group_by(site) %>% 
+  mutate(noise = MSE(log(as.numeric(PMMoV)), 
+                     mean(log(as.numeric(PMMoV)),na.rm = TRUE)))
 
 #largest noise value that skews graph
-noisedata <- noisedata %>% filter(wwtp_name != "Lake Geneva WWTP")
+noisedata <- noisedata %>% filter(site != "Lake Geneva WWTP")
 
-ggplot(noisedata, aes(log(as.numeric(noisedata$population_served)), noisedata$noise)) +
+ggplot(noisedata, aes(log(as.numeric(noisedata$pop)), noisedata$noise)) +
   geom_point() +
   ggtitle("log(pop) vs noise(calc using MSE) (removed outlier)")
 
@@ -51,16 +53,16 @@ ggplot(noisedata, aes(log(as.numeric(noisedata$population_served)), noisedata$no
 ```{r with rolling average}
 
 noisedata <- noisedata %>% 
-  group_by(wwtp_name) %>% 
-  mutate(rollaverage = rollmean(log(as.numeric(ppmov_conc)), k=7, fill = NA)) %>% 
+  group_by(site) %>% 
+  mutate(rollaverage = rollmean(log(as.numeric(PMMoV)), k=7, fill = NA)) %>% 
   drop_na(rollaverage)
 
 noisedata <- noisedata %>% 
-  group_by(wwtp_name) %>% 
-  mutate(rollnoise = MSE(log(as.numeric(ppmov_conc)), rollaverage))
+  group_by(site) %>% 
+  mutate(rollnoise = MSE(log(as.numeric(PMMoV)), rollaverage))
 
 ggplot(noisedata) +
-  aes(as.numeric(noisedata$population_served), noisedata$rollnoise)+
+  aes(as.numeric(noisedata$pop), noisedata$rollnoise)+
   geom_point()+
   scale_x_log10() +
   ggtitle("pop vs rolling average noise")
@@ -72,10 +74,12 @@ ggplot(noisedata) +
 ```{r}
 noisedatasample <- noisedata
 
-noisedatasample <- noisedatasample %>% group_by(wwtp_name, week = week(anydate(sample_collect_date))) %>% mutate(sampleFrequency = n()) %>% ungroup()
+noisedatasample <- noisedatasample %>% 
+  group_by(site, week = week(anydate(date))) %>% mutate(sampleFrequency = n()) %>% 
+  ungroup()
 
 
-noisedatasample <- noisedatasample %>% group_by(wwtp_name) %>% 
+noisedatasample <- noisedatasample %>% group_by(site) %>% 
   mutate(avgSampleFrequency = mean(sampleFrequency))
 
 ```
@@ -84,14 +88,14 @@ noisedatasample <- noisedatasample %>% group_by(wwtp_name) %>%
 ```{r}
 
 noisedatasample <- noisedatasample %>% 
-  group_by(wwtp_name) %>% 
-  mutate(noise = MSE(log(as.numeric(ppmov_conc)), 
-                     mean(log(as.numeric(ppmov_conc)),na.rm = TRUE)))
+  group_by(site) %>% 
+  mutate(noise = MSE(log(as.numeric(PMMoV)), 
+                     mean(log(as.numeric(PMMoV)),na.rm = TRUE)))
 
 #largest noise value that skews graph
-#noisedatasample <- noisedatasample %>% filter(wwtp_name != "Lake Geneva WWTP")
+#noisedatasample <- noisedatasample %>% filter(site != "Lake Geneva WWTP")
 
-ggplot(noisedatasample, aes(log(as.numeric(population_served)), noise)) + #/avgSampleFrequency
+ggplot(noisedatasample, aes(log(as.numeric(pop)), noise)) + #/avgSampleFrequency
   geom_point(aes(color=avgSampleFrequency)) +
   scale_colour_gradientn(colours=rainbow(5)) +
   ggtitle("log(pop) vs noise(calc MSE) colored with average sample frequence")
@@ -100,22 +104,23 @@ ggplot(noisedatasample, aes(log(as.numeric(population_served)), noise)) + #/avgS
 ```
 
 ```{r}
-ggplot(noisedatasample, aes((as.numeric(population_served)/avgSampleFrequency), noise)) +
+ggplot(noisedatasample, aes((as.numeric(pop)/avgSampleFrequency), noise)) +
   geom_point(aes(color=avgSampleFrequency)) +
   scale_colour_gradientn(colours=rainbow(5)) +
   ggtitle("log(pop)/avgSampleFrequence vs noise(calc MSE) colored with average sample frequence")
 ```
 
 
-```{r}
-noisedatasample %>% #filter(grepl("Madison", wwtp_name)) %>%
+```{r, eval = FALSE}
+noisedatasample %>% #filter(grepl("Madison", site)) %>%
 ggplot(aes(week, avgSampleFrequency)) +
   geom_point() +
-  facet_wrap(~wwtp_name) +
+  facet_wrap(~site) +
   ggtitle("average sample frequencey by week by site ")
 
 
-noisedatasample %>% group_by(wwtp_name) %>%
+noisedatasample %>% 
+  group_by(site) %>%
 ggplot(aes(log(as.numeric(population_served)), avgSampleFrequency)) +
   geom_point() +
   ggtitle("log(pop) vs average sample frequency")

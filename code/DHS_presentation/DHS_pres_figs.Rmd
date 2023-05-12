@@ -2,8 +2,10 @@
 title: "Final Wastewater"
 author: "Marlin"
 date: "2023-04-25"
-output: html_document
-editor_options: 
+output:
+  pdf_document: default
+  html_document: default
+editor_options:
   chunk_output_type: inline
 ---
 
@@ -326,14 +328,9 @@ simple_plot_flag_outliers <- function(df, site_name, legend = TRUE, size = .75){
   #plotly::ggplotly(waste_plot)
   waste_plot
 }
-simple_plot_flag_outliers(simple_merge_df, "Black River Falls", size = 3)
 ```
 
 
-```{r}
-
-
-```
 
 ```{r}
 #assuming log_10
@@ -420,10 +417,14 @@ plot_norm_strat <- function(plot_df0, var_plot, covar_plot, covar_plot2, var_nam
 
 ```{r case norm}
 library(ggplot2)
+gen_median_smoothing <- function(df, N1_sym, N2_sym){
+  df%>%
+    arrange(date)%>%
+    mutate(roll_N1 = zoo::rollapply({{N1_sym}}, FUN = median, fill = NA, width = 21, na.rm = TRUE, align = "right"),
+         roll_N2 = zoo::rollapply({{N2_sym}}, FUN = median, fill = NA, width = 21, na.rm = TRUE, align = "right"))%>%
+    gen_N12(roll_N1, roll_N2, "roll_N12")
+}
 
-
-med_N1_df <- simple_merge_df%>%
-  gen_median_smoothing(N1, N2)
 
 case_names <- c("Covid Gene Copies per Liter", "Flow Rate", "Population Covered")
 
@@ -520,14 +521,6 @@ simple_plot_flag_outliers(simple_merge_df, "Madison", legend = FALSE, size = 1.5
 ```
 
 ```{r smoothing}
-gen_median_smoothing <- function(df, N1_sym, N2_sym){
-  df%>%
-    arrange(date)%>%
-    mutate(roll_N1 = zoo::rollapply({{N1_sym}}, FUN = median, fill = NA, width = 21, na.rm = TRUE, align = "right"),
-         roll_N2 = zoo::rollapply({{N2_sym}}, FUN = median, fill = NA, width = 21, na.rm = TRUE, align = "right"))%>%
-    gen_N12(roll_N1, roll_N2, "roll_N12")
-}
-
 simple_median_plot_flag <- function(df, site_name, legend = TRUE){
   site_df <- df%>%
     filter(site == site_name)%>%
@@ -665,7 +658,7 @@ p3_data <- simple_merge_df%>%#roll_test
 
 p1 <- p1_data%>%
   filter(roll_N12 != 0 & roll_case != 0)%>%
-  filter(!is.na(N1) | !is.na(N2))#%>%
+  filter(!is.na(N1) | !is.na(N2))%>%
   ggplot(aes(x = roll_N12, y = roll_case ))+
   stat_binhex(bins = 40, alpha = .9)+
   scale_fill_gradientn(colours=c("black","red"),name = "Frequency",na.value=NA)+
@@ -676,7 +669,7 @@ p1 <- p1_data%>%
 
 p2 <- p2_data%>%
   filter(roll_N12 != 0 & roll_case_rate != 0)%>%
-  filter(!is.na(N1_per) | !is.na(N2_per))#%>%
+  filter(!is.na(N1_per) | !is.na(N2_per))%>%
   ggplot(aes(x = roll_N12, y = roll_case_rate ))+
   stat_binhex(bins = 40, alpha = .9)+
   #stat_summary_hex(fun = mean, aes(z = qsec), binwidth = c(10, 2))+
@@ -686,13 +679,6 @@ p2 <- p2_data%>%
     xlab("Median Covid Gene Copies per Person")+
     ylab("Weekly Average Case Rate")
 
-p1%>%
-  lm(log(roll_case) ~ log(roll_N12),data = .)%>%
-  summary()
-
-p2%>%
-  lm(log(roll_case_rate) ~ log(roll_N12),data = .)%>%
-  summary()
 
 simple_merge_df%>%#roll_test
   mutate(bel_N1_lod = N1 < n1_lod,
@@ -753,7 +739,7 @@ p3_data%>%
 ```
 
 
-```{r, concrete}
+```{r, concrete, eval = FALSE}
 df_1 <- filter(simple_merge_df, site == "Madison")
 df_2 <- filter(simple_merge_df, site == "Marshfield")
 df_3 <- filter(simple_merge_df, site == "Black River Falls")
@@ -781,7 +767,7 @@ anal_ret%>%
 ```
 
 
-```{r tabel stress test}
+```{r tabel stress test, eval = FALSE}
 anal_ret_t <- bind_rows(
   mutate(gen_flags(simple_merge_df,  width = width, fn_summary = TRUE), method = "base"),
 
@@ -859,16 +845,7 @@ simple_merge_df%>%
 ```
 
 
-```{r flags}
-
-
-```
-
 GOALS: data consistency
-```{r smoothing}
-loessSmoothMod(simple_merge_df, "N1", "smooth_N1")
-
-```
 
 
 ```{r, case scale with pop}

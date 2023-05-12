@@ -1,9 +1,12 @@
 ---
-title: "Covid-19 Wastewater Flagging Method Optimization Using a Minimum Flagging         Difference of 10%"
+title: "Covid-19 Wastewater Flagging Method Optimization Using a Minimum Flagging
+  \        Difference of 10%"
 author: "Marlin Lee, Kyllan Wunder, Abe Megahed"
 date: "University of Wisconsin Data Science Institute - October 2022"
-output: html_document
-editor_options: 
+output:
+  pdf_document: default
+  html_document: default
+editor_options:
   chunk_output_type: inline
 ---
 

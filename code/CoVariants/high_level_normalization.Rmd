@@ -2,7 +2,9 @@
 title: "High level normalization work"
 author: "Marlin"
 date: "2022-12-02"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 
@@ -14,47 +16,45 @@ library(ggplot2)
 ```{r}
 library(DSIWastewater)
 data(Case_data, package = "DSIWastewater")
-
+data(pop_data, package = "DSIWastewater")
 #restrict Case data to only Madison data
 Case_DF <- Case_data
 
 
 #restrict Case data to dates after 2021-02-01
 Case_DF <- Case_DF[Case_DF$date  >= as.Date("2020-9-10"),]
+Case_DF <- Case_DF%>%
+  left_join(pop_data)%>%
+  rename(population_served = pop)
 
 #get the case flags
 Case_DF <- buildCaseAnalysisDF(Case_DF)
 
-Case_DF <- Case_DF[,c(1:2, 5, 7)]
+Case_DF <- Case_DF#[,c(1:2, 5, 7)]
 
 data(WasteWater_data, package = "DSIWastewater")
-data(pop_data, package = "DSIWastewater")
 
 #restrict Waste data to only Madison data
 baseWaste_DF <- WasteWater_data
 
 Temp <- baseWaste_DF%>%
-  
   mutate(n1_sars_cov2_lod = gsub(" ", "", tolower(n1_sars_cov2_lod)) == 
         "yes",
         n2_sars_cov2_lod = gsub(" ", "", tolower(n2_sars_cov2_lod)) == 
         "yes",
         n1_sars_cov2_conc = ifelse(n1_sars_cov2_lod, as.numeric(n1_lod)/2, 
-        n1_sars_cov2_conc),
+        N1),
         n2_sars_cov2_conc = ifelse(n2_sars_cov2_lod, 
-        as.numeric(n2_lod)/2, n2_sars_cov2_conc))%>% 
-  left_join(pop_data)%>%
+        as.numeric(n2_lod)/2, N2))%>% 
   rename()%>%
-  select(wwtp_name, sample_collect_date, 
-        population_served, n1_sars_cov2_conc, n2_sars_cov2_conc, 
-        average_flow_rate, ppmov_conc) %>%
-  rename(site = wwtp_name, date = sample_collect_date)%>%
-  mutate(date = as.Date(date, format = "%m/%d/%Y"))%>%
+  select(site, date, 
+        pop, n1_sars_cov2_conc, n2_sars_cov2_conc, 
+        flow, PMMoV) %>%
   mutate(site = ifelse(site == "Madison MSD WWTF" , "Madison", site))
 
 FullDF <- full_join(Case_DF, Temp, by = c("date","site"))%>%
   group_by(site)%>%
-  mutate(pop = mean(population_served, na.rm = TRUE),
+  mutate(pop = mean(pop, na.rm = TRUE),
          FirstConfirmed.Per100K = pastwk.avg.casesperday.Per100K)%>%
   ungroup()
 
@@ -97,7 +97,7 @@ FullDF%>%
   quick_plot("n1_sars_cov2_conc_pop")
 
 FullDF%>%
-  mutate(n1_sars_cov2_conc_ppmov = n1_sars_cov2_conc / ppmov_conc)%>%
+  mutate(n1_sars_cov2_conc_ppmov = n1_sars_cov2_conc / PMMoV)%>%
   quick_plot("n1_sars_cov2_conc_ppmov")
 
 ```
@@ -108,28 +108,29 @@ FullDF%>%
 lm_DF1 <- FullDF%>%
   group_by(site)%>%
   filter(!is.na(log(FirstConfirmed.Per100K)), !is.na(log(n1_sars_cov2_conc)))%>%
-  summarise(yinter = coef(lm(log(FirstConfirmed.Per100K) ~ log(n1_sars_cov2_conc)))[1],
-            slope = coef(lm(log(FirstConfirmed.Per100K) ~ log(n1_sars_cov2_conc)))[2])
+  summarise(yinter = coef(lm(log(FirstConfirmed.Per100K + 1) ~ log(n1_sars_cov2_conc + 1)))[1],
+            slope = coef(lm(log(FirstConfirmed.Per100K + 1) ~ log(n1_sars_cov2_conc + 1)))[2])
+
+
 
 lm_DF2 <- FullDF%>%
   group_by(site)%>%
-  filter(!is.na(log(FirstConfirmed.Per100K)), 
-         !is.na(log(n1_sars_cov2_conc)),
-         !is.na(log(ppmov_conc)))%>%
-  summarise(yinter = coef(lm(log(FirstConfirmed.Per100K) ~
-                               log(n1_sars_cov2_conc/abs(ppmov_conc))))[1],
-            slope = coef(lm(log(FirstConfirmed.Per100K) ~ 
-                              log(n1_sars_cov2_conc/abs(ppmov_conc))))[2])
+  filter(!is.na(log(1 + FirstConfirmed.Per100K)), 
+         !is.na(log(1 + n1_sars_cov2_conc/PMMoV)),
+         !is.na(log(PMMoV)),
+         PMMoV != 0)%>%
+  summarise(yinter = coef(lm(log(1 + FirstConfirmed.Per100K) ~ log(1 + n1_sars_cov2_conc/abs(PMMoV))))[1],
+            slope = coef(lm(log(1 + FirstConfirmed.Per100K) ~ log(1 + n1_sars_cov2_conc/abs(PMMoV))))[2])
 
 lm_DF3 <- FullDF%>%
   group_by(site)%>%
-  filter(!is.na(log(FirstConfirmed.Per100K)), 
-         !is.na(log(n1_sars_cov2_conc)),
-         !is.na(log(ppmov_conc)))%>%
-  summarise(yinter = coef(lm(log(FirstConfirmed.Per100K) ~
-                               log(n1_sars_cov2_conc/pop)))[1],
-            slope = coef(lm(log(FirstConfirmed.Per100K) ~ 
-                              log(n1_sars_cov2_conc/pop)))[2])
+  filter(!is.na(log(1 + FirstConfirmed.Per100K)), 
+         !is.na(log(1 + n1_sars_cov2_conc)),
+         !is.na(log(1 + pop)))%>%
+  summarise(yinter = coef(lm(log(1 + FirstConfirmed.Per100K) ~
+                               log(1 + n1_sars_cov2_conc / pop)))[1],
+            slope = coef(lm(log(1 + FirstConfirmed.Per100K) ~ 
+                              log(1 + n1_sars_cov2_conc / pop)))[2])
 
 lm_DF1%>%
   ggplot(aes(x = slope, y = yinter))+

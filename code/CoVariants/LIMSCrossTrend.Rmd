@@ -1,9 +1,12 @@
 ---
-title: "Covid-19 Wastewater Flagging Method Optimization Using a Minimum Flagging         Difference of 10%"
+title: "Covid-19 Wastewater Flagging Method Optimization Using a Minimum Flagging
+  \        Difference of 10%"
 author: "Marlin Lee, Kyllan Wunder, Abe Megahed"
 date: "University of Wisconsin Data Science Institute - October 2022"
-output: html_document
-editor_options: 
+output:
+  pdf_document: default
+  html_document: default
+editor_options:
   chunk_output_type: inline
 ---
 
@@ -23,7 +26,7 @@ two components. (1) the trend of the data. This is created using a loess smoothi
  (2) the detrended data. We do this on the log of the data because the noise appears to be log normal meaning a more clear trend. The main goal of this document is to show the main takeaways of those plots in an easier way to see. The main takeaways are, 1) the covariates don't relate to the covid signal any more than the population does. 2) The detrended data seems to be largely independent
 
 
-```{r cars}
+```{r start up}
 library(DSIWastewater)
 library(dplyr)
 library(ggplot2)
