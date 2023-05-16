@@ -46,9 +46,13 @@ SLH:
 
 The following documents contain findings and conclusions from the data analysis described above.
 
-1. [Wastewater Data Downsampling](./docs/conclusions/downsampling/wastewater-data-downsampling.pdf)
+1. [NWSS Data Analysis Presentation](./docs/conclusions/NWSS-Data-Analysis-Presentation_5-2-2023/5-2_DHS-presentation.pdf)
 
-2. [Wastewater Data Smoothing](./docs/conclusions/smoothing/wastewater-data-smoothing.pdf)
+2. [SETAC Poster]('./docs/conclusions/SETAC-Poster/SETAC-Poster.pdf')
+
+3. [Wastewater Data Downsampling](./docs/conclusions/downsampling/wastewater-data-downsampling.pdf)
+
+4. [Wastewater Data Smoothing](./docs/conclusions/smoothing/wastewater-data-smoothing.pdf)
 
 ## Requirements
 
