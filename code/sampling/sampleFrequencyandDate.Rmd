@@ -66,6 +66,32 @@ ggplot(aes(week, sampleFrequency,color=sampleFrequency)) +
 
 ```
 
+```{r}
+
+sfdata %>% group_by(week) %>% mutate(weeklyavg = mean(sampleFrequency)) %>%
+ggplot(aes(week, weeklyavg,color=weeklyavg)) +
+  geom_point() +
+  ggtitle("Sample Frequency by Week") +
+  xlab("Weeks") + 
+  ylab("Sample Frequency") +
+  labs(fill=" ")
+
+
+
+sfdata %>% group_by(date) %>% tally() %>%
+ggplot(aes(date, n,color=weekdays(anydate(date)))) +
+  geom_point() +
+  ggtitle("Sample Frequency by Day") +
+  xlab("Days") + 
+  ylab("Sample Frequency") +
+  labs(fill=" ")
+
+testtype <- sfdata %>% ggplot(aes(date, N1,color=pcr_type)) +
+  geom_point() +
+  ggtitle("Test Type") +
+  labs(fill=" ")
+ggplotly(testtype)
+```
 
 ```{r}
 siteStats <- sfdata %>% select(1,14,32,33,34) %>% group_by(site) %>% mutate(maxsf = max(sampleFrequency),startdate = min(anydate(sample_collect_date)), enddate = max(anydate(sample_collect_date)),minweek = min(week),maxweek = max(week))
