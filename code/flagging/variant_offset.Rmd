@@ -834,6 +834,7 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput,list,lod=FALSE,t
 
 heatmapfunc("kendall_offset",0,waste,cases,"pop",TRUE,"Both tests",TRUE)
 
+
 heatmapfunc("kendall_offset",0,waste %>% filter(pcr_type == "qPCR"),cases,"pop",TRUE,"Both tests",TRUE)
 heatmapfunc("kendall_offset",0,waste %>% filter(pcr_type == "dPCR"),cases,"pop",TRUE,"Both tests",TRUE)
 heatmapfunc("kendall_offset",0,waste %>% filter(pcr_type == "droplet digital PCR"),cases,"pop",TRUE,"Both tests",TRUE)
