@@ -73,7 +73,7 @@ View our package readme to learn more about the installation process [DSIWastewa
 <!-- LICENSE -->
 ## License
 
-Distributed under the Sustainable Use License. See `LICENSE.md` for more information.
+Distributed under the Sustainable Use License. See the [license](./LICENSE.md) for more information.
 
 <!-- Contact -->
 ## Team
