@@ -39,7 +39,7 @@ The following documents contain findings and conclusions.
 
 
 ## License
-Distributed under the Sustainable Use License. See `LICENSE.md` for more information.
+Distributed under the Sustainable Use License. See [LICENSE.md](./LICENSE.md) for more information.
 
 
 ## Team
