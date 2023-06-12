@@ -7,9 +7,9 @@
 # Wisconsin COVID-19 Wastewater Analysis
 
 ![GitHub last commit](https://img.shields.io/github/last-commit/AFIDSI/Covid19-Wastewater-Analysis)
-![GitHub pull requests](https://img.shields.io/github/issues-pr/AFIDSI/Covid19-Wastewater-Analysis)
+[![GitHub pull requests](https://img.shields.io/github/issues-pr/AFIDSI/Covid19-Wastewater-Analysis)](https://github.com/AFIDSI/Covid19-Wastewater-Analysis/pulls)
 [![License](https://img.shields.io/badge/license-Sustainable_Use_License-green)](./LICENSE.md)
-![Contributors](https://img.shields.io/github/contributors/AFIDSI/Covid19-Wastewater-Analysis) 
+[![Contributors](https://img.shields.io/github/contributors/AFIDSI/Covid19-Wastewater-Analysis)](https://github.com/AFIDSI/Covid19-Wastewater-Analysis/graphs/contributors)
 ![Codesize](https://img.shields.io/github/languages/code-size/AFIDSI/Covid19-Wastewater-Analysis) 
 ![Languages](https://img.shields.io/github/languages/count/AFIDSI/Covid19-Wastewater-Analysis)
 
