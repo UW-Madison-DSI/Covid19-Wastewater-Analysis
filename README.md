@@ -14,22 +14,13 @@
 ![Languages](https://img.shields.io/github/languages/count/AFIDSI/Covid19-Wastewater-Analysis)
 
 <p align="center"> A collaboration between </p>
-<h3 align="center"> University of Wisconsin Madison American Family Insurance Data Science Institute (DSI) </h3>
-<h3 align="center"> Wisconsin Department of Health Services (DHS) </h3>
-<h3 align="center"> Wisconsin State Lab of Hygiene (SLH) </h3>
+<h3 align="center"> University of Wisconsin Madison American Family Insurance Data Science Institute <a href="https://datascience.wisc.edu">(DSI)</a> </h3>
+<h3 align="center"> Wisconsin Department of Health Services <a href="https://www.dhs.wisconsin.gov">(DHS)</a> </h3>
+<h3 align="center"> Wisconsin State Laboratory of Hygiene <a href="https://www.slh.wisc.edu">(SLH)</a> </h3>
 
-Welcome, we conduct advanced analysis of Wisconsin's COVID-19 wastewater data. In collaboration with the SLH and the DHS, we leverage our expertise and our proprietary R package, ([DSIWastewater]([url](https://github.com/AFIDSI/DSIWastewater))), to uncover valuable insights. Our analyses provide crucial information for policymakers, public health officials, and researchers working to understand COVID-19 transmission and implement effective interventions. Explore our repository to learn more about our research and methodologies. Together, we contribute to a healthier and safer future for Wisconsin and beyond.
+Welcome, we conduct advanced analysis of Wisconsin's COVID-19 wastewater data. In collaboration with the SLH and the DHS, we leverage our expertise and our proprietary R package, [DSIWastewater](https://github.com/AFIDSI/DSIWastewater), to uncover valuable insights. Our analyses provide crucial information for policymakers, public health officials, and researchers working to understand COVID-19 transmission and implement effective interventions. Explore our repository to learn more about our research and methodologies. Together, we contribute to a healthier and safer future for Wisconsin and beyond.
 
-DSI:
-- <https://datascience.wisc.edu>
 
-DHS:
-- <https://www.dhs.wisconsin.gov>
-- <https://www.dhs.wisconsin.gov/covid-19/wastewater.htm>
-
-SLH:
-- <https://www.slh.wisc.edu/>
-- <http://www.slh.wisc.edu/environmental/covid-19-wastewater/>
 
 
 ## Conclusions
@@ -45,6 +36,10 @@ The following documents contain findings and conclusions.
 
 5. [Wastewater Data Smoothing](./conclusions/smoothing/wastewater-data-smoothing.pdf)
 
+
+View our collaborators findings here:
+- <https://www.dhs.wisconsin.gov/covid-19/wastewater.htm>
+- <http://www.slh.wisc.edu/environmental/covid-19-wastewater/>
 
 ## License
 Distributed under the Sustainable Use License. See [LICENSE.md](./LICENSE.md) for more information.
