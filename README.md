@@ -4,7 +4,7 @@
   </div>
 </p>
 
-# Wisconsin COVID-19 Wastewater Analysis
+<h1 align="center">  Wisconsin COVID-19 Wastewater Analysis </h1>
 
 ![GitHub last commit](https://img.shields.io/github/last-commit/AFIDSI/Covid19-Wastewater-Analysis)
 [![GitHub pull requests](https://img.shields.io/github/issues-pr/AFIDSI/Covid19-Wastewater-Analysis)](https://github.com/AFIDSI/Covid19-Wastewater-Analysis/pulls)
@@ -18,7 +18,7 @@
 <h3 align="center"> Wisconsin Department of Health Services (DHS) </h3>
 <h3 align="center"> Wisconsin State Lab of Hygiene (SLH) </h3>
 
-This is a collection of analyses of Wisconsins covid-19 wastewater data. The data is collected at most of Wisconsins wastewater treatment facilities by the direction of the SLH. The DHS which works closely with the SLH also provies us with data about cases in wisconsin. Here at the DSI we use our own R package that we developed ([DSIWastewater]([url](https://github.com/AFIDSI/DSIWastewater))) along with other methods to analize all of the data we are given and the results can be seen in this repo. Learn more about us and our collaborators:
+Welcome, we conduct advanced analysis of Wisconsin's COVID-19 wastewater data. In collaboration with the SLH and the DHS, we leverage our expertise and our proprietary R package, ([DSIWastewater]([url](https://github.com/AFIDSI/DSIWastewater))), to uncover valuable insights. Our analyses provide crucial information for policymakers, public health officials, and researchers working to understand COVID-19 transmission and implement effective interventions. Explore our repository to learn more about our research and methodologies. Together, we contribute to a healthier and safer future for Wisconsin and beyond.
 
 DSI:
 - <https://datascience.wisc.edu>
@@ -59,6 +59,6 @@ Distributed under the Sustainable Use License. See [LICENSE.md](./LICENSE.md) fo
 
 
 ## Repos
-- Package Link: [https://github.com/AFIDSI/DSIWastewater](https://github.com/AFIDSI/DSIWastewater)
+- R Package: [https://github.com/AFIDSI/DSIWastewater](https://github.com/AFIDSI/DSIWastewater)
 
-- Analysis Link: [https://github.com/AFIDSI/Covid19-Wastewater-Analysis](https://github.com/AFIDSI/Covid19-Wastewater-Analysis)
+- Analysis: [https://github.com/AFIDSI/Covid19-Wastewater-Analysis](https://github.com/AFIDSI/Covid19-Wastewater-Analysis)
