@@ -51,7 +51,6 @@ Distributed under the Sustainable Use License. See [LICENSE.md](./LICENSE.md) fo
 
 
 ## Team
-Email:
 - Marlin Lee - (~~mailto:mrlee6@wisc.edu~~)
 
 - Abe Megahed - (mailto:amegahed@wisc.edu)
