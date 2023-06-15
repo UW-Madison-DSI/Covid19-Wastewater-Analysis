@@ -27,9 +27,9 @@ Welcome, we conduct advanced analysis of Wisconsin's COVID-19 wastewater data. I
 The following documents contain findings and conclusions.
 
 
-1. [WPHA Poster](./conclusions/WPHA-Poster/WPHA-Paper.PDF)
+1. [WPHA Poster](./conclusions/WPHA-Poster/WPHA-Poster.pdf)
 
-<image src="./conclusions/WPHA-Poster/WPHA-Paper.PDF" align="center" >
+<image src="./conclusions/WPHA-Poster/WPHA-Poster.pdf" align="center" >
 
 2. [SETAC Poster](./conclusions/SETAC-Poster/SETAC-Poster.pdf)
 
