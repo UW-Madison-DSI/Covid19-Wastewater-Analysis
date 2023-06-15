@@ -18,7 +18,7 @@
 <h3 align="center"> Wisconsin Department of Health Services <a href="https://www.dhs.wisconsin.gov">(DHS)</a> </h3>
 <h3 align="center"> Wisconsin State Laboratory of Hygiene <a href="https://www.slh.wisc.edu">(SLH)</a> </h3>
 
-Welcome, we conduct advanced analysis of Wisconsin's COVID-19 wastewater data. In collaboration with the SLH and the DHS, we leverage our expertise and our proprietary R package, [DSIWastewater](https://github.com/AFIDSI/DSIWastewater), to uncover valuable insights. Our analyses provide crucial information for policymakers, public health officials, and researchers working to understand COVID-19 transmission and implement effective interventions. Explore our repository to learn more about our research and methodologies. Together, we contribute to a healthier and safer future for Wisconsin and beyond.
+Welcome; we conduct advanced analysis of Wisconsin's COVID-19 wastewater data. Collaborating with the SLH and the DHS, we leverage our expertise and our proprietary R package, [DSIWastewater](https://github.com/AFIDSI/DSIWastewater), to uncover valuable insights. Our analyses provide crucial information for policymakers, public health officials, and researchers working to understand COVID-19 transmission and implement effective interventions. Explore our repository to learn more about our research and methodologies. Together, we contribute to a healthier and safer future for Wisconsin and beyond.
 
 
 
@@ -29,11 +29,11 @@ The following documents contain findings and conclusions.
 
 1. [WPHA Poster](./conclusions/WPHA-Poster/WPHA-Poster.pdf)
 
-<image src="./conclusions/WPHA-Poster/WPHA-Poster.pdf" align="center" >
+<image src="./conclusions/WPHA-Poster/WPHA-Poster.jpg" align="center" >
 
 2. [SETAC Poster](./conclusions/SETAC-Poster/SETAC-Poster.pdf)
 
-<image src="./conclusions/SETAC-Poster/SETAC-Poster.pdf" align="center">
+<image src="./conclusions/SETAC-Poster/SETAC-Poster.png" align="center" >
 
 3. [NWSS Data Analysis Presentation](./conclusions/NWSS-Data-Analysis-Presentation_5-2-2023/5-2_DHS-presentation.pdf)
 
@@ -42,13 +42,12 @@ The following documents contain findings and conclusions.
 5. [Wastewater Data Smoothing](./conclusions/smoothing/wastewater-data-smoothing.pdf)
 
 
-View our collaborators findings here:
+View our collaborator's findings here:
 - <https://www.dhs.wisconsin.gov/covid-19/wastewater.htm>
 - <http://www.slh.wisc.edu/environmental/covid-19-wastewater/>
 
 ## License
 Distributed under the Sustainable Use License. See [LICENSE.md](./LICENSE.md) for more information.
-
 
 
 ## Team
@@ -64,5 +63,3 @@ Distributed under the Sustainable Use License. See [LICENSE.md](./LICENSE.md) fo
 - R Package: [https://github.com/AFIDSI/DSIWastewater](https://github.com/AFIDSI/DSIWastewater)
 
 - Analysis: [https://github.com/AFIDSI/Covid19-Wastewater-Analysis](https://github.com/AFIDSI/Covid19-Wastewater-Analysis)
-
-Distributed under the Sustainable Use License. See the [license](./LICENSE.md) for more information.
