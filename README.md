@@ -26,11 +26,15 @@ Welcome, we conduct advanced analysis of Wisconsin's COVID-19 wastewater data. I
 ## Conclusions
 The following documents contain findings and conclusions.
 
-1. [NWSS Data Analysis Presentation](./conclusions/NWSS-Data-Analysis-Presentation_5-2-2023/5-2_DHS-presentation.pdf)
+1. [WPHA Poster](./conclusions/WPHA-Poster/WPHA-Paper.PDF)
+
+<image src="./conclusions/WPHA-Poster/WPHA-Paper.PDF" align="center" >
 
 2. [SETAC Poster](./conclusions/SETAC-Poster/SETAC-Poster.pdf)
 
-3. [WPHA Poster](./conclusions/WPHA-Poster/WPHA-Paper.PDF)
+<image src="./conclusions/SETAC-Poster/SETAC-Poster.pdf" align="center">
+
+3. [NWSS Data Analysis Presentation](./conclusions/NWSS-Data-Analysis-Presentation_5-2-2023/5-2_DHS-presentation.pdf)
 
 4. [Wastewater Data Downsampling](./conclusions/downsampling/wastewater-data-downsampling.pdf)
 
