@@ -11,10 +11,9 @@
 [![License](https://img.shields.io/badge/license-Sustainable_Use_License-green)](./LICENSE.md)
 [![Contributors](https://img.shields.io/github/contributors/AFIDSI/Covid19-Wastewater-Analysis)](https://github.com/AFIDSI/Covid19-Wastewater-Analysis/graphs/contributors)
 ![Codesize](https://img.shields.io/github/languages/code-size/AFIDSI/Covid19-Wastewater-Analysis) 
-![Languages](https://img.shields.io/github/languages/count/AFIDSI/Covid19-Wastewater-Analysis)
 
-<p align="center"> A collaboration between </p>
 <h3 align="center"> University of Wisconsin Madison American Family Insurance Data Science Institute <a href="https://datascience.wisc.edu">(DSI)</a> </h3>
+<p align="center"> In collaboration with </p>
 <h3 align="center"> Wisconsin Department of Health Services <a href="https://www.dhs.wisconsin.gov">(DHS)</a> </h3>
 <h3 align="center"> Wisconsin State Laboratory of Hygiene <a href="https://www.slh.wisc.edu">(SLH)</a> </h3>
 
