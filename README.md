@@ -26,6 +26,7 @@ Welcome, we conduct advanced analysis of Wisconsin's COVID-19 wastewater data. I
 ## Conclusions
 The following documents contain findings and conclusions.
 
+
 1. [WPHA Poster](./conclusions/WPHA-Poster/WPHA-Paper.PDF)
 
 <image src="./conclusions/WPHA-Poster/WPHA-Paper.PDF" align="center" >
@@ -49,8 +50,10 @@ View our collaborators findings here:
 Distributed under the Sustainable Use License. See [LICENSE.md](./LICENSE.md) for more information.
 
 
+
 ## Team
 - Marlin Lee - (~~mailto:mrlee6@wisc.edu~~)
+
 
 - Abe Megahed - (mailto:amegahed@wisc.edu)
 
@@ -61,3 +64,5 @@ Distributed under the Sustainable Use License. See [LICENSE.md](./LICENSE.md) fo
 - R Package: [https://github.com/AFIDSI/DSIWastewater](https://github.com/AFIDSI/DSIWastewater)
 
 - Analysis: [https://github.com/AFIDSI/Covid19-Wastewater-Analysis](https://github.com/AFIDSI/Covid19-Wastewater-Analysis)
+
+Distributed under the Sustainable Use License. See the [license](./LICENSE.md) for more information.

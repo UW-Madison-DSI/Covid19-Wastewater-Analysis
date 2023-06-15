@@ -1,0 +1,121 @@
+---
+title: "hfg_noise"
+author: "Kyllan Wunder"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(anytime)
+#library(noise)
+library(tidyr)
+library(zoo)
+```
+
+
+```{r}
+Pop_DF <- data.frame(
+  site = c("Hudson","Kenosha","Platteville","Madison","Merrill","Plymouth","River Falls","Sun Prairie","Wausau","Oshkosh","Wausau"),
+  pop = c(19680,122000,14000,380000,10000,9000,16000,34926,42000,67000,42000)
+)
+
+
+MSE <- function(baseVal, meanVal){
+  ret <- mean((baseVal - meanVal)^2)
+  return(ret)
+}
+
+```
+
+
+
+```{r}
+data("HFGWaste_data", package = "DSIWastewater")
+hfgwaste <- HFGWaste_data
+
+hfgwasteavg <- aggregate(hfgwaste[,5:12], list(hfgwaste$site,hfgwaste$date,hfgwaste$Filter), mean)
+
+
+hfgnoise <- hfgwasteavg %>% rename(site=Group.1) %>%
+  group_by(site) %>% 
+  mutate(rollaveragePMMOV = rollmean(log(as.numeric(PMMOV)), k=7, fill = NA),
+         rollaverageN1 = rollmean(log(as.numeric(N1)), k=7, fill = NA)) %>% 
+  drop_na(rollaveragePMMOV,rollaverageN1)
+
+hfgnoise <- hfgnoise %>% 
+  group_by(site) %>% 
+  mutate(rollnoisePMMOV = MSE(log(as.numeric(PMMOV)), rollaveragePMMOV),
+         rollnoiseN1 = MSE(log(as.numeric(N1)), rollaverageN1))
+hfgnoise <- inner_join(x=hfgnoise, y=Pop_DF, by = "site")
+
+
+HFGWaste_data%>%
+  pull(site)%>%
+  unique()%>%
+  length()
+
+
+max(HFGWaste_data$date) - min(HFGWaste_data$date)
+```
+
+
+```{r PMMOV}
+#hfgnoise <- hfgnoise %>% filter(site != "Platteville")
+#hfgnoise <- hfgnoise %>% filter(site != "Madison")
+
+ggplot(hfgnoise) +
+  aes(pop,rollnoisePMMOV,color = site)+
+  geom_point() +
+  ggtitle("pop vs rolling average noise of PMMOV")
+
+ggplot(hfgnoise) +
+  aes(pop,rollnoisePMMOV,color = site)+
+  geom_point() +
+  scale_x_log10() +
+  scale_y_log10() +
+  ggtitle("pop vs rolling average noise of PMMOV axes logged")
+```
+```{r N1}
+
+#hfgnoise <- hfgnoise %>% filter(site != "Platteville")
+#hfgnoise <- hfgnoise %>% filter(site != "Madison")
+
+ggplot(hfgnoise) +
+  aes(pop,rollnoiseN1,color = site)+
+  geom_point() +
+  ggtitle("pop vs rolling average noise of N1")
+
+ggplot(hfgnoise) +
+  aes(pop,rollnoiseN1,color = site)+
+  geom_point() +
+  scale_x_log10() +
+  scale_y_log10() +
+  ggtitle("pop vs rolling average noise of N1 axes logged")
+```
+
+```{r}
+hfgwasteavg <- hfgwasteavg %>% rename(site=Group.1)
+hfgwasteavg <- inner_join(x=hfgwasteavg, y=Pop_DF, by = "site")
+
+```
+
+```{r}
+ggplot(hfgwasteavg) +
+  aes(log(pop),N1,color = site)+
+  geom_point() +
+  ggtitle("log(pop) vs N1 averaged over filters")
+
+ggplot(hfgwasteavg) +
+  aes(log(pop),log(PMMOV),color = site)+ #log PMMOV to see better results
+  geom_point() +
+  ggtitle("log(pop) vs log(PMMOV) averaged over filters")
+
+#Good result as pmmov concetration should be constant over differernt size populations
+```
+

@@ -68,5 +68,22 @@ fullhfg <- fullhfg %>% filter(site == "Madison")
 ggplot(fullhfg, aes(date,log(N1)/ReportedCases)) +
   geom_point() +
   scale_y_log10()
+
+
+table(reportedcases$ReportedCases)
+
+
+
+
 ```
+
+```{r}
+reportedcases$ReportedCases[reportedcases$ReportedCases == -999] <- floor(runif(1, min=1, max=5))
+
+ggplot(fullhfg, aes(date,log(N1)/ReportedCases)) +
+  geom_point() +
+  scale_y_log10()
+table(reportedcases$ReportedCases)
+```
+
 

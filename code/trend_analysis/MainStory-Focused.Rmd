@@ -3,12 +3,12 @@ title: "Heuristic exploration of the relationship between FirstConfirmed.Per100K
 author: "Marlin Lee"
 date: "1/28/2022"
 output:
-  pdf_document: null
+  html_document:
+    df_print: paged
   bookdown::html_document2:
     fig_width: 8
     fig_height: 4
-  html_document:
-    df_print: paged
+  pdf_document: null
 always_allow_html: yes
 editor_options:
   chunk_output_type: inline
@@ -82,21 +82,20 @@ library(DSIWastewater)
 data(Case_data, package = "DSIWastewater")
 
 #restrict Case data to only Madison data
-Case_DF <- Case_data[Case_data$Site == "Madison",]
+Case_DF <- Case_data[Case_data$site == "Madison",]
 
 
 #restrict Case data to dates after 2021-02-01
 Case_DF <- Case_DF[Case_DF$date  >= as.Date("2020-9-10"),]
 
 #get the case flags
-Case_DF <- buildCaseAnalysisDF(Case_DF)
-
-Case_DF <- Case_DF[,c(1:2, 5, 7)]
+Case_DF <- buildCaseAnalysisDF(Case_DF)%>%
+  select(site, date, conf_case, FirstConfirmed.Per100K, pastwk.avg.casesperday.Per100K)
 
 data(WasteWater_data, package = "DSIWastewater")
 
 #restrict Waste data to only Madison data
-baseWaste_DF <- WasteWater_data[WasteWater_data$wwtp_name == "Madison MSD WWTF",]
+baseWaste_DF <- WasteWater_data[WasteWater_data$site == "Madison",]
 
 #get DF into format for buildRegressionEstimateTable
 baseWaste_DF <-  buildWasteAnalysisDF(baseWaste_DF)
@@ -110,7 +109,14 @@ LIMSDF$sars_cov2_adj_load <- 10**LIMSDF$sars_cov2_adj_load_log10
 #joining the two data frames together
 FullDF <- full_join(Case_DF, LIMSDF, by = c("date","site"))
 
-FullDF <- FullDF[,c(1:4,6)]
+FullDF <- FullDF[,c(1:5,7)]
+
+library(plotly)
+a <- Case_DF%>%
+  ggplot(aes(x = date, y = conf_case))+
+  geom_point()
+
+ggplotly(a)
 ```
 
 # Data: The first look
@@ -309,9 +315,8 @@ CCFChar <- function(ccfObject){
 ModelTesting <- function(DF,Var1,Var2){
   #removing rows from before both series started
   UsedDF <- DF%>%
-    filter(!is.na(Var1),
-           !is.na(Var2))
-  
+    filter(is.finite(log(!!sym(Var1))),
+           is.finite(log(!!sym(Var2))))
   
   Vec1 <- log(unname(unlist(UsedDF[Var1])))
   
@@ -373,5 +378,5 @@ if(is.null(output.format)){
   OutputRightPosition%>%
     formattable()
 }
-```
 
+```

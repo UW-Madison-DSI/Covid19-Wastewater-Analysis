@@ -1,0 +1,10 @@
+name: "WBE normalization - quick data exploration"
+navbar:
+  title: "WBE normalization - quick data exploration"
+  left:
+    - text: "qPCR"
+      href: qPCR.html
+    - text: "dPCR"
+      href: dPCR.html
+    - text: "About"
+      href: about.html

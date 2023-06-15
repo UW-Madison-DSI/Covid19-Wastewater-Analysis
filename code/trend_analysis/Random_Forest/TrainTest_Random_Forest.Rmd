@@ -1,0 +1,288 @@
+---
+title: "TrainTest Random Forest"
+output: html_document
+date: "2023-03-28"
+---
+
+```{r setup, include=FALSE}
+run_base <- FALSE
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message=FALSE)
+```
+
+```{r include = FALSE}
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(zoo)
+set.seed(123)
+```
+
+```{r data prep}
+#load data from package
+library(DSIWastewater)
+data(pop_data, package = "DSIWastewater")
+data(WasteWater_data , package = "DSIWastewater")
+data(Case_data , package = "DSIWastewater")
+data(Covariants_data, package = "DSIWastewater")
+
+
+#convert covariant info to most prevalent covariant to make more efficient
+t_df <- Covariants_data%>%#remove info about total number of genes
+  select(-total_sequences)
+
+t_df$main_variant<-colnames(t_df)[apply(t_df, 1, which.max)]#add column saying max value
+
+
+
+covar_floor_df <- t_df%>%#add merge variable to merge weekly data to daily+ data
+  mutate(dumby_merge_var = floor(as.numeric(lubridate::ymd(week)) / 7),
+         main_variant = as.factor(main_variant))%>%
+  select(dumby_merge_var, main_variant)
+
+
+#get rolling average of case data to remove 0 - 5 spikes and remove dow effect
+case_merge_df <- Case_data%>%
+  group_by(site)%>%
+  arrange(site, date)%>%
+  mutate(roll_prob_case = rollmean(prob_case, 7 ,na.pad = TRUE))%>%#,
+        #past_day_case = dplyr::lag(roll_prob_case, 21),
+        #post_day_case = dplyr::lead(roll_prob_case))%>%
+  ungroup()
+
+#merge three datasets into one dataset to do analysis on
+data.select.1 <- WasteWater_data%>%
+  left_join(pop_data, by = c("site", "pop"))%>%
+  inner_join(case_merge_df, by = c("site", "date"))%>%
+  mutate(site = as.factor(site),
+         regions = as.factor(regions),
+         #N1 = ifelse(N1 >= n1_sars_cov2_lod, N1, n1_sars_cov2_lod/2),
+         #N2 = ifelse(N2 >= n2_sars_cov2_lod, N2, n2_sars_cov2_lod/2),
+         #roll_prob_case = roll_prob_case / pop,
+         #cov_flow_pop_norm = sqrt(N1 * N2) * flow / pop,
+         pop = log(pop))%>%
+  mutate(dumby_merge_var = floor((floor(as.numeric(date) / 7) - 1)/2)*2 + 1 )%>%
+  left_join(covar_floor_df, by = c("dumby_merge_var"))%>%
+  select(-dumby_merge_var)
+```
+
+
+```{r mod fit}
+library(randomForest)
+library(randomForestExplainer)
+#do data parsing
+#to get the dataframe ready to fit
+to_numeric = c("date", "bod", "created_on", "last_modified_on", "test_result_date", "sample_collect_time")
+to_factor = c("county", "pcr_type", "n1_sars_cov2_lod", "n2_sars_cov2_lod",
+              "lab_submitter")
+
+
+#columns with log normal tendencys
+to_log = c("flow", "ph", "conductivity", "n1_lod", "n2_lod", "n1_loq", "n2_loq",
+           "capacity_mgd", "PMMoV")
+
+#columns not worth doing analysis on
+to_drop <- c("created_on", "last_modified_on", "test_result_date", "site", "county")
+
+#columns with to much issues to work on RN
+weird_drop <- c("n1_sars_cov2_error", "n1_num_ntc_amplify", "n1_num_no_target_control", "n2_sars_cov2_error", "n2_num_ntc_amplify", "n2_num_no_target_control", "zipcode")
+
+#columns that lead to leaking the answers
+cheating_drop <- c("N1", "N2", "tests", "prob_case", "conf_case", "roll_prob_case",
+                   "avg_sars_cov2_conc", "cov_flow_pop_norm", "sample_id")
+
+#modify columns so they all have the right type
+resid_df <- data.select.1%>%
+  mutate(across(to_numeric, as.numeric),
+         across(to_factor, as.factor),
+         across(to_log, ~log(abs(.x) + 1)))
+```
+
+
+```{r plot_df}
+#plot model prediction for a given site. plots for linear model, random forest,
+#and the linear forest model
+quick_plot <- function(DF, filt_site){
+  defult_DF <- DF%>%
+    filter(site == filt_site)
+  
+  show_plot <- defult_DF%>%
+    ggplot(aes(x = as.Date(date, origin = .Date(0))))+
+    geom_point(aes(y = goal_cases, color = "real case value"))+
+    geom_line(aes(y = lin_pred_case, color = "linear model prediction"),
+              data = filter(defult_DF, !is.na(lin_pred_case)))+
+    geom_line(aes(y = lin_pred_case + resd_pred, color = "random forest prediction"),
+              data = filter(defult_DF, !is.na(lin_pred_case), !is.na(resd_pred)))+
+    geom_line(aes(y = lm_tree_pred, color = "linear random forest prediction"),
+              data = filter(defult_DF, !is.na(lm_tree_pred)))+
+    geom_vline(xintercept = split_date)+
+    ggtitle(paste0("model predictions for ", filt_site))
+  return(show_plot)
+}
+
+quick_resid_plot <- function(DF, filt_site){
+  defult_DF <- DF%>%
+    filter(site == filt_site)
+  
+  show_plot <- defult_DF%>%
+    ggplot(aes(x = as.Date(date)))+
+    geom_point(aes(y = goal_cases - lin_pred_case, color = "linear model prediction"),
+              data = filter(defult_DF, !is.na(lin_pred_case)))+
+    geom_point(aes(y = goal_cases - (lin_pred_case + resd_pred), color = "random forest prediction"),
+              data = filter(defult_DF, !is.na(lin_pred_case), !is.na(resd_pred)))+
+    geom_point(aes(y = goal_cases - lm_tree_pred, color = "linear random forest prediction"),
+              data = filter(defult_DF, !is.na(lm_tree_pred)))+
+    geom_vline(xintercept = split_date)
+  return(show_plot)
+}
+
+
+#gets the MSE of the three models to compare
+quick_mse <- function(DF){
+  mse_DF <- DF%>%
+    filter(date >= split_date)%>%
+    mutate(lm_error = goal_cases - lin_pred_case,
+           tree_error = goal_cases - (lin_pred_case + resd_pred),
+           lm_tree_error = goal_cases - lm_tree_pred)%>%
+    summarise(lm_mse = mean(lm_error**2, na.rm = TRUE),
+              tree_mse = mean(tree_error**2, na.rm = TRUE),
+              lm_tree_mse = mean(lm_tree_error**2, na.rm = TRUE))
+  return(mse_DF)
+}
+```
+
+
+To get the best possible handle we explore splitting the data into a test and training
+set where they are separated by time due to the autocorelation. This can create
+problems because the digital PCR change was recent so we removed DPCR measurements
+from the test.
+```{r model data prep}
+library(plotly)
+library(lubridate)
+#month = month(as.Date(date))
+model_split_df <- resid_df%>%
+  select(where(~(is.numeric(.x) || is.factor(.x))))%>%
+  select(-one_of(weird_drop))%>%
+  filter(!is.na(date))%>%
+  filter(pcr_type != "dPCR")%>%
+  mutate(DOW = wday(as.Date(date)),
+         MOY = month(as.Date(date)))%>%
+  arrange(date)%>%
+  mutate(avg_sars_cov2_conc = log(sqrt(N1*N2) + 1),
+         goal_cases = log(roll_prob_case + 1))#%>%
+  #group_by(site)%>%
+  #arrange(site, date)%>%
+  #mutate(across(c("date", "flow", "avg_sars_cov2_conc"), ~dplyr::lag(.x, 1), .names = "lag_{.col}"))%>%
+  #ungroup()
+
+
+#split the data so the train and test data are time separated
+min_date = min(model_split_df$date, na.rm = TRUE)
+split_date = floor(min_date + 2*(max(model_split_df$date, na.rm = TRUE) - min_date)/3)
+
+#separate dataframe based on above time split and drop na columns
+lm_train_split_df <- model_split_df%>%
+  filter(date < split_date)%>%
+  select(-date)%>%
+  select(where( ~!all(is.na(.x))))
+
+test_split_df <- model_split_df%>%
+  filter(date >= split_date)%>%
+  select(-date)%>%
+  select(where( ~!all(is.na(.x))))%>%
+  filter(site %in% unique(lm_train_split_df$site))
+
+#make sure dataframe does not have sites that are missing from the dataset
+model_split_df <- model_split_df%>%
+  filter(site %in% unique(lm_train_split_df$site))
+```
+
+```{r data prep lm comp}
+#linear model with diffrent terms for each site
+linear_mod <- lm(goal_cases ~ avg_sars_cov2_conc:site + site, 
+                                data = lm_train_split_df, na.action = na.roughfix)
+
+#add linear model residuals for both sets
+lm_train_split_df$resid <- resid(linear_mod)
+
+#drop unneded columns from test set for random forest
+train_split_df <- lm_train_split_df%>%
+  select(-one_of(cheating_drop))%>%
+  select(-one_of(to_drop))%>%
+  select(one_of(names(test_split_df)), resid)%>%
+  select(-goal_cases)
+```
+
+
+```{r model fitting}
+#fit random forest using all columns of dataset
+resid_split_mod <-randomForest(resid ~ ., data = train_split_df, 
+                               ntree = 50, na.action = na.roughfix)
+
+resid_split_mod
+
+plot(resid_split_mod, method = "l")
+```
+
+```{r model predicting}
+
+test_split_pred_df <- test_split_df%>%
+  select(-one_of(cheating_drop))%>%
+  select(-one_of(to_drop))%>%
+  na.roughfix()
+
+train_split_pred_df <- train_split_df%>%
+  na.roughfix()
+```
+
+```{r random linear forest}
+#drop columns that cause random forest to fail or cheat
+temp_train_df <- lm_train_split_df%>%
+  select(-county, -resid, -roll_prob_case, - N1, -N2, -prob_case, -sample_id,
+         -conf_case, -tests, -conf_death, -hf183, -main_variant)%>%
+  select(one_of(names(test_split_df)))%>%
+  #select(regions, date, pop, flow, goal_cases, avg_sars_cov2_conc,
+  #       lag_date, lag_flow, lag_avg_sars_cov2_conc)%>%
+  na.roughfix()
+
+
+Form <- goal_cases  ~ avg_sars_cov2_conc:site| . - avg_sars_cov2_conc - goal_cases - site
+
+library(rsample)#analysis
+linear_forest_model <- random_linear_forest(data = temp_train_df,
+                                     num_tree = 50,#20
+                                     model_formula = Form,
+                                     max_depth = 5,#Inf,
+                                     num_features = floor((length(temp_train_df)-3)/3),
+                                     verbose = FALSE)
+
+summary(linear_forest_model)
+
+
+```
+
+
+```{r plot model in piced options}
+plot_df <- model_split_df
+
+#fit lm components
+plot_df$lin_pred_case <- c(predict(linear_mod, lm_train_split_df),
+                                  predict(linear_mod, test_split_df))
+
+plot_df$resd_pred <- c(predict(resid_split_mod, train_split_pred_df),
+                                  predict(resid_split_mod, test_split_pred_df))
+
+plot_df$lm_tree_pred <- c(predict(linear_forest_model, na.roughfix(lm_train_split_df)),
+                          predict(linear_forest_model, na.roughfix(test_split_df)))
+
+plot_df <- plot_df%>%
+  select(date, site, goal_cases, lin_pred_case, resd_pred, lm_tree_pred)
+
+quick_mse(plot_df)
+quick_plot(plot_df, "Peshtigo")
+quick_plot(plot_df, "Platteville")
+quick_plot(plot_df, "Hudson")
+quick_plot(plot_df, "Madison")
+```
+
+

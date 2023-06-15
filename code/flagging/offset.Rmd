@@ -1,0 +1,504 @@
+---
+title: "wc_ratio"
+author: "Kyllan Wunder"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(DSIWastewater)
+library(dplyr)
+library(ggplot2)
+library(anytime)
+library(ggpubr)
+library(lubridate)
+library(zoo)
+library(TSstudio)
+library(plotly)
+library(grid)
+library(gridExtra)
+```
+
+
+```{r get data}
+data(Case_data, package = "DSIWastewater")
+cases <- Case_data
+cases$date <- anydate(cases$date)
+
+data(WasteWater_data, package = "DSIWastewater")
+waste <- WasteWater_data
+
+
+cases_madison <- cases%>% 
+  filter(site == "Madison")
+waste_madison <- waste%>% 
+  filter(grepl('Madison', site))%>% 
+  select(date, site, N1, N2, PMMoV)
+
+waste_madison$Site <- paste0("Madison")
+
+waste2 <- waste%>% 
+  group_by(date)%>% 
+  summarise(N1 = mean(N1),
+            N2 = mean(N2),
+            PMMoV = mean(PMMoV))
+
+waste_madison <- waste_madison %>% 
+  group_by(date)  %>% 
+  summarise(N1 = sum(N1),
+            N2 = sum(N2),
+            PMMoV = sum(PMMoV))
+
+
+```
+
+```{r}
+
+
+waste  <- waste %>% 
+  select(site, date, N1, N2, PMMoV) 
+```
+
+```{r all}
+waste <- waste%>% 
+  group_by(date)%>% 
+  summarise(N1 = mean(N1),
+            N2 = sum(N2),
+            PMMoV = sum(PMMoV))
+
+cases <- cases%>%
+  group_by(date)%>% 
+  summarise(conf_case = mean(conf_case))
+
+casesavg <- cases%>%
+  group_by(date)%>%
+  summarise(conf_case = mean(conf_case))
+
+```
+
+```{r}
+MSE <- function(baseVal, meanVal){
+  ret <- mean((baseVal - meanVal)^2)
+  return(ret)
+}
+
+
+cases <- cases %>% 
+  mutate(rollingaverage = rollmean(cases$conf_case, k=7, fill = NA))
+
+
+offsetresults <- data.frame(matrix(ncol = 7, nrow = 0))
+  
+for(i in -30:30){
+  
+  wasteTemp <- waste %>% 
+    mutate(tempdate = as.Date(waste$date + i))
+  
+  #smooth case data
+  
+  temp <- merge(wasteTemp, cases, by.x = "tempdate" ,by.y = "date")  
+  temp <- na.omit(temp)
+
+  temp <- temp %>% 
+    mutate(proportionRolling = temp$N1/temp$rollingaverage,
+                          proportion = temp$N1/temp$conf_case, 
+                          mse = MSE(temp$N1/temp$rollingaverage,
+                                    mean(temp$N1/temp$rollingaverage)))
+  temp <- na.omit(temp)
+  new <- c(i,mean(temp$proportion),
+           mean(temp$proportionRolling),
+           mean(temp$mse), 
+           cor(temp$N1,temp$rollingaverage,
+               method = "pearson"), 
+           cor(temp$N1,temp$rollingaverage,method = "kendall"),
+           cor(temp$N1,temp$rollingaverage,method = "spearman"))
+
+  
+  offsetresults[nrow(offsetresults) + 1, ] <- new  
+}
+offsetresults <- offsetresults %>% rename(wdateoffset=X1,
+                                          wcratio=X2,
+                                          wcratiorolling=X3,
+                                          meanMSErolling=X4,
+                                          corilationPearson=X5,
+                                          corilationKendall=X6,
+                                          corilationSpearman=X7)
+```
+
+
+```{r}
+
+ggplot(offsetresults, aes(x=wdateoffset, y=wcratio)) +
+  geom_point()
+
+ggplot(offsetresults, aes(x=wdateoffset, y=wcratiorolling)) +
+  geom_point() + 
+  ylab("Wastewater to Case ratio") +
+  xlab("Wastewater Offset")
+
+ggplot(offsetresults, aes(x=wdateoffset, y=meanMSErolling)) +
+  geom_point()
+
+ggplot(offsetresults, aes(x=wdateoffset, y=corilationPearson)) +
+  geom_point()
+
+ggplot(offsetresults, aes(x=wdateoffset, y=corilationKendall)) +
+  geom_point()+
+  ylab("Correlation between N1 and 7 day case average") +
+  xlab("Wastewater Offset")
+ggplot(offsetresults, aes(x=wdateoffset, y=corilationSpearman)) +
+  geom_point() +
+  ylab("Spearman Correlation") +
+  xlab("Wastewater Offset")
+```
+
+```{r Madison}
+
+
+cases_madison <- cases_madison%>%
+  mutate(rollingaverage = rollmean(cases_madison$conf_case,
+                                   k=7, fill = NA, align = "center"))
+
+
+offsetresultsMadison <- data.frame(matrix(ncol = 7, nrow = 0))
+
+for(i in -30:30){
+  
+  wasteTempMadison <- waste_madison%>%
+    mutate(tempdate = as.Date(waste_madison$date + i))
+  
+  #smooth case data
+  
+  temp2 <- merge(wasteTempMadison, cases_madison, by.x = "tempdate" ,by.y = "date")  
+  temp2 <- na.omit(temp2)
+
+  temp2 <- temp2 %>% 
+    mutate(proportionRolling = temp2$N1/temp2$rollingaverage,
+           proportion = temp2$N1/temp2$conf_case, 
+           mse = MSE(temp2$N1/temp2$rollingaverage,
+                                                            mean(temp2$N1/temp2$rollingaverage)),)
+  temp2 <- na.omit(temp2)
+  new <- c(i,mean(temp2$proportion),
+           mean(temp2$proportionRolling),
+           mean(temp2$mse), 
+           cor(temp2$N1,temp2$rollingaverage,
+               method = "pearson"), 
+           cor(temp2$N1,temp2$rollingaverage,method = "kendall"),
+           cor(temp2$N1,temp2$rollingaverage,method = "spearman"))
+
+  
+  offsetresultsMadison[nrow(offsetresultsMadison) + 1, ] <- new  
+}
+
+offsetresultsMadison <- offsetresultsMadison %>% rename(wdateoffset=X1,
+                                                        wcratio=X2,
+                                                        wcratiorolling=X3,
+                                                        meanMSErolling=X4,
+                                                        corilationPearson=X5,
+                                                        corilationKendall=X6,
+                                                        corilationSpearman=X7)
+
+```
+
+
+
+```{r}
+ggplot(offsetresultsMadison, aes(x=wdateoffset, y=wcratio)) +
+  geom_point()
+
+ggplot(offsetresultsMadison, aes(x=wdateoffset, y=wcratiorolling)) +
+  geom_point()
+
+ggplot(offsetresultsMadison, aes(x=wdateoffset, y=meanMSErolling)) +
+  geom_point()
+
+ggplot(offsetresultsMadison, aes(x=wdateoffset, y=corilationPearson)) +
+  geom_point()
+
+ggplot(offsetresultsMadison, aes(x=wdateoffset, y=corilationKendall)) +
+  geom_point(aes(color = wdateoffset %% 7)) +
+  xlab("Wastewater Offset") +
+  ylab("Correlation between N1 and 7 day case average (center)") +
+  ggtitle("Madison only wastewater offset") +
+  scale_color_gradientn(colours = rainbow(7))
+ggplot(offsetresultsMadison, aes(x=wdateoffset, y=corilationSpearman)) +
+  geom_point()
+```
+
+
+
+```{r }
+year_week <- function(x,base) week(x) - week(base) + 52*(year(x) - year(base))
+
+
+SampleFeqData <- WasteWater_data %>% 
+  select(date, site, N1, pop) 
+
+SampleFeqData <- na.omit(SampleFeqData)
+
+SampleFeqData <- SampleFeqData%>%
+  mutate(week = year_week(anydate(date), "2020-01-01"))%>% 
+  group_by(site, week)%>%
+  mutate(sampleFrequency = n())%>%
+  ungroup()%>%
+  group_by(site)%>%
+  mutate(avgSampleFrequency = mean(sampleFrequency),
+         freq = round(avgSampleFrequency))%>%
+  ungroup()
+
+SampleFeqData <- SampleFeqData %>% 
+  group_by(site) %>% 
+  mutate(totalSamples = sum(sampleFrequency)) %>% 
+  ungroup()
+
+
+```
+
+```{r}
+#graph <- 
+
+SampleFeqData %>% 
+  group_by(site) %>% 
+  ggplot(aes(x=as.numeric(pop),
+             y=avgSampleFrequency, color=(totalSamples)/avgSampleFrequency, info=site)) + 
+
+  geom_point() +
+  scale_colour_gradientn(colours=rainbow(5)) +
+  scale_x_log10()
+
+
+#ggplotly(graph)
+
+unique(SampleFeqData$freq)
+
+#SampleFeqData %>% group_by(site) %>% rowSums(freq=1)
+
+
+```
+
+
+
+```{r}
+
+onePerWeek <- SampleFeqData %>% 
+  filter(freq >= 1)
+
+onePerWeek <- onePerWeek %>% 
+  distinct(site, .keep_all = TRUE) %>% 
+  subset(select = -c(3,4,5))
+```
+
+
+
+
+```{r}
+
+SFwaste <- WasteWater_data[WasteWater_data$site %in% onePerWeek$site,]
+#unique(SFwaste$site)
+
+
+SFwaste <- SFwaste %>% 
+  group_by(site, week = week(anydate(date))) %>% 
+  mutate(sampleFrequency = n()) %>%
+  ungroup()
+
+SFwaste <- SFwaste %>% 
+  group_by(site) %>% 
+  mutate(avgSampleFrequency = mean(sampleFrequency))
+
+
+SFwaste$date <- anydate(SFwaste$date)
+
+
+
+
+SFwaste  <- SFwaste %>% 
+  select(site, pop, date, N1, N2, avgSampleFrequency)#1, 3, 7,10,14,33) 
+
+SFwaste <- na.omit(SFwaste)
+
+
+SFwaste <- SFwaste %>% 
+  group_by(date, site) %>% 
+  summarise(N1 = sum(N1), N2 = sum(N2))
+```
+
+```{r}
+SFcases <- Case_data
+
+SFcases$date <- anydate(SFcases$date)
+
+SFcases <- SFcases %>% 
+  group_by(date,site) %>% 
+  summarise(conf_case = sum(conf_case)) %>% 
+  mutate(rollingaverage = rollmean(conf_case, k=7, fill = NA))
+```
+
+```{r offset by sample frequency}
+offsetresultsSF <- data.frame(matrix(ncol = 7, nrow = 0))
+  
+for(i in -30:30){
+  
+  SFwasteTemp <- SFwaste %>% 
+    mutate(date = as.Date(as.numeric(date) + i))
+  
+  #smooth case data
+  
+
+  temp <- merge(SFwasteTemp, SFcases, by = c("date","site"), all = TRUE)
+  
+  temp <- na.omit(temp)
+  
+  temp <- temp %>% 
+    mutate(proportionRolling = temp$N1/temp$rollingaverage,
+           proportion = temp$N1/temp$conf_case,
+           mse = MSE(temp$N1/temp$rollingaverage,
+                     mean(temp$N1/temp$rollingaverage)),)
+  
+   temp <- na.omit(temp)
+   
+   new <- c(i, mean(temp$proportion),
+           mean(temp$proportionRolling), mean(temp$mse),
+           cor(temp$N1,temp$rollingaverage, method = "pearson"),
+           cor(temp$N1,temp$rollingaverage, method = "kendall"),
+           cor(temp$N1,temp$rollingaverage, method = "spearman"))
+  
+  
+  offsetresultsSF[nrow(offsetresultsSF) + 1, ] <- new  
+}
+
+offsetresultsSF <- offsetresultsSF %>% 
+  rename(wdateoffset=X1,
+         wcratio=X2,
+         wcratiorolling=X3,
+         meanMSErolling=X4,
+         corilationPearson=X5,
+         corilationKendall=X6,
+         corilationSpearman=X7)
+
+
+```
+
+
+```{r}
+ggplot(offsetresultsSF, aes(x=wdateoffset, y=wcratio)) +
+  geom_point()
+
+ggplot(offsetresultsSF, aes(x=wdateoffset, y=wcratiorolling)) +
+  geom_point()
+
+ggplot(offsetresultsSF, aes(x=wdateoffset, y=meanMSErolling)) +
+  geom_point()
+
+ggplot(offsetresultsSF, aes(x=wdateoffset, y=corilationPearson)) +
+  geom_point()
+#ggsave("offsetresultsSF2,corilationPearson.pdf")
+ggplot(offsetresultsSF, aes(x=wdateoffset, y=corilationKendall)) +
+  geom_point()
+#ggsave("offsetresultsSF2,corilationKendall.pdf")
+ggplot(offsetresultsSF, aes(x=wdateoffset, y=corilationSpearman)) +
+  geom_point()
+#ggsave("offsetresultsSF2,corilationSpearman.pdf")
+```
+
+```{r}
+
+
+wasteTemp2 <-  waste2 %>% 
+  group_by(date) #%>% mutate(avgn1 = mean(N1))#average all samples
+casesTemp <-  casesavg %>% 
+  group_by(date) %>% 
+  filter(date > anydate("2020-09-02"))
+wasteccf <- wasteTemp2[order(wasteTemp2$date),]
+
+casesccf <-  casesTemp[order(casesTemp$date),]
+
+#ccf(wasteccf$avgn1, casesccf$conf_case,na.action = na.pass)
+#ccf(wasteccf$avgn1, casesccf$rollingaverage,na.action = na.pass)
+
+#ccf(wasteccf$N1, casesccf$rollingaverage,na.action = na.pass,lag.max = 30)
+
+```
+
+```{r}
+
+wasten1 <- wasteccf[c(1,2)]# 1 = date, 2 = n1, 3 = n2, 4 = ppmov
+casesrolling <- casesccf[c(1,2)] #1 = date, 2 = conf_case, 3 = rollingaverage
+wastecaselag <- merge(wasten1, casesrolling, by.x = "date", by.y="date")
+wastecaselag <- wastecaselag[c(2,3)]
+lag_ts <- ts(na.omit(wastecaselag))
+
+#ts_info(lag_ts)
+
+plot(lag_ts)
+ts_plot(lag_ts)
+
+par(mfrow = c(1, 2))
+lag_ts[, c(1)] %>% 
+  acf(lag.max = 600, 
+      main = "Autocorrelation Plot - n1")
+
+# pacf R time series
+lag_ts[, c(1)] %>%
+  pacf(lag.max = 600,
+       main = "Partial Autocorrelation Plot - n1")
+
+lag_ts[, c(2)] %>% 
+  acf(lag.max = 600, 
+      main = "Autocorrelation Plot - cases")
+
+# pacf R time series
+lag_ts[, c(2)] %>%
+  pacf(lag.max = 600,
+       main = "Partial Autocorrelation Plot - cases")
+#explains how the present value of a given time series is correlated with the past
+#shows that the pandemic repeated itself
+par(mfrow = c(1, 1))
+ccf(lag_ts[, c(1)], lag_ts[, c(2)], 
+    lag.max = 30,
+    main = "Cros-Correlation Plot",
+    ylab = "CCF")
+#result wrong becuase ccf uses pearson corrilation?
+```
+
+```{r}
+wastecaselag <- na.omit(wastecaselag)
+#ggplot(wastecaselag, aes(x=N1, y=rollingaverage)) +
+#  geom_point()
+
+cov(log(wastecaselag$N1),wastecaselag$rollingaverage)
+cor(wastecaselag$N1,wastecaselag$rollingaverage) #weak corrilation but if against total cases not new then most likly stronger
+```
+
+
+```{r}
+
+waste[!is.na(waste$date),]
+cases[!is.na(cases$date),]
+waste$date <- anydate(waste$date)
+cases$date <- anydate(cases$date)
+wastecase <- left_join(waste,cases, by = "date") 
+par(mfrow = c(1, 2))
+
+```
+
+```{r}
+
+casesplot <- ggplot(wastecase, aes(x=date, y=rollingaverage)) +
+  geom_line() +
+  ylab("7-day Case Average") +
+  theme_minimal() + 
+      theme(axis.title.x = element_blank(), axis.text.x = element_blank())
+
+wasteplot <- ggplot(wastecase[!is.na(wastecase$N1 ),], aes(x=date, y=N1)) +
+  geom_line()  + xlab("Date") +
+  ylab("N1 Concentration")
+#grid.arrange(casesplot, wasteplot, ncol=1)
+#p3 <- casesplot + scale_x_date(date_breaks = "1 day")
+#p4 <- wasteplot + scale_x_date(date_breaks = "1 day")
+grid.newpage()
+grid.draw(rbind(ggplotGrob(casesplot), ggplotGrob(wasteplot), size = "last"))
+
+```
+

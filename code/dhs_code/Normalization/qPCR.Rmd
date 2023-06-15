@@ -1,0 +1,550 @@
+---
+title: "qPCR data"
+output:                 
+  html_document: 
+    css: "style.css"        
+    code_download: true 
+    code_folding: 'hide'
+---
+
+On this page, I only focus on **qPCR data** because BCoV and PMMoV substantially increased when we transitioned to dPCR.
+
+\
+\
+\
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+rm(list=ls(all=FALSE))
+ls()
+set.seed(123)
+```
+
+```{r echo=FALSE, include=FALSE, warning=FALSE, error=FALSE}
+library(dplyr)
+library(openxlsx)
+library(data.table)
+library(lubridate)
+library(ggplot2)
+library(magrittr)
+library(plotly)
+library(randomForest)
+library(randomForestExplainer)
+library(patchwork)
+
+
+'%!in%' <- function(x,y)!('%in%'(x,y))
+'%!like%' <- function(x,y)!('%like%'(x,y))
+```
+
+
+```{r label="Import data from H12 extracts", warning=FALSE}
+# List all the benchsheets from the current month
+#list<-list.files(paste0("M:\\EHD\\ESS(4900)\\ESS Biomonitoring(4922)\\Projects\\COVID19 in sewage & water\\Horizon Extracts\\"), recursive = TRUE,  pattern=glob2rx("*.txt"))
+#list<-list[-which(list %like% c("WSLHWWPROD_20220524_220011|WSLHWWPROD_20220415_220005|WSLHWWPROD_20220328_220011|WSLHWWPROD_20220308_220010|WSLHWWPROD_20211213_220011"))]
+#list<-sort(list, decreasing=FALSE) # Sort from the oldest to the newest extract
+
+#for(i in 1:length(list)){
+#  file<-list[i]; #print(file)
+#  pre<-read.table(paste0("M:\\EHD\\ESS(4900)\\ESS Biomonitoring(4922)\\Projects\\COVID19 in sewage & water\\Horizon Extracts\\", file), h=F, sep="|")
+#  if(i==1){
+#    data.H12<-pre
+#  }else{
+#    data.H12<-data.H12[which(data.H12$V13 %!in% pre$V13), ]
+#    data.H12<-rbind(data.H12, pre)
+#    }
+#}
+#head(data.H12)
+load("data/data.H12.backup.RData")
+data.H12<-data.H12.backup
+#save(data.H12.backup, file="data/data.H12.backup.RData")
+#load("data/data.H12.backup.RData")
+```
+
+
+```{r label="Preparation of H12 data"}
+### Prep H12 data 
+names(data.H12)<-c("wwtp_name", "epaid", "zipcode", "county_names", "state", "capacity_mgd", "population_served", "sample_type", "composite_freq", "sample_matrix", "sample_location", "sample_location_specify", "sample_id", "wwtp_comments", "concentration_method", "extraction_method", "pcr_type", "lod_ref", "quant_stan_type", "quant_stan_ref", "inhibition_method", "n1_sars_cov2_units", "n1_sars_cov2_conc", "n1_sars_cov2_lod", "n1_sars_cov2_error", "n1_ntc_amplify", "n1_num_ntc_amplify", "n1_num_no_target_control", "n1_lod", "n1_loq", "n2_sars_cov2_units", "n2_sars_cov2_conc", "n2_sars_cov2_lod", "n2_sars_cov2_error", "n2_ntc_amplify", "n2_num_ntc_amplify", "n2_num_no_target_control", "n2_lod", "n2_loq", "avg_sars_cov2_conc", "avg_sars_cov2_below_lod", "pmmov_conc", "hf183_conc", "bcov_rec_rate", "inhibition_detect", "inhibition_adjust", "analytical_comments", "sample_collect_date", "sample_collect_time", "test_result_date", "average_flow_rate", "equiv_sewage_amt", "tss", "ph", "bod", "conductivity", "temperature", "do", "bcov_spike_conc")
+
+# Clean samples
+data.H12<-data.H12 %>% filter(wwtp_name %!like% "Madison-P")
+data.H12<-data.H12 %>% filter(wwtp_name %!in% c("Keshena", "Lac du Flambeau", "Menomonie", "Mondovi", "Neopit", "Red Cliff", "Wolf", "Wolf River"))
+data.H12<-data.H12 %>% filter(wwtp_name != "")
+
+# Fix wwtp names
+data.H12$wwtp_name<-gsub(" WWTP", "", data.H12$wwtp_name)
+data.H12$wwtp_name<-gsub("WWTP", "", data.H12$wwtp_name)
+data.H12$wwtp_name<-gsub("WWTF", "", data.H12$wwtp_name)
+data.H12$wwtp_name<-gsub("BlackRiverFalls", "Black River Falls", data.H12$wwtp_name)
+data.H12$wwtp_name<-gsub(" Metro", "", data.H12$wwtp_name)
+data.H12$wwtp_name<-gsub("WI Rapids", "Wisconsin Rapids", data.H12$wwtp_name)
+#print("List wwtps investigated (in H12 extract):")
+#levels(as.factor(data.H12$wwtp_name))
+
+# Add ID
+data.H12$sample_collect_date<-as.Date(data.H12$sample_collect_date, format="%m/%d/%Y")
+data.H12$ID<-paste0(data.H12$wwtp_name, data.H12$sample_collect_date)
+
+```
+
+
+```{r label="Import metadata"}
+### Import metadata
+#setwd("M:/EHD/ESS(4900)/ESS Biomonitoring(4922)/Projects/COVID19 in sewage & water/Surveillance Analysis/Reports/UW Stats Data/R_AJR/Normalization/")
+data.meta<-read.table("data/WWDataRequestDNR.csv", sep = ",", h=T)
+data.meta<-data.meta %>% filter(lab_submitter == "SLH")
+```
+
+
+```{r label="Preparation of metadata"}
+### Preparation of metadata
+# Fix wwtp names
+data.meta$wwtp_name<-gsub(" WWTF", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" WWTP", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Sewage Utility", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" WW Utility", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Wastewater Utility", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" WPCF", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" MSD", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Utilities", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Municipal Utility", "", data.meta$wwtp_name)
+data.meta$wwtp_name<-gsub(" Water Works", "", data.meta$wwtp_name)
+#levels(as.factor(data.meta$wwtp_name))
+#print("List wwtps with metadata (should be the same than above):")
+#levels(as.factor(data.H12$wwtp_name))
+
+
+# Add ID
+data.meta$sample_collect_date<-as.Date(data.meta$sample_collect_date, format="%m/%d/%Y")
+data.meta$ID<-paste0(data.meta$wwtp_name, data.meta$sample_collect_date)
+
+# Metadata #1
+data.meta.1<-unique(data.meta[, c("ID", "sars_cov2_adj_load", "cases", "case_rate")])
+
+# Metadata #2
+data.meta.2<-data.meta[, c("ID", "result_amt", "storet_parm_desc", "parm_unit_type")]
+data.meta.2$storet_parm_desc<-gsub("CBOD5", "BOD5", data.meta.2$storet_parm_desc)
+data.meta.2$storet_parm_desc<-gsub("BOD5, Total", "BOD5", data.meta.2$storet_parm_desc)
+data.meta.2$storet_parm_desc<-gsub("Suspended Solids, Total", "TSS", data.meta.2$storet_parm_desc)
+data.meta.2<-reshape2::dcast(data.meta.2, ID~storet_parm_desc, value.var = "result_amt", fun.aggregate= function(x) if(length(x) == 0) NA_real_ else mean(x, na.rm = TRUE))
+data.meta.2 <- data.meta.2 %>% select("ID", "BOD5", "Flow Rate", "TSS")
+
+# Metadata - merged #1 and #2
+data.meta <- left_join(data.meta.1, data.meta.2, by="ID")
+```
+
+
+
+
+```{r lebel="Merge H12 and meta datsets"}
+data<-inner_join(data.H12, data.meta, by="ID")
+#data<-data.H12
+```
+
+```{r label="Select qPCR data"}
+data <-data %>% filter(pcr_type == "qPCR")
+```
+
+
+```{r label="convert character to numeric", warning=FALSE}
+data$avg_sars_cov2_conc<-as.numeric(as.character(data$avg_sars_cov2_conc))
+data$average_flow_rate<-as.numeric(as.character(data$average_flow_rate))
+data$population_served<-as.numeric(as.character(data$population_served))
+data$pmmov_conc<-as.numeric(as.character(data$pmmov_conc))
+data$hf183_conc<-as.numeric(as.character(data$hf183_conc))
+data$bcov_rec_rate<-as.numeric(as.character(data$bcov_rec_rate))
+data$tss<-as.numeric(as.character(data$tss))
+data$ph<-as.numeric(as.character(data$ph))
+data$temperature<-as.numeric(as.character(data$temperature))
+data$conductivity<-as.numeric(as.character(data$conductivity))
+data$sars_cov2_adj_load<-as.numeric(as.character(data$sars_cov2_adj_load))
+data$cases<-as.numeric(as.character(data$cases))
+data$case_rate<-as.numeric(as.character(data$case_rate))
+data$BOD5<-as.numeric(as.character(data$BOD5))
+data$`Flow Rate`<-as.numeric(as.character(data$`Flow Rate`))
+data$TSS<-as.numeric(as.character(data$TSS))
+
+data$wwtp_name<-as.factor(data$wwtp_name)
+```
+
+
+# 1. Normalizations   
+
+data$sc2_flow_pop<-(data$avg_sars_cov2_conc*data$average_flow_rate)/data$population_served
+
+data$sc2_dPMMoV<-data$avg_sars_cov2_conc/data$pmmov_conc
+data$sc2_dPMMoV.log10<-data$avg_sars_cov2_conc/(log10(data$pmmov_conc+1)+1)
+data$sc2_dPMMoV.sqrt<-data$avg_sars_cov2_conc/sqrt(data$pmmov_conc+1)
+data$sc2_dPMMoV.sqrt2<-data$avg_sars_cov2_conc/sqrt(data$pmmov_conc/mean(data$pmmov_conc))
+data$sc2_mPMMoV.sqrt2<-data$avg_sars_cov2_conc*sqrt(data$pmmov_conc/mean(data$pmmov_conc))
+
+data$sc2_dBCoV<-data$avg_sars_cov2_conc/data$bcov_rec_rate
+data$sc2_dBCoV.log10<-data$avg_sars_cov2_conc/(log10(data$bcov_rec_rate+1)+1)
+data$sc2_dBCoV.sqrt<-data$avg_sars_cov2_conc/sqrt(data$bcov_rec_rate+1)
+data$sc2_dBCoV.sqrt2<-data$avg_sars_cov2_conc/sqrt(data$bcov_rec_rate/mean(data$bcov_rec_rate))
+data$sc2_mBCoV.sqrt2<-data$avg_sars_cov2_conc*sqrt(data$bcov_rec_rate/mean(data$bcov_rec_rate))
+
+data$sc2_dPMMoVBCoV.sqrt2<-data$avg_sars_cov2_conc/sqrt((data$bcov_rec_rate/mean(data$bcov_rec_rate))*(data$pmmov_conc/mean(data$pmmov_conc)))
+data$sc2_mPMMoVBCoV.sqrt2<-data$avg_sars_cov2_conc*sqrt((data$bcov_rec_rate/mean(data$bcov_rec_rate))*(data$pmmov_conc/mean(data$pmmov_conc)))
+
+
+```{r label="normalization", warning=FALSE, echo=TRUE}
+data$sc2_flow_pop<-(data$avg_sars_cov2_conc*data$average_flow_rate)/data$population_served
+
+data$sc2_dPMMoV<-data$avg_sars_cov2_conc/data$pmmov_conc
+data$sc2_dPMMoV.log10<-data$avg_sars_cov2_conc/(log10(data$pmmov_conc+1)+1)
+data$sc2_dPMMoV.sqrt<-data$avg_sars_cov2_conc/sqrt(data$pmmov_conc+1)
+data$sc2_dPMMoV.sqrt2<-data$avg_sars_cov2_conc/sqrt(data$pmmov_conc/mean(data$pmmov_conc, na.rm=TRUE))
+data$sc2_mPMMoV.sqrt2<-data$avg_sars_cov2_conc*sqrt(data$pmmov_conc/mean(data$pmmov_conc, na.rm=TRUE))
+
+data$sc2_dBCoV<-data$avg_sars_cov2_conc/data$bcov_rec_rate
+data$sc2_dBCoV.log10<-data$avg_sars_cov2_conc/(log10(data$bcov_rec_rate+1)+1)
+data$sc2_dBCoV.sqrt<-data$avg_sars_cov2_conc/sqrt(data$bcov_rec_rate+1)
+data$sc2_dBCoV.sqrt2<-data$avg_sars_cov2_conc/sqrt(data$bcov_rec_rate/mean(data$bcov_rec_rate, na.rm=TRUE))
+data$sc2_mBCoV.sqrt2<-data$avg_sars_cov2_conc*sqrt(data$bcov_rec_rate/mean(data$bcov_rec_rate, na.rm=TRUE))
+
+data$sc2_dPMMoVBCoV.sqrt2<-data$avg_sars_cov2_conc/sqrt((data$bcov_rec_rate/mean(data$bcov_rec_rate, na.rm=TRUE))*(data$pmmov_conc/mean(data$pmmov_conc, na.rm=TRUE)))
+data$sc2_mPMMoVBCoV.sqrt2<-data$avg_sars_cov2_conc*sqrt((data$bcov_rec_rate/mean(data$bcov_rec_rate, na.rm=TRUE))*(data$pmmov_conc/mean(data$pmmov_conc, na.rm=TRUE)))
+
+```
+
+Note: \ 
+**case rate:** 7-days average number of positive cases/100,000 inhabitants \ 
+**avg_sars_cov2_conc** raw N1/N2 average concentration \
+
+
+### Pearson correlations
+
+```{r label="Pearson correlation", echo=TRUE}
+correlate.pearson<- data %>%
+                group_by(wwtp_name) %>% 
+                summarise(population = mean(population_served, na.rm = TRUE), 
+                          count = n(),
+                          
+                          r_raw = cor(avg_sars_cov2_conc, case_rate, method = "pearson", use="complete.obs"),
+                          
+                          r_flow_pop = cor(sc2_flow_pop, case_rate, method = "pearson", use="complete.obs"), 
+                          r_adj_load = cor(sars_cov2_adj_load, case_rate, method = "pearson", use="complete.obs"), #sars_cov2_adj_load is the variable used in the dashboard.
+                          
+                          r_dPMMoV = cor(sc2_dPMMoV, case_rate, method = "pearson", use="complete.obs"),
+                          r_dPMMoV.log10 = cor(sc2_dPMMoV.log10, case_rate, method = "pearson", use="complete.obs"),
+                          r_dPMMoV.sqrt = cor(sc2_dPMMoV.sqrt, case_rate, method = "pearson", use="complete.obs"),
+                          r_dPMMoV.sqrt2 = cor(sc2_dPMMoV.sqrt2, case_rate, method = "pearson", use="complete.obs"),
+                          r_mPMMoV.sqrt2 = cor(sc2_mPMMoV.sqrt2, case_rate, method = "pearson", use="complete.obs"),
+
+                          r_dBCoV = cor(sc2_dBCoV, case_rate, method = "pearson", use="complete.obs"),
+                          r_dBCoV.log10 = cor(sc2_dBCoV.log10, case_rate, method = "pearson", use="complete.obs"),
+                          r_dBCoV.sqrt = cor(sc2_dBCoV.sqrt, case_rate, method = "pearson", use="complete.obs"),
+                          r_dBCoV.sqrt2 = cor(sc2_dBCoV.sqrt2, case_rate, method = "pearson", use="complete.obs"),
+                          r_mBCoV.sqrt2 = cor(sc2_mBCoV.sqrt2, case_rate, method = "pearson", use="complete.obs"), 
+                          
+                          r_dPMMoVBCoV.sqrt2 = cor(sc2_dPMMoVBCoV.sqrt2, case_rate, method = "pearson", use="complete.obs"),
+                          r_mPMMoVBCoV.sqrt2 = cor(sc2_mPMMoVBCoV.sqrt2, case_rate, method = "pearson", use="complete.obs"),
+                          r_raw. = cor(avg_sars_cov2_conc, case_rate, method = "pearson", use="complete.obs"))
+
+```
+
+```{r label="Pearson plot tile", warning=FALSE}
+correlate.melt.pearson<-reshape2::melt(correlate.pearson, id.vars="wwtp_name")
+correlate.melt.pearson[correlate.melt.pearson == "NaN"] <- NA
+
+
+g1<-ggplot(correlate.melt.pearson %>% 
+         filter(variable %!in% c("population", "count")),
+       aes(x = variable, y = wwtp_name, fill = value)) + 
+  geom_tile() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_viridis_c(begin = 0, end = 1, direction = -1)
+ggplotly(g1)
+```
+
+
+### Spearman correlations
+
+```{r label="Spearman correlation", echo=TRUE}
+correlate.spearman<- data %>%
+                group_by(wwtp_name) %>% 
+                summarise(population = mean(population_served, na.rm = TRUE), 
+                          count = n(),
+                          
+                          r_raw = cor(avg_sars_cov2_conc, case_rate, method = "spearman", use="complete.obs"),
+                          
+                          r_flow_pop = cor(sc2_flow_pop, case_rate, method = "spearman", use="complete.obs"), 
+                          r_adj_load = cor(sars_cov2_adj_load, case_rate, method = "spearman", use="complete.obs"),
+                          
+                          r_dPMMoV = cor(sc2_dPMMoV, case_rate, method = "spearman", use="complete.obs"),
+                          r_dPMMoV.log10 = cor(sc2_dPMMoV.log10, case_rate, method = "spearman", use="complete.obs"),
+                          r_dPMMoV.sqrt = cor(sc2_dPMMoV.sqrt, case_rate, method = "spearman", use="complete.obs"),
+                          r_dPMMoV.sqrt2 = cor(sc2_dPMMoV.sqrt2, case_rate, method = "spearman", use="complete.obs"),
+                          r_mPMMoV.sqrt2 = cor(sc2_mPMMoV.sqrt2, case_rate, method = "spearman", use="complete.obs"),
+
+                          r_dBCoV = cor(sc2_dBCoV, case_rate, method = "spearman", use="complete.obs"),
+                          r_dBCoV.log10 = cor(sc2_dBCoV.log10, case_rate, method = "spearman", use="complete.obs"),
+                          r_dBCoV.sqrt = cor(sc2_dBCoV.sqrt, case_rate, method = "spearman", use="complete.obs"),
+                          r_dBCoV.sqrt2 = cor(sc2_dBCoV.sqrt2, case_rate, method = "spearman", use="complete.obs"),
+                          r_mBCoV.sqrt2 = cor(sc2_mBCoV.sqrt2, case_rate, method = "spearman", use="complete.obs"), 
+                          
+                          r_dPMMoVBCoV.sqrt2 = cor(sc2_dPMMoVBCoV.sqrt2, case_rate, method = "spearman", use="complete.obs"),
+                          r_mPMMoVBCoV.sqrt2 = cor(sc2_mPMMoVBCoV.sqrt2, case_rate, method = "spearman", use="complete.obs"),
+                          r_raw. = cor(avg_sars_cov2_conc, case_rate, method = "spearman", use="complete.obs"))
+
+```
+
+```{r label="Spearman plot tile", warning=FALSE}
+correlate.melt.spearman<-reshape2::melt(correlate.spearman, id.vars="wwtp_name")
+correlate.melt.spearman[correlate.melt.spearman == "NaN"] <- NA
+
+g2<-ggplot(correlate.melt.spearman %>% 
+         filter(variable %!in% c("population", "count")),
+       aes(x = variable, y = wwtp_name, fill = value)) + 
+  geom_tile() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_fill_viridis_c(begin = 0, end = 1, direction = -1)
+ggplotly(g2)
+```
+
+
+\
+\
+\
+\
+\
+\
+
+
+
+
+# 2. Prospection of the variables that can be used to normalize WW data \
+
+
+
+
+
+
+Let's (try) to be smart and change the way of approaching the data \
+
+With the above approach, I can calculate new normalization combinations forever. Because it sounds stupid to do so, another approach may be better to identify which independent variables (PMMoV, BCoV, flow, pH, etc.) can be use to increase normalize N1/N2 data and increase the correlation between SARS-CoV-2 and the case rate data. 
+
+
+First, I calculated the difference between the **log10(N1/N2 average)** and **case rate**. When the difference is low, N1/N2 match case rate. When the |difference| is high, N1/N2 does not match case rate. \
+Second, I computed for each WWTP the mean of the independent variables and determine the difference between the values for a given sample and its mean. \
+
+Hopefully, when N1/N2 is far off case data, one of the independent variables will systematically be off too :-| (that is my face right now).
+
+
+```{r label="Compute differences"}
+# Difference between WW and case data 
+data$difference.log<-log10(data$avg_sars_cov2_conc+1)-(data$case_rate)
+
+# Difference between value and average of the value for a given WWTP
+mean.indpt<-data %>%
+  group_by(wwtp_name) %>%
+  summarise(mean_pmmov_conc = mean(pmmov_conc, na.rm=TRUE), 
+          mean_bcov_rec_rate = mean(bcov_rec_rate, na.rm=TRUE), 
+          mean_average_flow_rate = mean(average_flow_rate, na.rm=TRUE), 
+          mean_ph = mean(ph, na.rm=TRUE), 
+          mean_temperature = mean(temperature, na.rm=TRUE), 
+          mean_BOD5 = mean(BOD5, na.rm=TRUE), 
+          mean_TSS = mean(TSS, na.rm=TRUE))
+
+data.select.1<-left_join(data, mean.indpt, by="wwtp_name")
+data.select.1$diff_pmmov_conc<-log10(data.select.1$mean_pmmov_conc+1)-log10(data.select.1$pmmov_conc+1)
+data.select.1$diff_bcov_rec_rate<-data.select.1$mean_bcov_rec_rate-data.select.1$bcov_rec_rate
+data.select.1$diff_average_flow_rate<-data.select.1$mean_average_flow_rate- data.select.1$average_flow_rate
+data.select.1$diff_ph<-data.select.1$mean_ph- data.select.1$ph
+data.select.1$diff_temperature<- data.select.1$mean_temperature-data.select.1$temperature
+data.select.1$diff_BOD5<-data.select.1$mean_BOD5-data.select.1$BOD5
+data.select.1$diff_TSS<-data.select.1$mean_TSS-data.select.1$TSS
+
+
+data.select.1<-data.select.1 %>% 
+  select(wwtp_name, diff_pmmov_conc, diff_bcov_rec_rate, diff_average_flow_rate, diff_ph, diff_temperature, diff_BOD5, diff_TSS, difference.log)%>% 
+  #mutate_all(~ifelse(is.nan(.), NA, .)) %>%
+  filter(!is.na(difference.log))
+
+# Center scale the data 
+data.select.1[data.select.1 == "NaN"] <- NA
+data.select.1.sc<-scale(data.select.1 %>% 
+  select(diff_pmmov_conc, diff_bcov_rec_rate, diff_average_flow_rate, diff_ph, diff_temperature, diff_BOD5, diff_TSS, difference.log), center = TRUE, scale = TRUE)
+data.select.1.sc<-cbind(data.select.1$wwtp_name, as.data.frame(data.select.1.sc))
+names(data.select.1.sc)[1]<-"wwtp_name"
+```
+
+```{r}
+print("data summary BEFORE center/scale transformation")
+summary(data.select.1)
+
+print("data summary AFTER center/scale transformation")
+summary(data.select.1.sc)
+
+
+data.select.1.sc.melt<-reshape2::melt(data.select.1.sc, id.vars="wwtp_name")
+ggplot(data.select.1.sc.melt, 
+       aes(x=variable, y=value)) + 
+  geom_boxplot()
+
+print(paste0("Note: ", length(which(is.na(data.select.1.sc.melt$value)=="TRUE")), " NA values"))
+```
+
+\
+\
+\
+\
+
+
+### Random forest #1 - Include all NAs
+
+```{r label="Random forest model #1"}
+rf.1 <-randomForest(difference.log~., data=data.select.1.sc, ntree=500, na.action = na.roughfix, importance=TRUE) 
+print(rf.1)
+```
+
+
+
+```{r figs, label="Error plot", fig.cap="This plot shows the Error (out-of-bag error) and the number of trees used to build the model. The Error is dropping as we keep on adding more and more trees and average them."}
+plot(rf.1, type="l", main= "")
+```
+
+Regression using decision trees [which is the case for Random forest)] follows the same pattern as any decision tree algorithm. The decision tree regression algorithm looks at all attributes and their values to determine which indpt variable value would lead to the ‘best split’. For regression problems, the algorithm looks at MSE (mean squared error) as its objective or cost function, which needs to be minimized. This is equal to variance reduction as a feature selection criterion. (from https://www.keboola.com/blog/random-forest-regression) \ 
+\
+
+Random forest regression outputs: \
+- **mean square error (MSE)** ~prediction error. This shows how much our model accuracy decreases if we leave out that variable. \
+- **node purity** ~how well a predictor decreases variance. Node purity is the total decrease in residual sum of squares when splitting on a variable averaged over all trees. \
+
+
+
+```{r figs, label="MSE and purity plot", fig.cap="Importance of the different variables"}
+# Get variable importance from the model fit
+ImpData <- as.data.frame(importance(rf.1))
+ImpData$Var.Names <- row.names(ImpData)
+
+ggplot(ImpData, aes(x=Var.Names, y=`%IncMSE`)) +
+  geom_segment( aes(x=Var.Names, xend=Var.Names, y=0, yend=`%IncMSE`), color="skyblue") +
+  geom_point(aes(size = IncNodePurity), color="blue", alpha=0.6) +
+  theme_light() +
+  coord_flip() +
+  theme(
+    legend.position="bottom",
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+```
+\
+\
+\
+\
+
+
+### Random forest #2 - Exclude NAs
+
+```{r label="Random forest model #2"}
+rf.2 <-randomForest(difference.log~., data=data.select.1.sc, ntree=500, na.action = na.exclude, importance=TRUE) 
+print(rf.2)
+
+plot(rf.2, type="l", main= "")
+```
+```{r figs}
+ImpData <- as.data.frame(importance(rf.2))
+ImpData$Var.Names <- row.names(ImpData)
+
+ggplot(ImpData, aes(x=Var.Names, y=`%IncMSE`)) +
+  geom_segment( aes(x=Var.Names, xend=Var.Names, y=0, yend=`%IncMSE`), color="skyblue") +
+  geom_point(aes(size = IncNodePurity), color="blue", alpha=0.6) +
+  theme_light() +
+  coord_flip() +
+  theme(
+    legend.position="bottom",
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+```
+\
+\
+\
+\
+
+
+
+### Random forest #3 - One model per WWTP - Exclude NAs
+
+The "diff_temperature" was not explored in this analysis. Depending on the WWTP, "diff_TSS", "diff_BOD5", and/or "diff_ph" was not included. 
+
+
+The main conclusion from the output below is that the WWTPs do not behave the same. However, overall the flow and BCoV are frequently identify to be good variables to decrease the variance in the diff(WW-case). 
+
+
+The flow was identify in 4 out of the 6 WWTPs that have combined sewer systems (when it rains, the sewage flow increase). 
+
+```{r label="Random forest model #3"}
+#par(mfrow=c(26,2)); par(mfrow=c(1,1))
+plot_list <- list() 
+
+
+for(i in 1:nlevels(as.factor(data.select.1.sc$wwtp_name))){
+  wwtp = levels(as.factor(data.select.1.sc$wwtp_name))[i]
+  #print(wwtp)
+  
+  
+  if(wwtp %in% c("Spencer", "Spooner")){
+    data.rf3=data.select.1.sc %>% filter(wwtp_name == wwtp) %>% select(-c(wwtp_name, diff_TSS, diff_BOD5, diff_temperature))
+  } else if(wwtp %in% c("Superior", "Watertown")){
+    data.rf3=data.select.1.sc %>% filter(wwtp_name == wwtp) %>% select(-c(wwtp_name, diff_ph, diff_temperature))
+  } else if(wwtp %in% c("Washburn")){
+    data.rf3=data.select.1.sc %>% filter(wwtp_name == wwtp) %>% select(-c(wwtp_name, diff_BOD5, diff_temperature))
+  } else {
+    data.rf3=data.select.1.sc %>% filter(wwtp_name == wwtp) %>% select(-wwtp_name, -diff_temperature)
+  }
+  
+  #View(data.rf3)
+  rf.3 <-randomForest(difference.log~.,data=data.rf3, ntree=500, na.action = na.exclude, importance=TRUE) 
+
+ImpData <- as.data.frame(importance(rf.3))
+ImpData$Var.Names <- row.names(ImpData)
+ImpData$wwtp <- wwtp
+
+
+plot_list[[i]] <- ggplot(ImpData, aes(x=Var.Names, y=`%IncMSE`)) +
+  geom_segment( aes(x=Var.Names, xend=Var.Names, y=0, yend=`%IncMSE`), color="skyblue") +
+  geom_point(aes(size = IncNodePurity), color="blue", alpha=0.6) +
+  theme_light() +
+  coord_flip() +
+  theme(
+    legend.position="bottom",
+    panel.grid.major.y = element_blank(),
+    panel.border = element_blank(),
+    axis.ticks.y = element_blank()
+  ) + 
+  ggtitle(wwtp)
+
+
+  if(i==1){
+    IncMSE<-ImpData
+  }else{
+    IncMSE<-rbind(ImpData, IncMSE)
+  }
+}
+write.table(IncMSE, "IncMSE_qPCR.tsv", sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+```
+
+```{r fig.height=100, warning=FALSE}
+wrap_plots(plot_list, ncol = 2)
+```
+\
+\
+\
+\
+
+
+```{css}
+.code-folding-btn {
+  display: none;
+}
+```
