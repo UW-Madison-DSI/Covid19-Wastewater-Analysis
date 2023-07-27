@@ -59,8 +59,8 @@ MSE <- function(baseVal, meanVal){
 #wastedf <- wastervtemp
 Offset <-function(length, startdate, enddate, casesdf, wastedf){
   
-  wastedf <- subset(wastedf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
-  casesdf <- subset(casesdf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
+  wastedf <- subset(wastedf, as.Date(date)> as.Date(startdate) & as.Date(date) < as.Date(enddate))
+  casesdf <- subset(casesdf, as.Date(date)> as.Date(startdate) & as.Date(date) < as.Date(enddate))
 
   wastedf <- wastedf%>% 
   group_by(date)%>% 
@@ -306,8 +306,8 @@ casesdf <- cases
   startdate <- max(c(min(wastedf$date),min(casesdf$date)))
   enddate <- min(c(max(wastedf$date),max(casesdf$date)))
   #enddate <- as.Date("2022-01-01")
-  wastedf <- subset(wastedf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
-  casesdf <- subset(casesdf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
+  wastedf <- subset(wastedf, as.Date(date)> as.Date(startdate) & as.Date(date) < as.Date(enddate))
+  casesdf <- subset(casesdf, as.Date(date)> as.Date(startdate) & as.Date(date) < as.Date(enddate))
 
   wastedf <- wastedf%>% 
   group_by(date)%>% 
@@ -417,8 +417,8 @@ totalcases <- totalcases2
 
 ```{r}
 Ccf <- function(wastecasedf, startdate, enddate, lag, name){
-  tempwc <- subset(wastecasedf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
-  tempwastedf <- subset(wastedf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
+  tempwc <- subset(wastecasedf, as.Date(date)> as.Date(startdate) & as.Date(date) < as.Date(enddate))
+  tempwastedf <- subset(wastedf, as.Date(date)> as.Date(startdate) & as.Date(date) < as.Date(enddate))
   temp3 <- tempwc %>% mutate(conf_case = (roll_sum(sum_case,2,align = "right",fill = NA) + roll_sum(sum_case,5,align = "left",fill = NA) - roll_sum(sum_case,1,align = "center",fill = NA)) )%>% drop_na(conf_case)
 
   ccfdata <- ccf(temp3$conf_case,tempwastedf$geo_mean, main= name,lag.max = lag,plot=0) #,plot=0
@@ -520,7 +520,7 @@ heatmapcorfunc <- function(cordata,varsplit){
   if(varsplit == 1){
     rsquareddf <- data.frame(matrix(ncol = 1, nrow = 0))
     for(v in 1:3){#length(covarstarts)
-      cordatasubset <- subset(cordata, anydate(date)> anydate(covarstarts[v]) & anydate(date) < anydate(covarends[v]))
+      cordatasubset <- subset(cordata, as.Date(date)> as.Date(covarstarts[v]) & as.Date(date) < as.Date(covarends[v]))
       for(j in 0:9){
         for(i in 0:9){
           wctemplm <- cordatasubset %>% 
@@ -621,7 +621,7 @@ heatmapMadison <- merge(heatmapMadisonW,heatmapMadisonC, by = "date")
 #timePeriods = 2
 #wasteinput = waste
 #caseinput = cases
-heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput,list,lod=FALSE,testSwitch,week){
+heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput,list,lod=FALSE,week){
   
   
   wasterv <- wasteinput
@@ -639,20 +639,9 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput,list,lod=FALSE,t
   }
   tempregion <- select(wasterv,regions,site) %>% unique()
   outputrvt <- data.frame(matrix(ncol = 1, nrow = 0))
-  if(testSwitch == "qPCR"){
-    firstday <- as.numeric(as.Date("2020-08-01"))
-    endday <- as.numeric(as.Date("2022-01-01"))
-    wasterv <- subset(wasterv, anydate(date)> anydate(firstday) & anydate(date) < anydate(endday))
-    caserv <- subset(caserv, anydate(date)> anydate(firstday) & anydate(date) < anydate(endday))
-  } else if(testSwitch == "dPCR"){
-    firstday <- as.numeric(as.Date("2022-01-01"))
+  
+  firstday <- as.numeric(as.Date("2020-08-01"))
     endday <- as.numeric(as.Date("2022-12-01"))
-    wasterv <- subset(wasterv, anydate(date)> anydate(firstday) & anydate(date) < anydate(endday))
-    caserv <- subset(caserv, anydate(date)> anydate(firstday) & anydate(date) < anydate(endday))
-  } else {
-    firstday <- as.numeric(as.Date("2020-08-01"))
-    endday <- as.numeric(as.Date("2022-12-01"))
-  }
   
   if(timePeriods == 0){
     start <- covarstarts
@@ -679,8 +668,8 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput,list,lod=FALSE,t
       #print(j,i)
       #j = "Northern"
       #i = 1
-      wastervtemp <- subset(wasterv, anydate(date)> anydate(start[i]) & anydate(date) < anydate(end[i]))
-      caservtemp <- subset(caserv, anydate(date)> anydate(start[i]) & anydate(date) < anydate(end[i]))
+      wastervtemp <- subset(wasterv, as.Date(date)> as.Date(start[i]) & as.Date(date) < as.Date(end[i]))
+      caservtemp <- subset(caserv, as.Date(date)> as.Date(start[i]) & as.Date(date) < as.Date(end[i]))
       
       if(lod){
         wastervtemp <- wastervtemp %>% filter(N1 > n1_lod)
@@ -809,8 +798,8 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput,list,lod=FALSE,t
                   y = case_when(regionsizemax < 5 ~ (regionsizemin + (regionsizemax - regionsizemin) / 2)+1,
                                 .default = (regionsizemin + (regionsizemax - regionsizemin) / 2)-1), 
                   label = case_when(is.na(rcor) ~ paste(NA),
-                    .default = paste(rd(as.numeric(rcor), digits=2)))
-                  ),#
+                    .default = paste(round(as.numeric(rcor), digits=2)))
+                  ),
               size = 3) +
     scale_fill_gradient2(low = "#D16BA5", mid = "#86A8E7", high = "#5FFBF1", na.value = "white" ) + 
     xlab(case_when(timePeriods == 0 ~ paste("Variants (over 50% of population)"),
@@ -818,8 +807,8 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput,list,lod=FALSE,t
     scale_y_discrete(labels=templabels) +
     ylab(case_when(list == "region" ~ "Region",
                    .default = "Population")) +
-    ggtitle(case_when(lod == TRUE ~ paste(scale, "values above LOD", testSwitch),
-          .default = paste(scale, "using all N1/N2", testSwitch) ) )  +
+    ggtitle(case_when(lod == TRUE ~ paste(scale, "values above LOD"),
+          .default = paste(scale, "using all N1/N2") ) )  +
    labs(fill="") +#Days wastewater is offset from cases #was: Offset in days
     geom_text(aes(x = (as.Date(start + firstday) + (as.Date(end + firstday) - as.Date(start + firstday)) / 2),
                   y = .75, 
@@ -832,12 +821,12 @@ heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput,list,lod=FALSE,t
   return(heatmaprvt)
 }
 
-heatmapfunc("kendall_offset",0,waste,cases,"pop",TRUE,"Both tests",TRUE)
+heatmapfunc("kendall_offset",0,waste,cases,"pop",TRUE,TRUE)
+heatmapfunc("kendall_offset",0,waste,cases,"pop",TRUE,TRUE)
 
-
-heatmapfunc("kendall_offset",0,waste %>% filter(pcr_type == "qPCR"),cases,"pop",TRUE,"Both tests",TRUE)
-heatmapfunc("kendall_offset",0,waste %>% filter(pcr_type == "dPCR"),cases,"pop",TRUE,"Both tests",TRUE)
-heatmapfunc("kendall_offset",0,waste %>% filter(pcr_type == "droplet digital PCR"),cases,"pop",TRUE,"Both tests",TRUE)
+heatmapfunc("kendall_offset",0,waste %>% filter(pcr_type == "qPCR"),cases,"pop",TRUE,TRUE)
+heatmapfunc("kendall_offset",0,waste %>% filter(pcr_type == "dPCR"),cases,"pop",TRUE,TRUE)
+heatmapfunc("kendall_offset",0,waste %>% filter(pcr_type == "droplet digital PCR"),cases,"pop",TRUE,TRUE)
 
 
 unique((waste %>% filter(pcr_type == "droplet digital PCR"))$site)
