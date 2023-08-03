@@ -1,0 +1,291 @@
+---
+title: "missed_flag_ratio_analysis"
+author: "Marlin"
+date: "2022-11-09"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r set up markdown settings, include = FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE
+)
+```
+
+
+```{r}
+library(Covid19Wastewater)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+load_Dataset <- function(){
+  #load WasteWater_data into the environment
+  data(WasteWater_data, package = "Covid19Wastewater")
+  baseWaste_DF <-  buildWasteAnalysisDF(WasteWater_data)
+  data(Case_data, package = "Covid19Wastewater")
+  Case_DF <- Case_data
+
+  Flag_DF <- read.csv("Temp/DHSFlagingMethodOutput.csv")%>%
+            mutate(date = as.Date(date))%>%
+   select(-X)
+  return(Flag_DF)
+}
+Flag_DF <- load_Dataset()
+date_Flag_DF <- DF_date_vector(Flag_DF, "date", 
+               names(Flag_DF)[3:68])
+baseWaste_DF <-  buildWasteAnalysisDF(WasteWater_data)
+baseWaste_DF$site <- ifelse(baseWaste_DF$site == "Madison MSD WWTF",
+                            "Madison", baseWaste_DF$site)
+```
+
+
+```{r create flag distance}
+library(lubridate)
+#"case_flag_Cases"                         "case_flag_7DayCases"                    
+#"case_flag_plus_comm.threshold_Cases"     "case_flag_plus_comm.threshold_7DayCases"
+#"slope_switch_flag_Cases"                 "slope_switch_flag_7DayCases"
+dep_flags <- names(Flag_DF)[9:68]
+edgeThresh <- 21
+CaseFlag <- "slope_switch_flag_Cases"
+rawDateDistDF <- date_Flag_DF%>%
+  date_distance_calc(CaseFlag, dep_flags)%>%
+  select(all_of(c(dep_flags, "site", "date")))%>%
+  tidyr::pivot_longer(cols = dep_flags,
+                      names_to = c("FlagType","window", "quant"),
+                      values_to = "flag_error",
+                      names_sep = "_")%>%
+  mutate(window = as.numeric(window), quant = as.numeric(quant))%>%
+  group_by(site, week(date), year(date), window, quant, FlagType)%>%
+  mutate(sample_rate = n())%>%
+  ungroup()
+
+library(lubridate)
+city_data <- baseWaste_DF%>%
+  group_by(site)%>%
+  summarise(pop = mean(population_served))%>%
+  group_by(site)%>%
+  summarise(pop = mean(pop))%>%
+  mutate(pop = ntile(pop, 3))
+
+baseWaste_DF%>%
+  left_join(city_data)%>%
+  group_by(site, week(date), year(date))%>%
+  summarise(freq = n(), pop = mean(population_served))%>%
+  group_by(site)%>%
+  summarise(freq = round(mean(freq),1),pop = mean(pop))%>%
+  arrange(pop)
+
+```
+
+```{r missed percent high level}
+
+sum_analysis <- function(DF){
+  ret_df <- DF%>%
+  #filter(window > 30)%>%
+  summarise(Mean = mean(flag_error, na.rm = TRUE),
+            Var = var(flag_error, na.rm = TRUE),
+            num_flags = sum(!is.na(flag_error)),
+            missed_percent = 100*mean(abs(flag_error) > edgeThresh, na.rm = TRUE),
+            MSE = mean(ifelse(abs(flag_error) > edgeThresh,
+                            NA,flag_error)^2, na.rm = TRUE))%>%
+  filter(num_flags != 0)
+  return(ret_df)
+}
+
+#flaging method
+DistSummaryMainSite <- rawDateDistDF%>%
+  group_by(window, quant, FlagType)%>%
+  sum_analysis()
+
+DistSummaryMainSite <- DistSummaryMainSite%>%
+  filter(FlagType != "cdc.flag")
+
+DistSummaryMainSite%>%
+  lm(missed_percent~MSE + window + quant + FlagType,data = .)%>%
+  summary()
+
+
+DistSummaryMainSite%>%
+  #filter(missed_percent != 0)%>%
+  ggplot(aes(x = MSE, y = missed_percent, 
+             color = factor(window), size = factor(quant), shape = FlagType))+
+  scale_colour_discrete(type = c("#111155", "#222288", "#3333AA", "#4444FF"))+
+  geom_point()
+
+
+rawDateDistDF%>%
+  ungroup()%>%
+  filter(!is.na(flag_error))%>%
+  summarise(mean(abs(flag_error)>edgeThresh, na.rm=TRUE))
+```
+
+```{r missed percent pop}
+#flaging method
+DistSummarySite <- rawDateDistDF%>%
+  left_join(city_data)%>%
+  #filter(window > 30)%>%
+  group_by(window, quant, FlagType, pop)%>%
+  sum_analysis()
+
+QuantDistSummarySite <- DistSummarySite%>%
+  filter(FlagType != "cdc.flag")
+
+a <- QuantDistSummarySite%>%
+  #filter(missed_percent != 0)%>%
+  ggplot(aes(x = MSE, y = missed_percent, color = factor(pop), info = num_flags))+
+  geom_point(size = 2)+
+  geom_smooth(se = FALSE, method = "lm")
+  #scale_x_log10()
+ggplotly(a)
+
+QuantDistSummarySite%>%
+  ggplot(aes(x = as.factor(pop), y = missed_percent))+
+  geom_violin()+
+  geom_point()#+
+  #scale_y_log10()
+
+QuantDistSummarySite%>%
+  ungroup()%>%
+  summarise(mean(missed_percent==0))
+```
+
+```{r sample_rate}
+#flaging method
+DistSummarySite <- rawDateDistDF%>%
+  left_join(city_data)%>%
+  #filter(window > 30)%>%
+  group_by(window, quant, FlagType, sample_rate)%>%
+  sum_analysis()
+
+QuantDistSummarySite <- DistSummarySite%>%
+  filter(FlagType != "cdc.flag")
+
+a <- QuantDistSummarySite%>%
+  #filter(missed_percent != 0)%>%
+  ggplot(aes(x = MSE, y = missed_percent, color = factor(sample_rate), 
+             info = num_flags))+
+  geom_point(size = 2)+
+  geom_smooth(data = filter(QuantDistSummarySite, missed_percent!=0), 
+              se = FALSE, method = "lm")#+
+  #scale_x_log10()
+ggplotly(a)
+
+QuantDistSummarySite%>%
+  ggplot(aes(x = as.factor(sample_rate), y = missed_percent))+
+  geom_violin()+
+  geom_point()#+
+  #scale_y_log10()
+
+QuantDistSummarySite%>%
+  ungroup()%>%
+  summarise(mean(missed_percent==0))
+```
+
+```{r pop vs freq}
+rawDateDistDF%>%
+  left_join(city_data)%>%
+  group_by(pop, sample_rate)%>%
+  summarise(num_flags = sum(!is.na(flag_error)))%>%
+  ggplot(aes(x = pop, y = sample_rate))+
+  geom_tile(aes(fill = num_flags))+
+  geom_text(aes(label = num_flags))
+
+rawDateDistDF%>%
+  left_join(city_data)%>%
+  group_by(pop, sample_rate)%>%
+  summarise(num_flags = round(sum(!is.na(flag_error))/sample_rate))%>%
+  ggplot(aes(x = pop, y = sample_rate))+
+  geom_tile(aes(fill = num_flags))+
+  geom_text(aes(label = num_flags))
+
+
+a <- rawDateDistDF%>%
+  group_by(week = week(date), year = year(date))%>%
+  summarise(missed_avg = mean(flag_error, na.rm = TRUE),
+            num_flags = sum(!is.na(flag_error)),
+            date = mean(date))%>%
+  ggplot(aes(x = date, y = missed_avg, color = num_flags))+
+  geom_point()
+ggplotly(a)
+
+date_Flag_DF%>%
+  group_by(week = week(date), year = year(date))%>%
+  summarize(num_flags = sum(!is.na(case_flag_Cases)),
+            date = mean(date))%>%
+  ggplot(aes(x = date, y = num_flags))+
+  geom_point()
+
+date_Flag_DF%>%
+  group_by(week = week(date), year = year(date))%>%
+  summarize(num_flags = sum(!is.na(flag.ntile.Pval_90_0.9)),
+            date = mean(date))%>%
+  ggplot(aes(x = date, y = num_flags))+
+  geom_point()
+```
+
+
+```{r modeling approch}
+
+model_df <- rawDateDistDF%>%
+  left_join(city_data)%>%
+  filter(window > 30)%>%
+  group_by(window, quant, FlagType, sample_rate, pop)%>%
+  sum_analysis()
+
+model_df%>%
+  lm(missed_percent ~ FlagType + window + quant + sample_rate + pop + MSE, 
+     weight = num_flags, data = .)%>%
+  summary()
+```
+
+```{r}
+rawDateDistDF%>%
+  # left_join(city_data)%>%
+  filter(window > 30)%>%
+  group_by(sample_rate)%>%
+  sum_analysis()%>%
+  ggplot(aes(x = num_flags, y = sample_rate))+
+  geom_point()
+
+
+rawDateDistDF%>%
+  left_join(city_data)%>%
+  lm(flag_error ~ site, data = .)%>%
+  summary()
+```
+
+
+```{r skew}
+a <- rawDateDistDF%>%
+  left_join(city_data)%>%
+  group_by(site)%>%
+  mutate(men = mean(flag_error, na.rm = TRUE),
+        test = flag_error - men)
+hist(a$test, breaks = 80)
+library(moments)
+mean(rawDateDistDF$flag_error, na.rm = TRUE)
+skewness(rawDateDistDF$flag_error, na.rm = TRUE)
+kurtosis(rawDateDistDF$flag_error, na.rm = TRUE)
+mean(a$test, na.rm = TRUE)
+skewness(a$test, na.rm = TRUE)
+kurtosis(a$test, na.rm = TRUE)
+
+rawDateDistDF%>%
+  left_join(city_data)%>%
+  group_by(sample_rate)%>%
+  summarise(m = mean(flag_error, na.rm = TRUE),
+            sd = sd(flag_error, na.rm = TRUE),
+            sk = skewness(flag_error, na.rm = TRUE),
+            k = kurtosis(flag_error, na.rm = TRUE))
+
+rawDateDistDF%>%
+  left_join(city_data)%>%
+  group_by(pop)%>%
+  summarise(m = mean(flag_error, na.rm = TRUE),
+            sd = sd(flag_error, na.rm = TRUE),
+            sk = skewness(flag_error, na.rm = TRUE),
+            k = kurtosis(flag_error, na.rm = TRUE))
+```

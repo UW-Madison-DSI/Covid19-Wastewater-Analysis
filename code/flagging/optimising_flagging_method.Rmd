@@ -60,11 +60,11 @@ library(DSIWastewater)
 #load WasteWater_data into the environment
 library(dplyr)
 data(WasteWater_data, package = "DSIWastewater")
-data(pop_data, package = "DSIWastewater")
+data(Pop_data, package = "DSIWastewater")
 
 #get DF into format for buildRegressionEstimateTable
 baseWaste_DF <-  buildWasteAnalysisDF(WasteWater_data)%>%
-  left_join(pop_data)%>%
+  left_join(Pop_data)%>%
   rename(population_served = pop)
 
 baseWaste_DF$site <- ifelse(baseWaste_DF$site == "Madison MSD WWTF",
@@ -136,7 +136,7 @@ Case_DF <- Case_data
 
 #get the case flags
 Case_DF <- Case_DF%>%
-  left_join(pop_data)%>%
+  left_join(Pop_data)%>%
   rename(population_served = pop)%>%
   buildCaseAnalysisDF()%>%
   filter(site == "Madison")

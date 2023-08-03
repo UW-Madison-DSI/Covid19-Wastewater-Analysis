@@ -40,8 +40,8 @@ waste <- WasteWater_data
 data(Covariants_data, package = "DSIWastewater")
 covar <- Covariants_data
 
-data(pop_data, package = "DSIWastewater")
-population <- pop_data
+data(Pop_data, package = "DSIWastewater")
+population <- Pop_data
 
 ```
 

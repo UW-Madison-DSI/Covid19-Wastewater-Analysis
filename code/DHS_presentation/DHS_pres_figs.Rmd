@@ -15,7 +15,7 @@ knitr::opts_chunk$set( warning = FALSE, message=FALSE, echo=FALSE, fig.width = 1
 ```
 
 ```{r include = FALSE, message = FALSE}
-library(DSIWastewater)
+library(Covid19Wastewater)
 library(dplyr)
 library(ggplot2)
 library(tidyr)
@@ -23,9 +23,9 @@ set.seed(321)
 ```
 
 ```{r package dataset}
-library(DSIWastewater)
-data("Case_data", package = "DSIWastewater")
-data("WasteWater_data", package = "DSIWastewater")
+library(Covid19Wastewater)
+data("Case_data", package = "Covid19Wastewater")
+data("WasteWater_data", package = "Covid19Wastewater")
 ```
 
 

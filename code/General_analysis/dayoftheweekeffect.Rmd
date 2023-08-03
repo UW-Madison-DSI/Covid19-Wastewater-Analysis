@@ -1,0 +1,203 @@
+---
+header-includes:
+  - \usepackage{wrapfig}
+title: "Does a Day-of-the-Week effect exist?"
+author:
+- Marlin Lee, Steve Goldstein, Kyllan Wunder, Abe Megahed
+- "University of Wisconsin Data Science Institute - August, 2022"
+output:
+  pdf_document:
+    keep_tex: true
+---
+
+```{r set up markdown settings, include =FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE,
+	fig.align = 'Right',
+	Plot.size = .6,
+	PlotHeight = 15
+	#out.width= "65%"
+)
+
+defOut <- knitr::knit_hooks$get("plot")  # save the default plot hook
+
+knitr::knit_hooks$set(plot = function(x, options) {  # set new plot hook ...
+  
+  x <- defOut(x, options)  # first apply the default hook
+  # create the new opening string for the wrapfigure environment ...
+  wf <- sprintf("\\noindent\\begin{wrapfigure}[%g]{%s}{%g\\textwidth}", 
+                options$PlotHeight, "R", options$Plot.size)
+  
+  x  <- gsub("\\begin{figure}", wf, x, fixed = T)  # and replace the default one with it.
+  
+  x  <- gsub("{figure}", "{wrapfigure}", x, fixed = T)  # also replace the environment ending
+  return(x)
+})
+
+```
+
+```{r create case data in right format}
+library(Covid19Wastewater)
+library(ggplot2)
+library(tidyquant)
+library(lubridate)
+library(dplyr)
+library(plotly)
+```
+
+```{r create case flags}
+#load Case_data into the environment
+data(Case_data, package = "Covid19Wastewater")
+
+
+#restrict Case data to only Madison data
+Case_DF <- Case_data[Case_data$Site == "Madison",]
+
+
+#restrict Case data to dates after 2021-02-01
+Case_DF <- Case_DF[Case_DF$date  >= as.Date("2021-02-01"),]
+
+
+#get the case flags
+Case_DF <- buildCaseAnalysisDF(Case_DF)
+
+
+CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF, 
+    RunOn = c("FirstConfirmed.Per100K", "pastwk.sum.casesperday.Per100K"),
+    SplitOn = "Site", DaysRegressed = 7)
+```
+
+
+
+
+```{r plot, eval=FALSE}
+
+ggplot(Case_DF, aes(x=date, y=FirstConfirmed)) +
+  geom_point( alpha = .1) +
+  ylim(0,600) +
+  geom_ma(ma_fun = SMA, n = 7)
+
+
+
+```
+
+### 7 Day smoothing
+
+When a 7-day smoothing is applied to the case data it is apparent that the data does not always follow the line perfectly. When we add in the average of every week we can see that many values are not close to the weekly average at all. 
+
+
+```{r day of week}
+
+year_week <- function(x,base) week(x) - week(base) + 52*(year(x) - year(base))
+
+Case_DF_Week <- Case_DF %>% mutate(week = year_week(date, "2021-02-01")) %>%
+  group_by(week) %>%
+  mutate(weekavg = sum(FirstConfirmed)/7) %>%
+  distinct(week, .keep_all = TRUE)
+  
+ggplot(Case_DF, aes(x=date, y=FirstConfirmed)) +
+  geom_point( alpha = .1) +
+  geom_point(data = Case_DF_Week, aes(x=date, y=weekavg))+
+  ylim(0,600) + 
+  geom_ma(ma_fun = SMA, n = 7)
+
+
+```
+### Cases per day
+
+Looking closer at the data if we sum all of the cases by the day of week in which they were reported and find the proportion of how many cases land on each day we can clearly see that Sunday has the highest proportion of cases confirmed followed by Wednesday, while Friday has the lowest proportion. To try and combat this issue we have created a normalizing factor based off of the proportions for each day of the week. This is just the reciprocal of the proportion. 
+
+
+```{r day of week effect}
+
+Case_DF_DoWe <- Case_DF %>% mutate(dayofweek = wday(date)) %>%
+  group_by(dayofweek) %>%
+  mutate(sumperday = sum(FirstConfirmed)) %>%
+  distinct(Site, dayofweek, sumperday)
+
+
+
+Case_DF_DoWe <- Case_DF_DoWe %>% 
+  group_by(dayofweek, sumperday) %>%
+  tally() %>%
+  ungroup() %>%
+  mutate(prop = sumperday/sum(sumperday)) 
+
+
+
+#mean(Case_DF_DoWe$prop)
+
+Case_DF_DoWe <- Case_DF_DoWe %>%
+  mutate(normalizingfactor = mean(Case_DF_DoWe$prop)/prop, dayofweek = wday(dayofweek, label = TRUE))
+
+head(Case_DF_DoWe)
+
+```
+
+
+```{r trying to normilaze based on day of week}
+
+Case_DF_DoWe_pt2 <- Case_DF_DoWe[-c(2,3)]
+
+#head(Case_DF_DoWe_pt2)
+
+
+
+Case_DF_norm_Cases <- Case_DF %>% mutate(dayofweek = wday(date), dayofweek = wday(dayofweek, label = TRUE))
+
+Case_DF_norm_Cases <- right_join(Case_DF_norm_Cases, Case_DF_DoWe_pt2,by = "dayofweek") 
+  
+
+Case_DF_norm_Cases <- Case_DF_norm_Cases %>% mutate(normcases = FirstConfirmed * normalizingfactor)
+
+#head(Case_DF_norm_Cases)
+
+
+```
+
+### Normilizing cases
+
+As shown normalizing cases is strange. In some places cases are shifted up and some are shifted down. It is hard to tell weather if this has helped or not. But as shown using the same graph from before with the weekly averages not being changed clearly the cases have shifted a lot.
+
+
+
+```{r plotting norm cases vs cases}
+
+Casesvsnormcasesplot <- ggplot(Case_DF_norm_Cases, aes(x=date, y=normcases)) +
+  geom_point(aes(color = "weighted cases")) +
+  geom_point(data=Case_DF, aes(x=date, y=FirstConfirmed, color="cases"))+
+  ylim(0,600) 
+
+Casesvsnormcasesplot
+
+normcaseswithsmooth <- ggplot(Case_DF_norm_Cases, aes(x=date, y=normcases)) +
+  geom_point( alpha = .1) +
+  geom_point(data = Case_DF_Week, aes(x=date, y=weekavg))+
+  ylim(0,600) + 
+  geom_ma(ma_fun = SMA, n = 7)
+
+normcaseswithsmooth
+```
+### Does normlizing help day-of-week effect
+
+If we plot out number of cases per day we can see that some days are always higher like Wednesday (Pink) and some are always lower like Saturday (Green) and Sunday (Light Green). After normalization while Saturday and Sunday are still usually the lowest the rest of the days converge and come closer together and less distinct. It is also clear to see that the days that have the highest and lowest proportions change over time leading us to belive that a better normalizing factor is needed as the proportion of cases changes.
+
+```{r plotting norm cases vs cases per day}
+dayofweek <- ggplot(Case_DF_norm_Cases, aes(x=date, y=FirstConfirmed, color = as.character(dayofweek))) +
+  #geom_point() +
+  geom_ma(ma_fun = SMA, n = 7) +
+  scale_y_log10()
+
+dayofweeknorm <- ggplot(Case_DF_norm_Cases, aes(x=date, y=normcases, color = as.character(dayofweek))) +
+  #geom_point() +
+  geom_ma(ma_fun = SMA, n = 7) +
+  scale_y_log10()
+
+
+dayofweek
+dayofweeknorm
+
+```
+

@@ -1,0 +1,305 @@
+---
+title: "variant offset marlin"
+author: "Marlin"
+date: "2023-05-22"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(dplyr)
+library(ggplot2)
+library(kableExtra)
+```
+
+
+```{r data prep}
+
+library(lubridate)
+data(Case_data, package = "Covid19Wastewater")
+data(Pop_data, package = "Covid19Wastewater")
+
+total_cases <- Case_data %>%
+  left_join(Pop_data)%>%
+  mutate(week = floor(as.numeric(date) / 7))%>%
+  group_by(site, week)%>% 
+  mutate(sum_case = 1e5 * (conf_case + prob_case) / (tests + 1))%>%
+  #mutate(sum_case = (conf_case + prob_case))%>%
+  summarise(sum_case = mean(sum_case, na.rm = TRUE))%>%
+  group_by(week)%>%
+  summarise(conf_case = mean(sum_case, na.rm = TRUE))
+
+data(WasteWater_data, package = "Covid19Wastewater")
+
+
+data(Covariants_data, package = "Covid19Wastewater")
+
+
+covar_df <- data.frame(
+  covarstarts = c(as.Date("2020-08-17"),
+                  as.Date("2021-03-29"),
+                  as.Date("2021-07-05"),
+                  as.Date("2021-12-20"),
+                  as.Date("2022-03-28"),
+                  #as.Date("2022-05-23"),
+                  as.Date("2022-07-04")),
+  covarends = c(as.Date("2021-01-18"),
+                as.Date("2021-05-24"),
+                as.Date("2021-12-06"),
+                as.Date("2022-03-14"),
+                as.Date("2022-05-09"),
+                #as.Date("2022-06-06"),
+                as.Date("2022-11-07")),
+  covarnames <- c("S.677H.Robin1",
+                  "X20I..Alpha..V1.",
+                  "X21J..Delta.",
+                  "X21K..Omicron.",
+                  "X21L..Omicron.",
+                  #"X22C..Omicron.",
+                  "X22B..Omicron."))%>%
+  mutate(wstart = floor(as.numeric(covarstarts) / 7),
+         wend = floor(as.numeric(covarends) / 7))
+
+
+
+waste_data <- WasteWater_data%>%
+  select(-pop)%>%
+  left_join(Pop_data)%>%
+  mutate(week = floor(as.numeric(date) / 7))%>%
+  mutate(N1 = N1 * pop / flow,#norm1
+         N2 = N2 * pop / flow)%>%
+  group_by(site, week)%>% 
+  summarise(sum_conc = mean(log(N1 + 1) + log(N2 + 1), na.rm = TRUE))%>% 
+  group_by(week)%>%
+  summarise(conf_conc = mean(sum_conc, na.rm = TRUE))
+```
+
+```{r}
+merged_df <- full_join(waste_data, total_cases)
+
+no_na_df <- merged_df%>%
+  mutate(conf_case = log(conf_case))%>%
+  filter(!is.na(conf_case), !is.na(conf_conc))
+
+no_na_df%>%
+  ggplot(aes(x = as.Date(7 * week, origin = "1970-01-01")))+
+  geom_rect(mapping  = aes(ymin = -Inf, ymax = Inf,
+                           xmin = as.Date(7 * wstart, origin = "1970-01-01"),
+                           xmax = as.Date(7 * wend, origin = "1970-01-01"),
+                           fill = "Variants (over 50%)"), 
+            data = covar_df,
+            inherit.aes = FALSE, alpha = .08)+
+  scale_fill_manual(values = c("green"))+
+  geom_point(aes( y = conf_conc / 5 + 2, color = "Wastewater"))+
+  geom_point(aes( y = conf_case, color = "Traditional (Cases)"))+
+  theme(axis.ticks = element_blank(),
+        axis.text.y = element_blank())+
+  labs(x = "Date", 
+       y = "Amount Of Covid-19",
+       color = "Signal Source",
+       fill = "")
+
+```
+```{r}
+quick_ccf <- function(df, start, end){
+  temp_df <- df%>%
+    filter(week >= start, week < end)
+  
+  print(which.max(ccf(temp_df$conf_conc, temp_df$conf_case, plot = TRUE, lag.max = 10)$acf) - 10)
+  
+  variant_df <- covar_df%>%
+    filter((wstart >= start & wstart < end) | (wend >= start & wend < end))
+  
+  
+  out_plot <- temp_df%>%
+    ggplot(aes(x = as.Date(7 * week, origin = "1900-01-01")))+
+    geom_rect(mapping  = aes(ymin = -Inf, ymax = Inf,
+                             xmin = as.Date(7 * wstart, origin = "1900-01-01"),
+                             xmax = as.Date(7 * wend, origin = "1900-01-01")), 
+              data = variant_df,
+              inherit.aes = FALSE, alpha = .1, fill = "green")+
+    geom_point(aes( y = conf_conc / 5 + 2, color = "concentration"))+
+    geom_point(aes( y = conf_case, color = "cases"))
+  return(out_plot)
+}
+
+
+#for(i in 1:6){
+#  start_date = covar_df$wstart[i]
+#  end_date = covar_df$wend[i]
+#  print(quick_ccf(no_na_df, start_date, end_date))
+#}
+```
+
+```{r, warning = TRUE}
+total_cases_site <- Case_data %>%
+  left_join(Pop_data, by = "site")%>%
+  mutate(week = floor(as.numeric(date) / 7))%>%
+  group_by(site, week)%>% 
+  mutate(sum_case = 1e5 * (conf_case + prob_case) / (tests + 1))%>%
+  #mutate(sum_case = (conf_case + prob_case))%>%
+  summarise(sum_case = mean(sum_case, na.rm = TRUE))
+
+waste_data_site <- WasteWater_data%>%
+  select(-pop)%>%
+  left_join(Pop_data, by = "site")%>%
+  mutate(week = floor(as.numeric(date) / 7))%>%
+  mutate(N1 = N1 * pop / flow,#norm1
+         N2 = N2 * pop / flow)%>%
+  group_by(site, week, pcr_type)%>% 
+  summarise(sum_conc = mean(log(N1 + 1) + log(N2 + 1), na.rm = TRUE))
+
+start_time <- covar_df%>%
+  arrange(wstart)%>%
+  pull(wstart)
+
+end_time <- covar_df%>%
+  arrange(wend)%>%
+  pull(wend)
+
+full_site_df <- full_join(total_cases_site, waste_data_site)%>%
+  left_join(Pop_data, by = "site")%>%
+  filter(!is.na(sum_conc), !is.na(sum_case))%>%
+  ungroup()%>%
+  mutate(time = "None", #"Omicron3.22B",
+         time = ifelse(start_time[6] <= week & week <= end_time[6], "Omicron3.22B", time),
+         time = ifelse(start_time[5] <= week & week <= end_time[5], "Omicron2.21L", time),
+         time = ifelse(start_time[4] <= week & week <= end_time[4], "Omicron1.21K", time),
+         time = ifelse(start_time[3] <= week & week <= end_time[3], "Delta", time),
+         time = ifelse(start_time[2] <= week & week <= end_time[2], "Alpha.V1", time),
+         time = ifelse(start_time[1] <= week & week <= end_time[1], "Robin1", time),
+         time = factor(time, levels = c("Robin1", "Alpha.V1", "Delta", "Omicron1.21K", "Omicron2.21L", "Omicron3.22B", "None"))
+         )%>%
+  filter(time != "None")%>%
+  mutate(pop_g = "med",
+         pop_g = ifelse(pop <= quantile(pop, .4, na.rm = TRUE), "low", pop_g),
+         pop_g = ifelse(pop <= quantile(pop, .2, na.rm = TRUE), "very low", pop_g),
+         pop_g = ifelse(pop >= quantile(pop, .6, na.rm = TRUE), "high", pop_g),
+         pop_g = ifelse(pop >= quantile(pop, .8, na.rm = TRUE), "very high", pop_g),
+         pop_g = factor(pop_g, levels = c("very high", "high", "med","low","very low"))
+         )
+```
+
+
+```{r site group,  warning = TRUE}
+base_data <- full_site_df%>%
+  group_by(site)%>%
+  summarise(offset = which.max(
+    ccf(sum_case, sum_conc, plot = FALSE, lag.max = 10)$acf
+    ) - 10)%>%
+  ungroup()%>%
+  summarise(offset_mean = mean(offset), offset_var = var(offset, na.rm = TRUE))
+
+base_data%>%
+  kable()
+```
+
+```{r time group, warning = TRUE}
+full_site_df%>%
+  group_by(site, time)%>%
+  reframe(offset = which.max(
+    ccf(sum_case, sum_conc, plot = FALSE, lag.max = 10)$acf
+    ) - 10)%>%
+  group_by(time)%>%
+  summarise(offset_mean = mean(offset), offset_var = var(offset, na.rm = TRUE))%>%
+  kable()
+```
+
+```{r spop group, warning = TRUE}
+full_site_df%>%
+  group_by(site, pop_g)%>%
+  reframe(offset = which.max(
+        ccf(sum_case, sum_conc, plot = FALSE, lag.max = 10)$acf
+        ) - 10)%>%
+  group_by(pop_g)%>%
+  summarise(offset_mean = mean(offset), offset_var = var(offset))%>%
+  kable()
+```
+
+```{r both,  warning = TRUE}
+to_plot <- full_site_df%>%
+  group_by(site, pop_g, time)%>%
+  reframe(offset = which.max(
+        ccf(sum_case, sum_conc, plot = FALSE, lag.max = 10)$acf
+        ) - 10)%>%
+  group_by(pop_g, time)%>%
+  summarise(offset_mean = mean(offset), offset_var = var(offset))
+
+to_plot%>%
+  kable()
+
+to_plot%>%
+  ggplot(aes(x = offset_mean, y = offset_var, 
+             fill = time, 
+             color = time, 
+             shape = pop_g))+
+  geom_point(aes(x = offset_mean, y = offset_var),
+             size = 8, data = base_data,
+             shape = 8,
+             stroke = 1.5,
+             inherit.aes = FALSE)+
+  geom_point(size = 5)+
+  scale_shape_manual(values=c(17, 15, 16, 18, 25))+
+  labs(color = "Variants",
+       fill = "Variants",
+       x = "Average Offset", 
+       y = "Offset Variance",
+       shape = "Site Population")
+
+```
+
+
+```{r, eval = FALSE}
+library(signal)
+library(MASS)
+fft(no_na_df$conf_conc)
+
+#F(t) = true signal
+#C(t) = conv(F, c) + mu_1
+#W(t) = conv(F, w) + mu_2
+opt_equation <- function(){
+  
+}
+convolve(x, rev(y), type = "o")
+
+
+plot(dgamma(c(0:30), 2, .5))
+
+
+optim(par = c(), fn = opt_equation, method = "BFGS")
+```
+
+```{r, eval = FALSE}
+
+# Original data from F
+num_steps <- 1000
+increments <- rnorm(num_steps)
+data <- cumsum(increments)
+# Parameters of the gamma distribution
+shape <- 9
+rate <- .5
+gamma_dis <- dgamma(0:30, shape, rate)
+plot(gamma_dis)
+plot(data)
+# Apply inverse gamma CDF to transform data to gamma distribution
+transformed_data <- convolve(data, gamma_dis, type = "o") 
+transformed_data <- transformed_data# + rnorm(length(transformed_data))
+plot(transformed_data)
+
+# Apply gamma CDF to transform data back to original F
+deconv_df <- ifft(fft(transformed_data) / fft(rev(pad_fun(gamma_dis, transformed_data))))
+plot(rev(Re(deconv_df)))
+```
+
+
+```{r, eval = FALSE}
+pad_fun <- function(to_pad, size_vec){
+  side_pad_number = length(size_vec) - length(to_pad)
+  l_zero_pad = rep.int(0, side_pad_number / 2)
+  r_zero_pad = rep.int(0, side_pad_number /2 + side_pad_number %% 2)
+  return(c(l_zero_pad, to_pad, r_zero_pad))
+}
+pad_fun(1:5, 1:99) / 1:99
+```

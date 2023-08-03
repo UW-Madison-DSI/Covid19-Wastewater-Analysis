@@ -15,7 +15,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message=FALSE)
 ```
 
 ```{r include = FALSE}
-library(DSIWastewater)
+library(Covid19Wastewater)
 library(dplyr)
 library(ggplot2)
 library(tidyr)

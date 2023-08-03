@@ -13,17 +13,17 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ```{r data prep}
-library(DSIWastewater)
+library(Covid19Wastewater)
 library(dplyr)
 library(ggplot2)
 library(tidyr)
 library(randomForest)
-data(WasteWater_data, package = "DSIWastewater")
-data(Case_data, package = "DSIWastewater")
-data(pop_data, package = "DSIWastewater")
+data(WasteWater_data, package = "Covid19Wastewater")
+data(Case_data, package = "Covid19Wastewater")
+data(Pop_data, package = "Covid19Wastewater")
 
 base_df <- inner_join(Case_data, WasteWater_data, by = c("site", "date"))%>%
-  left_join(pop_data)%>%
+  left_join(Pop_data)%>%
   group_by(site)%>%
   arrange(date)%>%
   mutate(conf_case = zoo::rollmean(conf_case, 7, align = "center", na.pad = TRUE))%>%

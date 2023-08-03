@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message=FALSE)
 ```
 
 ```{r include = FALSE}
-library(DSIWastewater)
+library(Covid19Wastewater)
 library(dplyr)
 library(ggplot2)
 library(tidyr)
@@ -20,11 +20,11 @@ set.seed(123)
 
 ```{r data prep}
 #load data from package
-library(DSIWastewater)
-data(pop_data, package = "DSIWastewater")
-data(WasteWater_data , package = "DSIWastewater")
-data(Case_data , package = "DSIWastewater")
-data(Covariants_data, package = "DSIWastewater")
+library(Covid19Wastewater)
+data(Pop_data, package = "Covid19Wastewater")
+data(WasteWater_data , package = "Covid19Wastewater")
+data(Case_data , package = "Covid19Wastewater")
+data(Covariants_data, package = "Covid19Wastewater")
 
 
 #convert covariant info to most prevalent covariant to make more efficient
@@ -52,7 +52,7 @@ case_merge_df <- Case_data%>%
 
 #merge three datasets into one dataset to do analysis on
 data.select.1 <- WasteWater_data%>%
-  left_join(pop_data, by = c("site", "pop"))%>%
+  left_join(Pop_data, by = c("site", "pop"))%>%
   inner_join(case_merge_df, by = c("site", "date"))%>%
   mutate(site = as.factor(site),
          regions = as.factor(regions),

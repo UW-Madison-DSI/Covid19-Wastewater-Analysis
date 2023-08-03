@@ -27,11 +27,11 @@ two components. (1) the trend of the data. This is created using a loess smoothi
 
 
 ```{r start up}
-library(DSIWastewater)
+library(Covid19Wastewater)
 library(dplyr)
 library(ggplot2)
 library(tidyr)
-data("WasteWater_data", package = "DSIWastewater")
+data("WasteWater_data", package = "Covid19Wastewater")
 
 WasteWater_data%>%
   distinct(regions, county,site)%>%

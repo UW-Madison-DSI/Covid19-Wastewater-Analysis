@@ -39,8 +39,8 @@ if(is.null(output.format)){
 
 
 ```{r DF Set Up, echo=FALSE}
-library(DSIWastewater)
-data(Case_data, package = "DSIWastewater")
+library(Covid19Wastewater)
+data(Case_data, package = "Covid19Wastewater")
 
 #restrict Case data to only Madison data
 Case_DF <- Case_data[Case_data$Site == "Madison",]
@@ -54,7 +54,7 @@ Case_DF <- buildCaseAnalysisDF(Case_DF)
 
 Case_DF <- Case_DF[,c(1:2, 5, 7)]
 
-data(WasteWater_data, package = "DSIWastewater")
+data(WasteWater_data, package = "Covid19Wastewater")
 
 #restrict Waste data to only Madison data
 baseWaste_DF <- WasteWater_data[WasteWater_data$wwtp_name == "Madison MSD WWTF",]
@@ -192,8 +192,8 @@ ccf(log(Madison_DF$sars_cov2_adj_load), Madison_DF$Cases, na.action = na.pass)
 
 
 ```{r re data prep}
-library(DSIWastewater)
-data(Case_data, package = "DSIWastewater")
+library(Covid19Wastewater)
+data(Case_data, package = "Covid19Wastewater")
 
 #restrict Case data to only Madison data
 Case_DF <- Case_data
@@ -207,7 +207,7 @@ Case_DF <- buildCaseAnalysisDF(Case_DF)
 
 Case_DF <- Case_DF[,c(1:2, 5, 7)]
 
-data(WasteWater_data, package = "DSIWastewater")
+data(WasteWater_data, package = "Covid19Wastewater")
 
 #restrict Waste data to only Madison data
 baseWaste_DF <- WasteWater_data

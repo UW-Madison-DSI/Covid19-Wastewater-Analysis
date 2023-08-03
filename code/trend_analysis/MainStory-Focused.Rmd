@@ -74,12 +74,12 @@ ColorRule <- scale_color_manual(
   values = setNames(as.list(PlotColors),PlotObjects))
 ```
 
-"data Used from DSIWastewater package"
+"data Used from Covid19Wastewater package"
 
 
 ```{r DF Set Up, echo=FALSE}
-library(DSIWastewater)
-data(Case_data, package = "DSIWastewater")
+library(Covid19Wastewater)
+data(Case_data, package = "Covid19Wastewater")
 
 #restrict Case data to only Madison data
 Case_DF <- Case_data[Case_data$site == "Madison",]
@@ -92,7 +92,7 @@ Case_DF <- Case_DF[Case_DF$date  >= as.Date("2020-9-10"),]
 Case_DF <- buildCaseAnalysisDF(Case_DF)%>%
   select(site, date, conf_case, FirstConfirmed.Per100K, pastwk.avg.casesperday.Per100K)
 
-data(WasteWater_data, package = "DSIWastewater")
+data(WasteWater_data, package = "Covid19Wastewater")
 
 #restrict Waste data to only Madison data
 baseWaste_DF <- WasteWater_data[WasteWater_data$site == "Madison",]

@@ -1,0 +1,128 @@
+---
+title: "noisevspopulation"
+author: "Kyllan Wunder"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Covid19Wastewater)
+library(dplyr)
+library(ggplot2)
+library(anytime)
+library(noise)
+library(tidyr)
+library(zoo)
+library(lubridate)
+```
+
+
+```{r}
+MSE <- function(baseVal, meanVal){
+  ret <- mean((baseVal - meanVal)^2)
+  return(ret)
+}
+
+
+data(WasteWater_data, package = "Covid19Wastewater")
+
+
+noisedata <- WasteWater_data %>% 
+  drop_na(site) %>% 
+  drop_na(PMMoV)
+
+#sqrt(sum((mean-ppmov)^2)/n)
+noisedata <- noisedata %>% 
+  group_by(site) %>% 
+  mutate(noise = MSE(log(as.numeric(PMMoV)), 
+                     mean(log(as.numeric(PMMoV)),na.rm = TRUE)))
+
+#largest noise value that skews graph
+noisedata <- noisedata %>% filter(site != "Lake Geneva WWTP")
+
+ggplot(noisedata, aes(log(as.numeric(noisedata$pop)), noisedata$noise)) +
+  geom_point() +
+  ggtitle("log(pop) vs noise(calc using MSE) (removed outlier)")
+
+
+```
+
+```{r with rolling average}
+
+noisedata <- noisedata %>% 
+  group_by(site) %>% 
+  mutate(rollaverage = rollmean(log(as.numeric(PMMoV)), k=7, fill = NA)) %>% 
+  drop_na(rollaverage)
+
+noisedata <- noisedata %>% 
+  group_by(site) %>% 
+  mutate(rollnoise = MSE(log(as.numeric(PMMoV)), rollaverage))
+
+ggplot(noisedata) +
+  aes(as.numeric(noisedata$pop), noisedata$rollnoise)+
+  geom_point()+
+  scale_x_log10() +
+  ggtitle("pop vs rolling average noise")
+
+
+#not much improvement using the rolling average over 7 points
+```
+
+```{r}
+noisedatasample <- noisedata
+
+noisedatasample <- noisedatasample %>% 
+  group_by(site, week = week(anydate(date))) %>% mutate(sampleFrequency = n()) %>% 
+  ungroup()
+
+
+noisedatasample <- noisedatasample %>% group_by(site) %>% 
+  mutate(avgSampleFrequency = mean(sampleFrequency))
+
+```
+
+
+```{r}
+
+noisedatasample <- noisedatasample %>% 
+  group_by(site) %>% 
+  mutate(noise = MSE(log(as.numeric(PMMoV)), 
+                     mean(log(as.numeric(PMMoV)),na.rm = TRUE)))
+
+#largest noise value that skews graph
+#noisedatasample <- noisedatasample %>% filter(site != "Lake Geneva WWTP")
+
+ggplot(noisedatasample, aes(log(as.numeric(pop)), noise)) + #/avgSampleFrequency
+  geom_point(aes(color=avgSampleFrequency)) +
+  scale_colour_gradientn(colours=rainbow(5)) +
+  ggtitle("log(pop) vs noise(calc MSE) colored with average sample frequence")
+
+#Madison MSD WWTF has 12
+```
+
+```{r}
+ggplot(noisedatasample, aes((as.numeric(pop)/avgSampleFrequency), noise)) +
+  geom_point(aes(color=avgSampleFrequency)) +
+  scale_colour_gradientn(colours=rainbow(5)) +
+  ggtitle("log(pop)/avgSampleFrequence vs noise(calc MSE) colored with average sample frequence")
+```
+
+
+```{r, eval = FALSE}
+noisedatasample %>% #filter(grepl("Madison", site)) %>%
+ggplot(aes(week, avgSampleFrequency)) +
+  geom_point() +
+  facet_wrap(~site) +
+  ggtitle("average sample frequencey by week by site ")
+
+
+noisedatasample %>% 
+  group_by(site) %>%
+ggplot(aes(log(as.numeric(population_served)), avgSampleFrequency)) +
+  geom_point() +
+  ggtitle("log(pop) vs average sample frequency")
+```
+

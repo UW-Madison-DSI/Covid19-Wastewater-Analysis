@@ -370,11 +370,11 @@ pre code {
 </div>
 
 
-<pre class="r"><code>library(DSIWastewater)
+<pre class="r"><code>library(Covid19Wastewater)
 library(dplyr)
 library(ggplot2)
 library(tidyr)
-data(&quot;HFGWaste_data&quot;, package = &quot;DSIWastewater&quot;)</code></pre>
+data(&quot;HFGWaste_data&quot;, package = &quot;Covid19Wastewater&quot;)</code></pre>
 <pre class="r"><code>#crazy agressive method
 hfg_outlier_detection &lt;- function(small_vec){
   upbound_vec &lt;- quantile(small_vec, probs = .7, na.rm = TRUE)

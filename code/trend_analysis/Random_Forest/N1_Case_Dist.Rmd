@@ -46,7 +46,7 @@ knitr::opts_chunk$set( warning = FALSE, message=FALSE, echo=FALSE)
 ```
 
 ```{r include = FALSE, message = FALSE}
-library(DSIWastewater)
+library(Covid19Wastewater)
 library(dplyr)
 library(ggplot2)
 library(tidyr)
@@ -200,9 +200,9 @@ lm_plotly_model <- function(DF){
 ```
 
 ```{r package dataset}
-library(DSIWastewater)
-data("Case_data", package = "DSIWastewater")
-data("WasteWater_data", package = "DSIWastewater")
+library(Covid19Wastewater)
+data("Case_data", package = "Covid19Wastewater")
+data("WasteWater_data", package = "Covid19Wastewater")
 
 roll_Case_data <- Case_data%>%
   mutate(case_rate = conf_case + prob_death)%>%
@@ -220,12 +220,12 @@ data.select.1 <- WasteWater_data%>%
 ```
 
 ```{r gen extra info DF}
-library(DSIWastewater)
-data(pop_data, package = "DSIWastewater")
-data(Covariants_data, package = "DSIWastewater")
+library(Covid19Wastewater)
+data(Pop_data, package = "Covid19Wastewater")
+data(Covariants_data, package = "Covid19Wastewater")
 Graph_DF <- data.select.1%>%
   gen_Variant_info("sample_collect_date")%>%#join variant data
-  left_join(rename(pop_data, wwtp_name = site), by = c("wwtp_name"))%>%#join pop data
+  left_join(rename(Pop_data, wwtp_name = site), by = c("wwtp_name"))%>%#join pop data
   filter(case_rate != 0,
          avg_sars_cov2_conc != 0,
          !is.na(pop))%>%
@@ -526,8 +526,8 @@ simple_formula <- case_rate ~ avg_sars_cov2_conc:LOD
 ```
 
 ```{r, eval = FALSE}
-data("HFGWaste_data", package = "DSIWastewater")
-data(Case_data , package = "DSIWastewater")
+data("HFGWaste_data", package = "Covid19Wastewater")
+data(Case_data , package = "Covid19Wastewater")
 
 #crazy agressive method
 hfg_outlier_detection <- function(small_vec){

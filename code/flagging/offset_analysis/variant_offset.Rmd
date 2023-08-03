@@ -1,0 +1,915 @@
+---
+title: "offset_by_variant"
+author: "Kyllan Wunder"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Covid19Wastewater)
+library(dplyr)
+library(ggplot2)
+library(anytime)
+library(ggpubr)
+library(lubridate)
+library(zoo)
+library(reshape2)
+library(scales)
+library(plotly)
+library(tidyverse)
+library(psych)
+library(timetk)
+library(RcppRoll)
+library(gridExtra)
+library(grid)
+library(TSstudio)
+```
+
+
+```{r data}
+
+data(Case_data, package = "Covid19Wastewater")
+cases <- Case_data 
+totalcases <- cases %>% group_by(date) %>% summarise(sum_case = sum(conf_case)) %>% mutate(conf_case = roll_sum(sum_case,10,align = "right", fill = NA))
+
+data(WasteWater_data, package = "Covid19Wastewater")
+waste <- WasteWater_data
+
+data(Covariants_data, package = "Covid19Wastewater")
+covar <- Covariants_data
+
+data(Pop_data, package = "Covid19Wastewater")
+population <- Pop_data
+
+```
+
+```{r functions}
+
+MSE <- function(baseVal, meanVal){
+  ret <- mean((baseVal - meanVal)^2)
+  return(ret)
+}
+#10, start[i], end[i], caservtemp, wastervtemp
+#length = 10
+#startdate = start[i]
+#enddate = end[i]
+#casesdf <- caservtemp
+#wastedf <- wastervtemp
+Offset <-function(length, startdate, enddate, casesdf, wastedf){
+  
+  wastedf <- subset(wastedf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
+  casesdf <- subset(casesdf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
+
+  wastedf <- wastedf%>% 
+  group_by(date)%>% 
+  summarise(N1 = mean(N1),
+            N2 = mean(N2),
+            PMMoV = mean(PMMoV)) %>% 
+  mutate(geo_mean = exp((log(N1) + log(N2))/2)) %>% 
+  drop_na(geo_mean)
+
+
+
+  casesdf <- casesdf %>%
+    group_by(date) %>% 
+    summarise(conf_case = mean(conf_case)) %>%
+    mutate(rollingaverage = rollmean(conf_case, k=7, fill = NA)) %>%
+    drop_na(rollingaverage)
+
+  offsetresults <- data.frame(matrix(ncol = 8, nrow = 0))
+  
+  for(i in -length:length){
+  
+    wasteTemp <- wastedf %>% 
+      mutate(tempdate = as.Date(wastedf$date + i))
+    
+    temp <- merge(casesdf, wasteTemp, by.x = "date" ,by.y = "tempdate") 
+    options(dplyr.summarise.inform = FALSE)
+    if(count(temp) != 0){
+      templm <- lm(log(geo_mean + 1)~log(rollingaverage+1), data=temp) 
+      temp <- temp %>% 
+        mutate(proportionRolling = temp$geo_mean/temp$rollingaverage,
+              proportion = temp$geo_mean/temp$conf_case, 
+              mse = MSE(temp$geo_mean/temp$rollingaverage,mean(temp$geo_mean/temp$rollingaverage)))
+      
+      temp <- na.omit(temp)
+      lmresult <- tryCatch({
+                  summary(templm)$r.squared},
+                  error = function(err) {
+                  return(0)
+                  })
+      new <- c(i,mean(temp$proportion),
+                mean(temp$proportionRolling),
+                mean(temp$mse), 
+                cor(temp$geo_mean,temp$rollingaverage,method = "pearson"), 
+                cor(temp$geo_mean,temp$rollingaverage,method = "kendall"),
+                cor(temp$geo_mean,temp$rollingaverage,method = "spearman"),
+                lmresult)
+    } else {
+      new <- c(i,NA,NA,NA,NA,NA,NA,NA)
+    }
+    offsetresults[nrow(offsetresults) + 1, ] <- new  
+  }
+
+  offsetresults <- offsetresults %>% rename(wdateoffset=X1,
+                                            wcratio=X2,
+                                            wcratiorolling=X3,
+                                            meanMSErolling=X4,
+                                            corilationPearson=X5,
+                                            corilationKendall=X6,
+                                            corilationSpearman=X7,
+                                            rcor=X8)
+  return(offsetresults)
+}
+
+#testing <- Offset(10, start[i], end[i], caservtemp, wastervtemp)
+
+#' Title
+#'
+#' @param data 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+Graph <- function(data,title){
+  wc <- ggplot(data, aes(x=wdateoffset, y=wcratio)) +
+    geom_point() +
+    geom_point(data = data[which.max(data$wcratio),], color = "red") +    
+    ylab("Waste-to-case ratio") +
+    xlab("Wastewater Offset") +
+    ggtitle("Waste-to-case ratio")
+  
+  wcrolling <- ggplot(data, aes(x=wdateoffset, y=wcratiorolling)) +
+    geom_point() + 
+    geom_point(data = data[which.min(data$wcratiorolling),], color = "red") +
+    ylab("Wastewater to Case ratio") +
+    xlab("Wastewater Offset") +
+    ggtitle("Rolling waste-to-case ratio") +
+    geom_text(data = data[which.min(data$wcratiorolling),], aes(wdateoffset,wcratiorolling, label = paste(wdateoffset, " " ,sep = "\n")))
+
+  mse <- ggplot(data, aes(x=wdateoffset, y=meanMSErolling)) +
+    geom_point() +
+    geom_point(data = data[which.min(data$meanMSErolling),], color = "red") +
+    ylab("Rolling Average MSE") +
+    xlab("Wastewater Offset") +
+    ggtitle("Rolling average MSE") +
+    geom_text(data = data[which.min(data$meanMSErolling),], aes(wdateoffset,meanMSErolling, label = paste(wdateoffset, " " ,sep = "\n")))
+
+  pearson <- ggplot(data, aes(x=wdateoffset, y=corilationPearson)) +
+    geom_point() +
+    geom_point(data = data[which.max(data$corilationPearson),], color = "red") +
+    ylab("Pearson Correlation") +
+    xlab("Wastewater Offset") +
+    ggtitle("Pearson") +
+    geom_text(data = data[which.max(data$corilationPearson),], aes(wdateoffset,corilationPearson, label = paste(" " ,wdateoffset,sep = "\n")))
+  
+  kendall <- ggplot(data, aes(x=wdateoffset, y=corilationKendall)) +
+    geom_point()+
+    geom_point(data = data[which.max(data$corilationKendall),], color = "red") +
+    ylab("Kendall correlation") +
+    xlab("Wastewater Offset") +
+    ggtitle("Kendall") +
+    geom_text(data = data[which.max(data$corilationKendall),], aes(wdateoffset,corilationKendall, label = paste(" " ,wdateoffset,sep = "\n")))
+  
+  spearman <- ggplot(data, aes(x=wdateoffset, y=corilationSpearman)) +
+    geom_point() +
+    geom_point(data = data[which.max(data$corilationSpearman),], color = "red") +
+    ylab("Spearman Correlation") +
+    xlab("Wastewater Offset") +
+    ggtitle("Spearman") +
+    geom_text(data = data[which.max(data$corilationSpearman),], aes(wdateoffset,corilationSpearman, label = paste(" " ,wdateoffset,sep = "\n"))) 
+  
+  grid.arrange(wc,wcrolling,mse,pearson,kendall,spearman,ncol=2,bottom=title)
+}
+```
+
+
+```{r}
+
+outputfinal <- Offset(20, as.Date("2020-01-01"), as.Date("2023-01-01"), cases, waste)
+
+Graph(outputfinal,"All Wisconsin data over all time")
+
+
+```
+
+
+```{r}
+
+covar$category <- row.names(covar)
+onlycovar <- covar[-c(1,2)]
+mdfr <- melt(onlycovar, id.vars = "category")
+
+p <- ggplot(mdfr, aes(factor(category,levels = c(1:69)), value, fill = variable)) +
+    geom_bar(position = "fill", stat = "identity") +
+    scale_y_continuous(labels = percent) +
+    xlab("Week") +
+    ylab("Covariant Percent")
+
+ggplotly(p)
+
+
+percentages <- mdfr %>%
+  group_by(category) %>%
+  mutate(sum = sum(value), percent = value/sum, majority = case_when(percent > .5 ~ paste(variable)))
+
+per <- percentages %>% drop_na(majority)
+  
+
+p2 <- ggplot(per, aes(x=category, y=percent,color=majority)) +
+  geom_point()
+  
+  ggplotly(p2)
+#9-20 2020-08-17 2021-01-18  S.677H.Robin1
+#25-29 2021-03-29 2021-05-24 X20I..Alpha..V1.
+#32-43 2021-07-05 2021-12-06 X21J..Delta.
+#44-50 2021-12-20 2022-03-14 X21K..Omicron.
+#51-54 2022-03-28 2022-05-09 X21L..Omicron.
+#55-56 2022-05-23 2022-06-06 X22C..Omicron.
+#58-67 2022-07-04 2022-11-07 X22B..Omicron.
+#69-   2022-12-05 
+  
+
+covarstarts <- c(as.Date("2020-08-17"),as.Date("2021-03-29"),as.Date("2021-07-05"),as.Date("2021-12-20"),as.Date("2022-03-28"),as.Date("2022-05-23"),as.Date("2022-07-04"))
+covarends <- c(as.Date("2021-01-18"),as.Date("2021-05-24"),as.Date("2021-12-06"),as.Date("2022-03-14"),as.Date("2022-05-09"),as.Date("2022-06-06"),as.Date("2022-11-07"))
+covarnames <- c("S.677H.Robin1","X20I..Alpha..V1.","X21J..Delta.","X21K..Omicron.","X21L..Omicron.","X22C..Omicron.","X22B..Omicron.")
+
+
+
+```
+
+```{r}
+#2 weeks before and 2 weeks after
+#2020-08-17 2021-01-18
+outputfinal <- Offset(10, as.Date("2020-08-03"), as.Date("2021-02-01"), cases, waste)
+Graph(outputfinal,"24 weeks, S.677H.Robin1")
+#2021-03-29 2021-05-24
+outputfinal <- Offset(10, as.Date("2021-03-15"), as.Date("2021-06-07"), cases, waste)
+Graph(outputfinal,"6 weeks, X20I..Alpha..V1.")
+#2021-07-05 2021-12-06
+outputfinal <- Offset(10, as.Date("2021-06-21"), as.Date("2021-12-20"), cases, waste)
+Graph(outputfinal,"24 weeks, X21J..Delta.")
+#2021-12-20 2022-03-14
+outputfinal <- Offset(10, as.Date("2021-12-06"), as.Date("2022-03-28"), cases, waste)
+Graph(outputfinal,"14 weeks, X21K..Omicron.")
+#2022-03-28 2022-05-09
+outputfinal <- Offset(10, as.Date("2022-03-14"), as.Date("2022-05-23"), cases, waste)
+Graph(outputfinal, "8 weeks, X21L..Omicron.")
+#2022-05-23 2022-06-06
+outputfinal <- Offset(10, as.Date("2022-05-09"), as.Date("2022-06-20"), cases, waste)
+Graph(outputfinal, "4 weeks, X22B..Omicron.")
+#2022-07-04 2022-11-07
+outputfinal <- Offset(10, as.Date("2022-06-20"), as.Date("2022-11-28"), cases, waste)
+Graph(outputfinal, "20 weeks, X22B..Omicron.")
+#2022-12-05 -
+outputfinal <- Offset(10, as.Date("2022-11-28"), as.Date("2023-01-01"), cases, waste)
+Graph(outputfinal, "2+ weeks, X22E..Omicron.")
+
+
+#add time widow to dates 
+#add 1 time window
+```
+```{r}
+#6 month chunks
+outputfinal <- Offset(10, as.Date("2020-08-01"), as.Date("2021-02-01"), cases, waste)
+Graph(outputfinal,"1")
+
+outputfinal <- Offset(10, as.Date("2021-02-01"), as.Date("2021-08-01"), cases, waste)
+Graph(outputfinal,"2")
+
+outputfinal <- Offset(10, as.Date("2021-08-01"), as.Date("2022-02-01"), cases, waste)
+Graph(outputfinal,"3")
+
+outputfinal <- Offset(10, as.Date("2022-02-01"), as.Date("2022-08-01"), cases, waste)
+Graph(outputfinal,"4")
+
+outputfinal <- Offset(10, as.Date("2022-08-01"), as.Date("2023-02-01"), cases, waste)
+Graph(outputfinal, "5")
+
+```
+
+
+
+```{r}
+wastedf <- waste
+casesdf <- cases
+
+#wasteccf <- function(wastedf, casesdf){
+  wastedf <- drop_na(wastedf, date)
+  casesdf <- drop_na(casesdf, date)
+  startdate <- max(c(min(wastedf$date),min(casesdf$date)))
+  enddate <- min(c(max(wastedf$date),max(casesdf$date)))
+  #enddate <- as.Date("2022-01-01")
+  wastedf <- subset(wastedf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
+  casesdf <- subset(casesdf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
+
+  wastedf <- wastedf%>% 
+  group_by(date)%>% 
+  summarise(N1 = mean(N1),
+            N2 = mean(N2),
+            PMMoV = mean(PMMoV)) %>% 
+  mutate(geo_mean = exp((log(N1) + log(N2))/2)) %>% 
+  drop_na(geo_mean)
+
+
+
+  casesdf <- casesdf %>%
+    group_by(date) %>% 
+    summarise(conf_case = sum(conf_case)) %>%
+    mutate(rollingaverage = rollmean(conf_case, k=7, fill = NA)) %>%
+    drop_na(rollingaverage)
+  
+  dim(wastedf)
+  min(wastedf$date)
+  max(wastedf$date)
+  dim(casesdf)
+  min(casesdf$date)
+  max(casesdf$date)
+  
+  
+  ccf(wastedf$geo_mean,casesdf$conf_case)
+  ccf(wastedf$geo_mean,casesdf$rollingaverage)
+  
+  wastecaseccfmerg <- merge(wastedf, casesdf, by.x = "date", by.y="date") 
+  wastecaseccf <- wastecaseccfmerg %>% 
+    select('geo_mean','conf_case')
+  lag_ts <- ts(na.omit(wastecaseccf))
+  ts_info(lag_ts)
+  plot(lag_ts)
+ts_plot(lag_ts)
+
+ccf(lag_ts[, c(1)], lag_ts[, c(2)], 
+    lag.max = 1000,
+    main = "Cros-Correlation Plot")
+acf(wastedf$geo_mean,casesdf$rollingaverage)
+
+
+
+
+wastecasepts <- wastecaseccfmerg %>% pivot_longer(cols = c(geo_mean, conf_case), names_to = "names", values_to = "value") 
+
+wastecasepts %>% plot_time_series(.date_var = date,
+                      .value = value,
+                   .facet_vars = names)
+
+
+wastecasepts %>%
+  group_by(names) %>% 
+  plot_acf_diagnostics(.date_var = date,
+                       .value = value,
+                       .show_white_noise_bars = T)
+
+wastecaseccfmerg %>% 
+  plot_acf_diagnostics(.date_var = date,
+                       .value = geo_mean,
+                       .ccf_vars = conf_case,
+                       .show_ccf_vars_only = T)
+
+#}
+#wasteccf(waste,cases)
+
+
+```
+
+```{r}
+ggplot(totalcases,aes(x=date,y=conf_case)) +
+  geom_point()
+cases %>% group_by(date) %>% ggplot(aes(x=date,y=conf_case)) +
+  geom_point()
+
+
+
+
+outputfinal <- Offset(20, as.Date("2020-01-01"), as.Date("2023-01-01"), totalcases, waste)
+
+Graph(outputfinal,"total cases")
+
+
+outputfinal <- Offset(10, as.Date("2020-08-03"), as.Date("2021-02-01"), totalcases, waste)
+Graph(outputfinal,"24 weeks, S.677H.Robin1")
+
+totalcasestemp <- totalcases %>% drop_na(conf_case)
+ccf(wastedf$geo_mean,totalcasestemp$conf_case)
+
+ wastecaseccfmerg <- merge(wastedf, totalcasestemp, by.x = "date", by.y="date") 
+  wastecaseccf <- wastecaseccfmerg %>% 
+    select('geo_mean','conf_case')
+  lag_ts <- ts(na.omit(wastecaseccf))
+  #ts_info(lag_ts)
+  plot(lag_ts)
+#ts_plot(lag_ts)
+
+```
+```{r}
+totalcases2 <- cases %>% group_by(date) %>% summarise(sum = sum(conf_case,prob_case)) %>% mutate(sum_case = roll_mean(sum,7, fill = NA))
+  #mutate(conf_case = conf_case,sum_case = sum(conf_case),rollcases = roll_mean(conf_case,7, fill = NA))
+
+totalcases <- totalcases2
+#totalcases <- cases %>% group_by(date) %>% summarise(sum_case = sum(conf_case)) 
+```
+
+
+```{r}
+Ccf <- function(wastecasedf, startdate, enddate, lag, name){
+  tempwc <- subset(wastecasedf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
+  tempwastedf <- subset(wastedf, anydate(date)> anydate(startdate) & anydate(date) < anydate(enddate))
+  temp3 <- tempwc %>% mutate(conf_case = (roll_sum(sum_case,2,align = "right",fill = NA) + roll_sum(sum_case,5,align = "left",fill = NA) - roll_sum(sum_case,1,align = "center",fill = NA)) )%>% drop_na(conf_case)
+
+  ccfdata <- ccf(temp3$conf_case,tempwastedf$geo_mean, main= name,lag.max = lag,plot=0) #,plot=0
+  
+  ccfdata.color <- ifelse(ccfdata$acf==max(ccfdata$acf) | ccfdata$acf==min(ccfdata$acf),"red","black") 
+    
+  plot(ccfdata$lag, ccfdata$acf, t="h", col=ccfdata.color, lwd=1.5,
+     las=1, xlab="", ylab="CCF",main=name)
+}
+
+
+Ccf(totalcases,as.Date("2020-01-01"),as.Date("2023-01-01"), 21,"testing")
+
+
+
+#2020-08-17 2021-01-18
+Ccf(totalcases,as.Date("2020-08-17"),as.Date("2021-01-18"), 20,"24 weeks, S.677H.Robin1")
+#2021-03-29 2021-05-24
+Ccf(totalcases,as.Date("2021-03-29"),as.Date("2021-05-24"), 20,"6 weeks, X20I..Alpha..V1.")
+#2021-07-05 2021-12-06
+Ccf(totalcases,as.Date("2021-07-05"),as.Date("2021-12-06"), 20,"24 weeks, X21J..Delta.")
+#2021-12-20 2022-03-14
+Ccf(totalcases,as.Date("2021-12-20"),as.Date("2022-03-14"), 20,"14 weeks, X21K..Omicron.")
+#2022-03-28 2022-05-09
+Ccf(totalcases,as.Date("2022-03-28"),as.Date("2022-05-09"), 20,"8 weeks, X21L..Omicron.")
+#2022-05-23 2022-06-06
+Ccf(totalcases,as.Date("2022-05-23"),as.Date("2022-06-06"), 20,"4 weeks, X22B..Omicron.")
+#2022-07-04 2022-11-07
+Ccf(totalcases,as.Date("2022-07-04"),as.Date("2022-11-07"), 20,"20 weeks, X22B..Omicron.")
+#2022-12-05 -
+#Ccf(totalcases,as.Date("2022-12-05"),as.Date("2023-02-01"), 20,"2+ weeks, X22E..Omicron.")
+
+
+
+```
+```{r}
+Ccf(totalcases,as.Date("2020-08-01"), as.Date("2021-02-01"), 20,"1")
+Ccf(totalcases,as.Date("2021-02-01"), as.Date("2021-08-01"), 20,"2")
+Ccf(totalcases,as.Date("2021-08-01"), as.Date("2022-02-01"), 20,"3")
+Ccf(totalcases,as.Date("2022-02-01"), as.Date("2022-08-01"), 20,"4")
+Ccf(totalcases,as.Date("2022-08-01"), as.Date("2023-02-01"), 20,"5")
+```
+
+```{r}
+#sum_case,10,align = "right", fill = NA)
+wastecaseccfmerg <- wastecaseccfmerg %>% mutate(rollingaverage = roll_mean(conf_case,7, fill = NA), centered3d = roll_sum(conf_case, 3, align = "center", fill = NA), left5d = roll_sum(conf_case, 5, align = "left", fill = NA), totalcases = (roll_sum(conf_case,2,align = "right",fill = NA) + roll_sum(conf_case,5,align = "left",fill = NA) - roll_sum(conf_case,1,align = "center",fill = NA)) )
+wclm <- lm(geo_mean~conf_case, data=wastecaseccfmerg)
+summary(wclm)
+ggplot(wastecaseccfmerg, aes(x=conf_case,y=geo_mean)) +
+  geom_point()
+wclm <- lm(geo_mean~rollingaverage, data=wastecaseccfmerg)
+summary(wclm)
+ggplot(wastecaseccfmerg, aes(x=rollingaverage,y=geo_mean)) +
+  geom_point()
+wclm <- lm(geo_mean~rollingaverage + date, data=wastecaseccfmerg)
+summary(wclm)
+wclm <- lm(geo_mean~centered3d + date, data=wastecaseccfmerg)
+summary(wclm)
+wclm <- lm(geo_mean~left5d + date, data=wastecaseccfmerg)
+summary(wclm)
+wclm <- lm(geo_mean~totalcases + date, data=wastecaseccfmerg)
+summary(wclm)
+ggplot(wastecaseccfmerg, aes(x=totalcases,y=geo_mean)) +
+  geom_point()
+```
+```{r}
+data("HFGWaste_data")
+HFGwaste <- HFGWaste_data
+HFGwaste$N1[is.na(HFGwaste$N1)] <- 0
+HFGwaste$N2[is.na(HFGwaste$N2)] <- 0
+HFGwaste <- HFGwaste%>% 
+  group_by(date)%>% 
+  summarise(N1 = mean(N1),
+            N2 = mean(N2)) %>% 
+  mutate(geo_mean = exp((log(N1) + log(N2))/2)) 
+
+data("HFGCase_data")
+HFGcase <- HFGCase_data
+HFGcase$ConfirmedCases[HFGcase$ConfirmedCases == -999] <- 2.5
+HFGcase$ConfirmedCases[is.na(HFGcase$ConfirmedCases)] <- 0
+HFGcase <- HFGcase %>%
+    group_by(date) %>% 
+    summarise(conf_case = mean(ConfirmedCases)) %>%
+    mutate(rollingaverage = rollmean(conf_case, k=7, fill = NA)) 
+
+fullHFG = merge(HFGwaste,HFGcase, by="date")
+```
+
+```{r}
+
+
+
+heatmapcorfunc <- function(cordata){
+  
+rsquareddf <- data.frame(matrix(ncol = 1, nrow = 0))
+for(j in 0:5){
+  for(i in 0:5){
+    wctemplm <- cordata %>% 
+      mutate(tempsum = roll_sum(conf_case,i,align = "left",fill = NA) + 
+                                roll_sum(conf_case,j,align = "right",fill = NA) + 
+                                roll_sum(conf_case,1,align = "center",fill = NA) ) 
+    
+    templm <- lm(log(geo_mean + 1)~log(tempsum+1), data=wctemplm) # :variant :region
+    new <- c(i,j,summary(templm)$r.squared)
+    
+    rsquareddf = rbind(rsquareddf,new)
+    print(i, j)
+  }
+}
+names(rsquareddf)[1]="left" #(future)
+names(rsquareddf)[2]="right" #(past)
+names(rsquareddf)[3]="rsquared"
+
+heatmapcor <- rsquareddf %>% ggplot(aes(x = left, y = right, fill = rsquared))+
+  geom_tile() + 
+  scale_fill_gradientn(colours=rainbow(7)) + 
+  xlab("Future Days") + 
+  ylab("Past Days") + 
+  ggtitle("Correlation of past and future days of N1 and N2 to current day cases")
+return(rsquareddf)
+}
+
+heatmapcorfunc(wastecaseccfmerg)
+heatmapcorfunc(fullHFG)
+
+```
+
+```{r}
+#scale = "offset"
+#timePeriods = 2
+#wasteinput = waste
+#caseinput = cases
+heatmapfunc <- function(scale, timePeriods,wasteinput,caseinput,list,lod=FALSE){
+  
+  
+  wasterv <- wasteinput
+  caserv <- caseinput
+  if(list == "region"){
+    regionslist <- c("all", unique(wasterv$regions))#append(unique(wasterv$regions), "all")
+  } else {#pop
+    populationtemp <- population %>% mutate(popgroup = case_when(pop >= 100000 ~ "Large",
+                                                         pop >= 10000  ~ "Medium",
+                                                         .default = "Small")) %>% subset(select = c(site,popgroup))
+                        
+    wasterv <- merge(wasterv,populationtemp, by.x = "site") %>% mutate(regions = popgroup)
+    
+    regionslist <- c("all", unique(wasterv$regions))#
+  }
+  tempregion <- select(wasterv,regions,site) %>% unique()
+  outputrvt <- data.frame(matrix(ncol = 1, nrow = 0))
+  firstday <- as.numeric(as.Date("2020-08-01"))
+  if(timePeriods == 0){
+    start <- covarstarts
+    end <- covarends
+  } else {
+
+    endday <- as.numeric(as.Date("2022-12-01"))
+    start <- c()
+    end <- c()
+    curtempdate <- firstday
+    while(curtempdate + 20 < endday){
+      start <- append(start, curtempdate)
+      curtempdate <- curtempdate + as.numeric(timePeriods) * 30
+      end <- append(end, curtempdate)
+      curtempdate <- curtempdate + 1
+    }
+    start <- as.Date(start)
+    end <- as.Date(end)
+    
+  }
+  
+  for(j in regionslist){
+    for(i in 1:length(start)){
+      #print(j,i)
+      #j = "Northern"
+      #i = 1
+      wastervtemp <- subset(wasterv, anydate(date)> anydate(start[i]) & anydate(date) < anydate(end[i]))
+      caservtemp <- subset(caserv, anydate(date)> anydate(start[i]) & anydate(date) < anydate(end[i]))
+      
+      if(lod){
+        wastervtemp <- wastervtemp %>% filter(N1 > n1_lod)
+      }
+      
+      
+      if(j == "all"){
+        wastervtemp <- wastervtemp %>% group_by(date)
+      } else {
+        wastervtemp <- wastervtemp %>% group_by(date,regions) %>% filter(regions == j)
+      }
+      options(dplyr.summarise.inform = FALSE)
+      wastervtemp <- wastervtemp %>% summarise(N1 = mean(N1),
+              N2 = mean(N2),
+              PMMoV = mean(PMMoV),
+              geo_mean = exp((log(N1) + log(N2))/2) ) %>% 
+          drop_na(geo_mean)
+      
+
+      if(j == "all"){
+        caservtemp <- merge(tempregion,caservtemp,by = "site") %>%
+        group_by(date) %>% 
+        summarise(conf_case = mean(conf_case)) 
+      } else {
+        caservtemp <- merge(tempregion,caservtemp,by = "site") %>% filter(regions == j) %>%
+        group_by(date,regions) %>% 
+        summarise(conf_case = mean(conf_case)) 
+      }
+      
+      caservtemp <- caservtemp %>% ungroup() %>%
+        mutate(roll_test = roll_sum(conf_case,3,align = "center",fill = NA),
+               rollingaverage = (roll_sum(conf_case,3,align = "center",fill = NA)/roll_test)) %>%
+        na.omit()
+  
+      regionvstimetemp <- merge(caservtemp,wastervtemp, by = "date")
+      
+      if(scale == "rsquared_cor"){
+        #lm r squared
+        options(dplyr.summarise.inform = FALSE)
+        na.omit(regionvstimetemp)
+        templm <- lm(log(geo_mean + 1)~log(rollingaverage+1), data=regionvstimetemp) 
+        new <- c(i,j,summary(templm)$r.squared)
+      } else if(scale == "ccf_max_cor"){
+        #ccf max
+        ccfdatarvt <- ccf(regionvstimetemp$rollingaverage,regionvstimetemp$geo_mean,plot=0) #,plot=0
+        cor = ccfdatarvt$acf[,,1]
+        lag = ccfdatarvt$lag[,,1]
+        res = data.frame(cor,lag)
+        res_max = res[which.max(res$cor),]
+        #new <- c(i,j,max(ccfdatarvt$acf))
+        new <- c(i,j,res_max$lag)
+      } else if(scale == "pearson_cor"){
+        #pearson cor
+        tempcor <- cor(regionvstimetemp$rollingaverage,regionvstimetemp$geo_mean,method = "pearson")
+        new <- c(i,j,tempcor)
+      } else if(scale == "pearson_offset"){ #pearson-offset
+        offsetOutput <- Offset(10, start[i], end[i], caservtemp, wastervtemp)
+        offsetOutput <- offsetOutput[order(-offsetOutput$corilationPearson),]
+        new <- c(i,j,offsetOutput[1, "wdateoffset"])
+      } else if(scale == "offset_ccf"){
+        ccfdatatemp <- ccf(as.numeric(caservtemp$conf_case),as.numeric(wastervtemp$geo_mean),plot=0) 
+        ccfdatadf <- data.frame(lag=ccfdatatemp$lag,acf=ccfdatatemp$acf)
+        ccfdatadf <- ccfdatadf[order(-ccfdatadf$acf),]
+        new <- c(i,j,ccfdatadf[1,"lag"])
+      } else if(scale == "offset_rcor"){
+        offsetOutput <- Offset(10, start[i], end[i], caservtemp, wastervtemp)
+        offsetOutput <- offsetOutput[order(-offsetOutput$rcor),]
+        new <- c(i,j,offsetOutput[1, "wdateoffset"])
+      } else if(scale == "spearman_offset") {
+        offsetOutput <- Offset(10, start[i], end[i], caservtemp, wastervtemp)
+        offsetOutput <- offsetOutput[order(-offsetOutput$corilationSpearman),]  
+        new <- c(i,j,offsetOutput[1, "wdateoffset"])
+      } else if(scale == "kendall_offset"){
+        offsetOutput <- Offset(10, start[i], end[i], caservtemp, wastervtemp)
+        offsetOutput <- offsetOutput[order(-offsetOutput$corilationKendall),]
+        new <- c(i,j,offsetOutput[1, "wdateoffset"])
+      }
+      
+      outputrvt = rbind(outputrvt,new)
+    }
+  }
+
+
+  names(outputrvt)[1]="time" 
+  names(outputrvt)[2]="region" 
+  names(outputrvt)[3]="output"
+  outputrvt$output <- as.numeric(outputrvt$output)
+  outputrvt$time <- as.numeric(outputrvt$time)
+  newend <- as.numeric(end) - as.numeric(start[1])
+  newstart <- as.numeric(start) - as.numeric(start[1])
+  newdatesdf <- data.frame(time = as.numeric(1:length(newend)), end = newend, start = newstart)
+  outputrvt <- left_join(outputrvt,newdatesdf)
+    outputrvt <- outputrvt %>% mutate(regionsizemin = case_when(region == "Southeastern" ~ 0,
+                                                                region == "Northern" ~ 1,
+                                                                region == "Northeastern" ~ 2,
+                                                                region == "Western" ~ 3,
+                                                                region == "Southern" ~ 4,
+                                                                region == "all" ~ 6,
+                                                                region == "Small" ~ 0,
+                                                                region == "Medium" ~ 1,
+                                                                region == "Large" ~ 2),
+                                      regionsizemax = regionsizemin+1,
+                                      output = case_when(output == 10 ~ NA,
+                                                         output == -10 ~ NA,
+                                                         .default = output)
+                                      )
+  if(list == "region"){
+    templabels=c("0" = "Southeastern", "1" = "Northern","2" = "Northeastern","3" = "Western","4" = "Southern","5" = " ",  "6" = "All Sites","7" = " ")
+  } else {
+    templabels=c("0" = "Small(<10,000)", "1" = "Medium(10,000 - 100,000)","2" = "Large(>100,000)","3" = " ","4" = " ","5" = " ",  "6" = "All Sites","7" = " ")
+  }
+  heatmaprvt <- ggplot(data = outputrvt, aes(fill = output,)) +
+    geom_rect(aes(ymin = as.factor(regionsizemin), ymax = as.factor(regionsizemax), xmin = as.Date(start + firstday), xmax = as.Date(end + firstday))) +
+    scale_fill_gradient2(low = "#D16BA5", mid = "#86A8E7", high = "#5FFBF1", na.value = "white" ) + 
+    xlab(case_when(timePeriods == 0 ~ paste("Variants (over 50% of cases)"),
+                   .default = paste(timePeriods, " Month Periods (Since August 1st 2020)"))) + 
+    scale_y_discrete(labels=templabels) +
+    ylab(case_when(list == "region" ~ "Region",
+                   .default = "Population")) +
+    ggtitle(case_when(lod == TRUE ~ paste(scale, "values above LOD"),
+          .default = paste(scale, "using all N1/N2") ) )  +
+   labs(fill="Offset in days")#Days wastewater is offset from cases
+  
+  #heatmaprvt <- heatmaprvt + guides(fill=guide_legend(title=paste(scale)))
+
+  
+  #return(outputrvt)
+  return(heatmaprvt)
+}
+
+heatmapfunc("spearman_offset",0,waste,cases,"pop",TRUE) 
+#heatmapfunc("spearman_offset",0,waste,cases,"pop") 
+#heatmapfunc("spearman_offset",0,waste,cases,"region",TRUE)
+#heatmapfunc("spearman_offset",0,waste,cases,"region")
+
+heatmapfunc("spearman_offset",6,waste,cases,"pop",TRUE) 
+heatmapfunc("spearman_offset",3,waste,cases,"pop",TRUE) 
+heatmapfunc("spearman_offset",2,waste,cases,"pop",TRUE) 
+heatmapfunc("spearman_offset",1,waste,cases,"pop",TRUE) 
+
+#heatmapfunc("kendall_offset",2,waste,cases,"pop",TRUE)
+#heatmapfunc("kendall_offset",2,waste,cases,"pop")
+
+heatmapfunc("kendall_offset",0,waste,cases,"pop",TRUE)
+#heatmapfunc("kendall_offset",6,waste,cases,"pop",TRUE)
+#heatmapfunc("kendall_offset",3,waste,cases,"pop",TRUE)
+#heatmapfunc("kendall_offset",1,waste,cases,"pop",TRUE)
+#Plot with true offset even if it does not make sense (looks more continuous).
+
+#Apply smoothings/normalizations/filterings
+#patchwork
+#Have x be the number of day sum and y offset?
+#Instead of sum of location - > rolling sum -> cor
+#Location -> rolling sum -> mean
+#Check when 2 day a week sampling happens
+#Run on hfg only
+#Try with smoothed
+#Split by variant timeframe
+
+```
+
+
+```{r}
+p1 <- heatmapfunc("spearman_offset",0,waste,cases,"pop",TRUE) + theme(plot.margin = unit(c(0,0,0,0), "lines"),
+            plot.background = element_blank(),
+            legend.position = "none")
+p2 <- heatmapfunc("spearman_offset",0,waste,cases,"pop") + theme(axis.text.y = element_blank(), 
+            axis.ticks.y = element_blank(), 
+            axis.title.y = element_blank(),
+            plot.margin = unit(c(0,0,0,0), "lines"),
+            plot.background = element_blank())
+grid.arrange(p1, p2, ncol = 2)
+```
+
+
+
+```{r}
+#group by high med low pop
+
+#large 100,000+
+#medium 100,000 - 10,000
+#small 10,000-
+
+populationtemp <- population %>% mutate(popgroup = case_when(pop >= 100000 ~ "Large",
+                                                         pop >= 10000  ~ "Medium",
+                                                         .default = "Small")) %>% subset(select = c(site,popgroup))
+                        
+wastepop <- merge(waste,populationtemp, by.x = "site")
+
+scale = "rsquared"
+timePeriods = "6month"
+wasterv <- wastepop
+caserv <- cases
+#heatmapfuncpop <- function(scale, timePeriods,wasterv,caserv){
+  if(scale == "rsquared"){
+    outputSelect = 0
+  } else if (scale == "ccfmax"){
+    outputSelect = 1
+  } else if (scale == "pearson"){
+    outputSelect = 2
+  }
+  poplist <- c(unique(wasterv$popgroup),"Any")#
+  outputrvt <- data.frame(matrix(ncol = 1, nrow = 0))
+  if(timePeriods == "6month"){
+    #6 month periods
+    start <- c(as.Date("2020-08-01"),as.Date("2021-02-01"),as.Date("2021-08-01"),as.Date("2022-02-01"),as.Date("2022-08-01"))
+    end   <- c(as.Date("2021-02-01"),as.Date("2021-08-01"),as.Date("2022-02-01"),as.Date("2022-08-01"),as.Date("2023-02-01"))
+  } else {
+    start <- covarstarts
+    end <- covarends
+  }
+  j = "Any"
+  i = 1
+#for(j in poplist){
+  #for(i in 1:length(start)){
+    
+    wastervtemp <- subset(wasterv, anydate(date)> anydate(start[i]) & anydate(date) < anydate(end[i]))
+    caservtemp <- subset(caserv, anydate(date)> anydate(start[i]) & anydate(date) < anydate(end[i]))
+    
+    if(j == "Any"){
+      wastervtemp <- wastervtemp %>% group_by(date)
+    }else{
+      wastervtemp <- wastervtemp %>% group_by(date,popgroup) %>% filter(popgroup == j)
+    }
+    
+    wastervtemp <- wastervtemp %>% summarise(N1 = mean(N1),
+            N2 = mean(N2),
+            PMMoV = mean(PMMoV)) %>% 
+    mutate(geo_mean = exp((log(N1) + log(N2))/2)) %>% drop_na(geo_mean)
+    
+    
+    caservtemp <- merge(populationtemp,caservtemp,by = "site") %>% filter(popgroup == j)
+    
+    caservtemp <- caservtemp %>%
+      group_by(date,popgroup) %>% 
+      summarise(conf_case = mean(conf_case)) 
+    
+    caservtemp <- caservtemp %>% ungroup() %>%
+      mutate(rollingaverage = roll_sum(conf_case,5,align = "center",fill = NA)) %>%
+      na.omit()
+
+    regionvstimetemp <- merge(caservtemp,wastervtemp, by = "date")
+    
+    if(outputSelect == 0){
+      #lm r squared
+      options(dplyr.summarise.inform = FALSE)
+      templm <- lm(log(geo_mean + 1)~log(rollingaverage+1), data=regionvstimetemp) 
+      new <- c(i,j,summary(templm)$r.squared)
+    } else if(outputSelect == 1){
+      #ccf max
+      ccfdatarvt <- ccf(regionvstimetemp$rollingaverage,regionvstimetemp$geo_mean,plot=0) #,plot=0
+      cor = ccfdatarvt$acf[,,1]
+      lag = ccfdatarvt$lag[,,1]
+      res = data.frame(cor,lag)
+      res_max = res[which.max(res$cor),]
+      #new <- c(i,j,max(ccfdatarvt$acf))
+      new <- c(i,j,res_max$lag)
+    } else if(outputSelect == 2){
+      #pearson cor
+      tempcor <- cor(regionvstimetemp$rollingaverage,regionvstimetemp$geo_mean,method = "pearson")
+      new <- c(i,j,tempcor)
+    }
+    
+    outputrvt = rbind(outputrvt,new)
+  #}
+#}
+
+
+  names(outputrvt)[1]="time" 
+  names(outputrvt)[2]="popgruop" 
+  names(outputrvt)[3]="output"
+  
+  outputrvt$output <- as.numeric(outputrvt$output)
+  newend <- as.numeric(end) - as.numeric(start[1])
+  newstart <- as.numeric(start) - as.numeric(start[1])
+  outputrvt <- outputrvt %>% mutate(end = case_when(time == 1 ~ newend[1],
+                                                    time == 2 ~ newend[2],
+                                                    time == 3 ~ newend[3],
+                                                    time == 4 ~ newend[4],
+                                                    time == 5 ~ newend[5],
+                                                    time == 6 ~ newend[6],
+                                                    time == 7 ~ newend[7]),
+                                    start = case_when(time == 1 ~ newstart[1],
+                                                      time == 2 ~ newstart[2],
+                                                      time == 3 ~ newstart[3],
+                                                      time == 4 ~ newstart[4],
+                                                      time == 5 ~ newstart[5],
+                                                      time == 6 ~ newstart[6],
+                                                      time == 7 ~ newstart[7]),
+                                    regionsizemin = case_when(popgruop == "Large" ~ 0,
+                                                              popgruop == "Medium" ~ 1,
+                                                              popgruop == "Small" ~ 2),
+                                    regionsizemax = regionsizemin+1)
+  
+  heatmaprvt <- ggplot(data = outputrvt, aes(fill = output)) +
+    geom_rect(aes(ymin = regionsizemin, ymax = regionsizemax, xmin = start, xmax = end)) +
+    scale_fill_gradient(low = "blue", high = "yellow") 
+
+#outputrvt$output <- as.numeric(outputrvt$output)
+#heatmaprvt <- ggplot(outputrvt,aes(x = time, y = popgruop, fill = output))+ #time center dates width: how wide
+  #geom_tile() + 
+  #scale_fill_gradient(low = "blue", high = "yellow") + 
+  #xlab("time") + 
+  #ylab("popgroup") 
+#ggplotly(heatmaprvt)
+#return(heatmaprvt)
+#}
+heatmaprvt
+
+ggplotly(heatmapfuncpop("rsquared","6month",wastepop,cases))
+ggplotly(heatmapfuncpop("rsquared","covar",wastepop,cases))
+
+
+```
+
+```{r}
+
+```
+
+

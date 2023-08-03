@@ -362,11 +362,11 @@ pre code {
 
 
 <pre class="r"><code>#load data from package
-library(DSIWastewater)
-data(pop_data, package = &quot;DSIWastewater&quot;)
-data(WasteWater_data , package = &quot;DSIWastewater&quot;)
-data(Case_data , package = &quot;DSIWastewater&quot;)
-data(Covariants_data, package = &quot;DSIWastewater&quot;)
+library(Covid19Wastewater)
+data(Pop_data, package = &quot;Covid19Wastewater&quot;)
+data(WasteWater_data , package = &quot;Covid19Wastewater&quot;)
+data(Case_data , package = &quot;Covid19Wastewater&quot;)
+data(Covariants_data, package = &quot;Covid19Wastewater&quot;)
 
 
 #convert covariant info to most prevalent covariant to make more efficient
@@ -394,7 +394,7 @@ case_merge_df &lt;- Case_data%&gt;%
 
 #merge three datasets into one dataset to do analysis on
 data.select.1 &lt;- WasteWater_data%&gt;%
-  left_join(pop_data, by = c(&quot;site&quot;, &quot;pop&quot;))%&gt;%
+  left_join(Pop_data, by = c(&quot;site&quot;, &quot;pop&quot;))%&gt;%
   inner_join(case_merge_df, by = c(&quot;site&quot;, &quot;date&quot;))%&gt;%
   mutate(site = as.factor(site),
          regions = as.factor(regions),

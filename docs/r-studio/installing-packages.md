@@ -18,7 +18,7 @@ To install a package using R Studio, follow these steps:
   You should see the following command executed in the R Studio console pane:
 
 ```
-install.packages("~/Downloads/DSIWastewater_0.2.01.tar.gz", repos = NULL, type = "source")
+install.packages("~/Downloads/Covid19Wastewater_0.2.01.tar.gz", repos = NULL, type = "source")
 ```
 
 ---
@@ -27,13 +27,13 @@ install.packages("~/Downloads/DSIWastewater_0.2.01.tar.gz", repos = NULL, type =
 If you see the following command followed by an error, then it is likely because the file that you are installing is not a '.tar.gz' file.   
 
 ```
-install.packages("~/Downloads/DSIWastewater_0.2.01.tar", repos = NULL)
+install.packages("~/Downloads/Covid19Wastewater_0.2.01.tar", repos = NULL)
 ```
 
 If the tar file has been unzipped, make sure to rezip it using the following command and repeat the installation process.
 
 ```
-gzip ~/Downloads/DSIWastewater_0.2.01.tar
+gzip ~/Downloads/Covid19Wastewater_0.2.01.tar
 ```
 
 ---

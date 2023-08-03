@@ -1,0 +1,318 @@
+---
+header-includes:
+- \usepackage{wrapfig}
+title: "Covid-19 Wastewater Flagging Method Optimization"
+author: 
+- Marlin Lee, Abe Megahed, Kyllan Wunder
+- "University of Wisconsin Data Science Institute - October 2022"
+output:
+  pdf_document:
+    keep_tex: true  
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r set up markdown settings, include = FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE,
+	fig.align = 'Right',
+	Plot.size = .6,
+	PlotHeight = 15
+	#out.width= "65%"
+)
+
+defOut <- knitr::knit_hooks$get("plot")  # save the default plot hook
+
+knitr::knit_hooks$set(plot = function(x, options) {  # set new plot hook ...
+  x <- defOut(x, options)  # first apply the default hook
+  # create the new opening string for the wrapfigure environment ...
+  wf <- sprintf("\\noindent\\begin{wrapfigure}[%g]{%s}{%g\\textwidth}", 
+                options$PlotHeight, "R", options$Plot.size)
+  x  <- gsub("\\begin{figure}", wf, x, fixed = T)  # and replace the default one with it.
+  x  <- gsub("{figure}", "{wrapfigure}", x, fixed = T)  # also replace the environment ending
+  return(x)
+})
+```
+
+
+
+## Introduction: 
+In this analysis, we perform a comparative analysis of various wastewater flagging techniques with the goals of (1) making the wastewater flags match the case analysis flags and (2) reducing false positives in the reported wastewater flags.  As the adoption of at-home tests increases and case reporting decreases, wastewater becomes a more important metric for determining true case numbers. Accurate flagging methods are critical for policymakers to make better-informed decisions based on predicted changes  in cases. 
+
+
+
+
+
+
+
+
+```{r Load Librarys, echo = FALSE}
+library(plotly)
+library(zoo)
+library(ggplot2)
+library(Covid19Wastewater)
+
+```
+
+```{r create wastewater data, eval = TRUE, echo = FALSE}
+#load WasteWater_data into the environment
+library(dplyr)
+data(WasteWater_data, package = "Covid19Wastewater")
+data(Pop_data, package = "Covid19Wastewater")
+
+#get DF into format for buildRegressionEstimateTable
+baseWaste_DF <-  buildWasteAnalysisDF(WasteWater_data)%>%
+  left_join(Pop_data)%>%
+  rename(population_served = pop)
+
+baseWaste_DF$site <- ifelse(baseWaste_DF$site == "Madison MSD WWTF",
+                            "Madison", baseWaste_DF$site)
+baseWaste_DF <- baseWaste_DF[!(baseWaste_DF$site %in% c("Portage WWTF","Cedarburg WWTF")),]
+
+
+baseWaste_DF <- baseWaste_DF[baseWaste_DF$n > 10,]
+
+K=3
+baseWaste_DF <- baseWaste_DF%>%
+  group_by(site)%>%
+    arrange(site, date)%>%
+    #create K day mean of the same column to use later
+    mutate(pastKavg.wwlog10 = rollmean(sars_cov2_adj_load_log10,
+                                       K, align = "right",
+                                       fill=NA))%>%
+    ungroup()%>%
+    filter(site == "Madison")
+
+#add quantile data to merge with the regression results
+Quantiles_DF <- makeQuantileColumns(baseWaste_DF,
+                                    5:9/10, c(14, 30, 60, 90),
+                                    "sars_cov2_adj_load_log10")
+
+
+Quantiles_DF <- Quantiles_DF[,c("site", "date", "window", "quant", "ntile", "pastKavg.wwlog10")]
+Quantiles_DF <- tidyr::pivot_wider(Quantiles_DF, 
+                   #id_cols = "site",
+                   names_from = c(window, quant), 
+                   values_from = c(ntile),
+                   values_fn = mean)
+```
+
+
+```{r wastewater flags, eval = TRUE, echo = FALSE}
+#Get 5 day rolling regression of data 
+CDCMethod <- buildRegressionEstimateTable(filter(baseWaste_DF, is.finite(sars_cov2_adj_load_log10)),
+                                          PSigTest=FALSE)
+#sars_cov2_adj_load_log10
+
+CDCMethod <- CDCMethod[,c("date","site", "modeled_percentchange", "lmreg_sig")]
+#merge the regression DF and the quantile DF to get info for 
+
+FULL_reg_DF <- left_join(CDCMethod, Quantiles_DF,
+                                by = c("site", "date"))%>%
+  tidyr::pivot_longer(cols = '14_0.5':'90_0.9',
+                      names_to = c("window", "quant"),
+                      values_to = "ntile",
+                      names_sep = "_")#
+
+#create flags described in @return
+FULL_reg_DF <- classifyQuantileFlagRegression(FULL_reg_DF)
+
+#return only flags and type columns 
+Full_wasteFlags <- FULL_reg_DF[,c("site", "date",
+                                  "window", "quant",
+                                  "cdc_flag",
+                                  "flag_ntile",
+                                  "flag_ntile_Pval")]
+
+```
+
+
+```{r create case flags, eval = TRUE, echo = FALSE}
+data(Case_data, package = "Covid19Wastewater")
+
+Case_DF <- Case_data
+
+#get the case flags
+Case_DF <- Case_DF%>%
+  left_join(Pop_data)%>%
+  rename(population_served = pop)%>%
+  buildCaseAnalysisDF()%>%
+  filter(site == "Madison")
+
+
+CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF, 
+    RunOn = c("FirstConfirmed.Per100K", "pastwk.avg.casesperday.Per100K"),
+    SplitOn = "site", DaysRegressed = 7)
+
+case_flags_names <- c("case_flag", 
+                      "case_flag_plus_comm.threshold",
+                      "slope_switch_flag")
+
+CaseRegressionOutput$Method <- ifelse(CaseRegressionOutput$Method ==   
+                                      "FirstConfirmed.Per100K",
+                                      "Cases", "7DayCases")
+
+#Classify slope to create 3 flags described in @return  
+CaseFlags <- classifyCaseRegression(CaseRegressionOutput)%>%
+  select(Method, site, date,all_of(case_flags_names))%>%
+  tidyr:::pivot_wider(names_from = "Method",
+                      values_from = all_of(case_flags_names),
+                      values_fn = max)
+```
+
+```{r merge flag DF, eval = TRUE, echo = FALSE}
+Full_wasteFlags <- Full_wasteFlags%>%
+  rename(cdc.flag = cdc_flag, 
+         flag.ntile = flag_ntile, 
+         flag.ntile.Pval = flag_ntile_Pval)%>%
+  tidyr::pivot_wider(names_from = c(window, quant), 
+                     values_from = c(cdc.flag, flag.ntile, flag.ntile.Pval),
+                     values_fn = mean)
+
+Flag_DF <- full_join(Full_wasteFlags, CaseFlags, 
+                     by = c("site", "date"))
+
+Flag_DF2 <- Flag_DF
+
+save_Dataset(Flag_DF)
+
+
+Flag_DF%>%
+  select()
+```
+
+```{r cache option}
+save_Dataset <- function(DF){
+  write.csv(Flag_DF, "Temp/DHSFlagingMethodOutput.csv")
+}
+
+load_Dataset <- function(){
+  #load WasteWater_data into the environment
+  data(WasteWater_data, package = "Covid19Wastewater")
+  baseWaste_DF <-  buildWasteAnalysisDF(WasteWater_data)
+  data(Case_data, package = "Covid19Wastewater")
+  Case_DF <- Case_data
+
+  Flag_DF <- read.csv("Temp/DHSFlagingMethodOutput.csv")%>%
+            mutate(date = as.Date(date))%>%
+   select(-X)
+  return(Flag_DF)
+  
+}
+Flag_DF <- load_Dataset()
+date_Flag_DF <- DF_date_vector(Flag_DF, "date", 
+               names(Flag_DF)[3:68])
+```
+
+
+```{r create flag distance}
+#"case_flag_Cases"                         "case_flag_7DayCases"                    
+#"case_flag_plus_comm.threshold_Cases"     "case_flag_plus_comm.threshold_7DayCases"
+#"slope_switch_flag_Cases"                 "slope_switch_flag_7DayCases"
+dep_flags <- names(Flag_DF)[9:68]
+edgeThresh <- 21
+CaseFlag <- "slope_switch_flag_Cases"
+rawDateDistDF <- date_Flag_DF%>%
+  date_distance_calc(CaseFlag, dep_flags)%>%
+  select(site, date, all_of(dep_flags))%>%
+  tidyr::pivot_longer(cols = dep_flags,
+                      names_to = c("FlagType","window", "quant"),
+                      values_to = "FlagError",
+                      names_sep = "_")%>%
+  mutate(window = as.numeric(window), quant = as.numeric(quant))%>%
+  filter(!is.na(FlagError))
+
+
+
+
+```
+
+```{r}
+DateDistDF <- rawDateDistDF%>%
+  date_distance_remove("FlagError", edgeThresh)
+
+
+save(CaseFlags, file = "CaseFlags.Rdata")
+```
+
+```{r get flag counts}
+CaseNumberFlags <- sum(Flag_DF[[CaseFlag]], na.rm = TRUE)
+
+Temp <- Flag_DF%>%
+  group_by(site)%>%
+  summarise(across(c(dep_flags, !!sym(CaseFlag)), ~sum(.x, na.rm=TRUE)))%>%
+  mutate(across(c(dep_flags), ~(.x-!!sym(CaseFlag))))%>%
+  ungroup()%>%
+  summarise(across(c(dep_flags), ~sum(abs(.x), na.rm=TRUE)))%>%
+  tidyr::pivot_longer(cols = dep_flags,
+                      names_to = c("FlagType","window", "quant"),
+                      values_to = "TotalFlagCountDiff",
+                      names_sep = "_")%>%
+  arrange(TotalFlagCountDiff)
+```
+
+```{r fig.cap = "The angled line is a linear regression line based on the 60 and 90-day intervals. The vertical lines represent the total number of case flags (1578) and the proportion of wastewater samples to wastewater flags if they had the same ratio as cases to case flags (389)", PlotHeight = 14m, warning=FALSE}
+
+
+DistSummary <- DateDistDF%>%
+  group_by(window, quant, FlagType)%>%
+  summarise(Mean = mean(FlagError, na.rm = TRUE),
+            MeanErrorSquard = mean(FlagError^2, na.rm = TRUE),
+            Var = var(FlagError, na.rm = TRUE),
+            num_flags = sum(!is.na(FlagError)))
+
+QuantDistSummary <- DistSummary%>%
+  filter(FlagType != "cdc.flag")
+
+A <- QuantDistSummary%>%
+  ggplot(aes(x = num_flags, y = MeanErrorSquard, color = window,
+             size = factor(quant), shape = FlagType))+
+  geom_point()+
+  geom_abline(slope = 0.0041, intercept = 6.6873)+
+  geom_vline(xintercept = CaseNumberFlags)+
+  scale_colour_gradient(low = "#000055", high = "#0000FF")+
+  geom_vline(xintercept = nrow(baseWaste_DF)*CaseNumberFlags/nrow(Case_DF),
+             linetype = 3)+
+  xlab("number of flags")
+#supresswarning(A)
+A
+```
+
+## Flagging Methods
+
+The DHS has created flagging methods based on wastewater measurements and aims to supplement existing case flagging metrics. The wastewater method uses a 5-day regression to see if the predicted change is above 10%. If so, it checks if the last 3-day average is larger than the K day Q quantile (where K and Q are customizable parameters). Then if both are true, it is labeled as a flag.ntile. If the Linear regression has a p-value below .3, it is labeled as a flag.ntile.Pval. We explored five quantile values (.5, .6, .7, .8,..9) and four window values (14, 30, 60, 90 days) for a total of 40 ways to flag\
+models. 
+
+## Graph explanation 
+The graph shows a distinct linear relationship between the variance and the number of flags produced (denoted on the graph by the diagonal regression line). This relationship makes it possible to balance the number of flags against the allowable variance or to determine the expected variance for a particular number of flags.  We calculate the squared distance each wastewater flag is from the nearest case flag to find the optimal combination. On investigation, it becomes clear the major issue with current options is the number of flags reported. As quantile size increases, the data fits this trend more, and with a smaller quantile size, the mean squared error (MSE) is much more varied.
+
+## Matching wastewater flags to case flags
+The case flag method has 1578 flags, so the chosen wastewater method should have an equal amount.  None of the methods create that many flags; most produce multiple times less due to the lower frequency of wastewater sampling. This means we could expect proportionally fewer flags; this is shown by a dashed line where you might expect the number of flags if it was proportional.
+
+```{r lm model, fig.align = 'right'}
+library(modelsummary)
+mod_formula <- MeanErrorSquard ~ num_flags
+Full_Model <- lm(mod_formula, data = QuantDistSummary)
+reduced_Model <- lm(mod_formula, 
+                    data = QuantDistSummary[QuantDistSummary$window > 30,])
+
+
+modelsummary(list("Full Model" = Full_Model, "Scaled Down Model" = reduced_Model),
+             statistic  = "P-val = {p.value}",
+             gof_omit = "AIC|BIC|F|Lik|R2 Adj.",
+             output = "kableExtra",
+             fmt = 4)%>%
+      kableExtra::kable_styling(position = "float_right")
+
+summary(Full_Model)
+summary(reduced_Model)
+
+```
+
+## Linear Model (LM)  explanation
+We created two linear models to explain the relationship between the number of points and the error. First, we used the whole data set and found minimal relation. Second, we excluded the 14 and 30 day windows and got a very successful linear model shown in the previous plot.
+
+## Conclusion
+We found no one best model because there is an inherent tradeoff between MSE and the number of flags created. However, a great candidate is the 90 day window 90% percentile flags which are around the correct number of adjusted flags and have the lowest MSE score. 

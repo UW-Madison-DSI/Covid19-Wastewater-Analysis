@@ -14,9 +14,9 @@ library(ggplot2)
 ```
 
 ```{r}
-library(DSIWastewater)
-data(Case_data, package = "DSIWastewater")
-data(pop_data, package = "DSIWastewater")
+library(Covid19Wastewater)
+data(Case_data, package = "Covid19Wastewater")
+data(Pop_data, package = "Covid19Wastewater")
 #restrict Case data to only Madison data
 Case_DF <- Case_data
 
@@ -24,7 +24,7 @@ Case_DF <- Case_data
 #restrict Case data to dates after 2021-02-01
 Case_DF <- Case_DF[Case_DF$date  >= as.Date("2020-9-10"),]
 Case_DF <- Case_DF%>%
-  left_join(pop_data)%>%
+  left_join(Pop_data)%>%
   rename(population_served = pop)
 
 #get the case flags
@@ -32,7 +32,7 @@ Case_DF <- buildCaseAnalysisDF(Case_DF)
 
 Case_DF <- Case_DF#[,c(1:2, 5, 7)]
 
-data(WasteWater_data, package = "DSIWastewater")
+data(WasteWater_data, package = "Covid19Wastewater")
 
 #restrict Waste data to only Madison data
 baseWaste_DF <- WasteWater_data

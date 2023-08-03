@@ -7,7 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(DSIWastewater)
+library(Covid19Wastewater)
 library(dplyr)
 library(ggplot2)
 library(anytime)
@@ -16,10 +16,10 @@ library(naniar)
 
 
 ```{r}
-data("HFGWaste_data", package = "DSIWastewater")
+data("HFGWaste_data", package = "Covid19Wastewater")
 hfgwaste <- HFGWaste_data
 
-data("HFGCase_data", package = "DSIWastewater")
+data("HFGCase_data", package = "Covid19Wastewater")
 hfgcase <- HFGCase_data
 
 

@@ -1,0 +1,142 @@
+---
+title: "alte_case_flags"
+author: "Marlin"
+date: '2022-07-27'
+output: pdf_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+
+```{r set up markdown settings, echo=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	echo = FALSE
+)
+```
+
+```{r create case data in right format}
+library(Covid19Wastewater)
+```
+
+```{r create case flags}
+#load Case_data into the environment
+data(Case_data, package = "Covid19Wastewater")
+
+
+#restrict Case data to only Madison data
+Case_DF <- Case_data#[Case_data$Site == "Madison",]
+
+
+#restrict Case data to dates after 2021-02-01
+#Case_DF <- Case_DF[Case_DF$date  >= as.Date("2021-02-01"),]
+
+
+#get the case flags
+Case_DF <- buildCaseAnalysisDF(Case_DF)
+
+
+CaseRegressionOutput <- buildRegressionEstimateTable(DataMod = Case_DF, 
+    RunOn = c("FirstConfirmed.Per100K", "pastwk.avg.casesperday.Per100K"),
+    SplitOn = "Site", DaysRegressed = 7,
+    verbose = TRUE)
+```
+
+```{r, fig.width = 28, fig.height = 14}
+library(tidyr)
+library(plotly)
+
+Plot_DF <- CaseRegressionOutput%>%
+  #filter(Site == "Madison")%>%
+  select(date, Site, Method, lmreg_slope)%>%
+  pivot_wider(names_from = Method, values_from = lmreg_slope)%>%
+  FactorVecByVec(Case_DF, FacVar = "Site", NumVar = "population_served")
+
+SlopeComp <- Plot_DF%>%
+  ggplot()+
+  geom_point(aes(x = FirstConfirmed.Per100K,
+                 y = pastwk.avg.casesperday.Per100K, info = date))+
+  geom_abline(color = "red")+
+  facet_wrap(~Site, scales = "free")
+
+SlopeComp
+#ggplotly(SlopeComp)
+
+SlopeComp <- Plot_DF%>%
+  ggplot(aes(x = date))+
+  geom_line(aes(y = FirstConfirmed.Per100K, color = "cases slope"))+
+  geom_line(aes(y = pastwk.avg.casesperday.Per100K, color = "smooth cases slope"))+
+  geom_hline(yintercept = 5)+
+  facet_wrap(~Site, scales = "free")
+
+SlopeComp
+#ggplotly(SlopeComp)
+
+cor(Plot_DF$FirstConfirmed.Per100K, 
+    Plot_DF$pastwk.avg.casesperday.Per100K,
+    use = "pairwise.complete.obs")
+```
+
+```{r}
+library(dplyr)
+
+BaseCaseFlagOutput <- CaseRegressionOutput%>%
+  filter(Method == "FirstConfirmed.Per100K")%>%
+  classifyCaseRegression(slopeThreshold = 5)%>%
+  select(Site, date, case_flag, slope_switch_flag)%>%
+  rename(Base_case_flag = case_flag, Base_switch_flag = slope_switch_flag)
+
+AltCaseFlagOutput <- CaseRegressionOutput%>%
+  filter(Method == "pastwk.avg.casesperday.Per100K")%>%
+  classifyCaseRegression(slopeThreshold = 1)%>%
+  select(Site, date, case_flag, slope_switch_flag)%>%
+  rename(Alt_case_flag = case_flag, Alt_switch_flag = slope_switch_flag)
+
+Full_Flag_DF <- inner_join(BaseCaseFlagOutput, AltCaseFlagOutput, by = c("date","Site"))
+
+#25	6	9
+#BaseCaseFlagOutput,AltCaseFlagOutput
+FlagCount <- countFlag(Full_Flag_DF, group = c("Site"))
+
+library(ggplot2)
+All_Site_Count_Plot <- FlagCount%>%
+  ggplot(aes(x = n))+
+  geom_point(aes(y = Base_switch_flag, color = "Base_switch_flag", info = Site))+
+  geom_point(aes(y = Alt_switch_flag, color = "Alt_switch_flag", info = Site))
+plotly::ggplotly(All_Site_Count_Plot)
+```
+
+
+```{r Single plot code, fig.width = 28, fig.height = 14}
+
+
+#define color scheme for the plots to have
+colorScheme <- ggplot2::scale_color_manual(values = 
+                                c("Base_switch_flag" = "red",
+                                "Alt_switch_flag" = "blue",
+                                "Both" = "green",
+                                "pastwk.avg.casesperday.Per100K" = "deeppink",
+                                "Loess" = "black",
+                                "FirstConfirmed.Per100K" = "brown",
+                                "sars_cov2_adj_load_log10" = "grey"),
+                                limits = force)
+
+library(ggplot2)
+#use old graphing code to
+
+Full_Flag_DF%>%
+  FactorVecByVec(Case_DF, FacVar = "Site", NumVar = "population_served")%>%
+  createFlagGraph_plot(MainDF = Case_DF,
+                        FlagDF = .,
+                        Flag1 = "Base_switch_flag",
+                        Flag2 = "Alt_switch_flag",
+                            PointVal = "FirstConfirmed.Per100K",
+                            LineVal = c("pastwk.avg.casesperday.Per100K"))+#,
+                            #facetFormula = " ~ Site")+ 
+  colorScheme+
+  scale_y_log10()+
+  facet_wrap(~Site, scales = "free")
+```
+
+
