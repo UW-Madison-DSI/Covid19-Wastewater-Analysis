@@ -20,8 +20,6 @@
 Welcome; we conduct advanced analysis of Wisconsin's COVID-19 wastewater data. Collaborating with the SLH and the DHS, we leverage our expertise and our proprietary R package, [Covid19Wastewater](https://github.com/UW-Madison-DSI/Covid19Wastewater), to uncover valuable insights. Our analyses provide crucial information for policymakers, public health officials, and researchers working to understand COVID-19 transmission and implement effective interventions. Explore our repository to learn more about our research and methodologies. Together, we contribute to a healthier and safer future for Wisconsin and beyond.
 
 
-
-
 ## Conclusions
 The following documents contain findings and conclusions.
 
@@ -46,12 +44,11 @@ View our collaborator's findings here:
 - <http://www.slh.wisc.edu/environmental/covid-19-wastewater/>
 
 ## License
-Distributed under the Sustainable Use License. See [LICENSE.md](./LICENSE.md) for more information.
+Distributed under the MIT License. See [LICENSE.md](./LICENSE.md) for more information.
 
 
 ## Team
 - Marlin Lee - (~~mailto:mrlee6@wisc.edu~~)
-
 
 - Abe Megahed - (mailto:amegahed@wisc.edu)
 
